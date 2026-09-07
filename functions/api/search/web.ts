@@ -100,18 +100,18 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     .filter(isGoogleGroundingRedirect)
     .slice(0, 5)
   const searchCalls = isMultiSource ? cleanedSources.length : 1
-  // La vérification relit au maximum un résultat par domaine en mode ciblé,
-  // ou `maxResults` résultats en mode général. Elle est comptée dans le même
-  // plafond que la recherche pour éviter tout contournement du quota.
+  // Chaque recherche, y compris ciblée, peut faire vérifier maxResults pages.
+  // Réserver le fan-out maximal AVANT tout appel, pas seulement une page/source.
+  // Ce compteur borne des tentatives, pas leur coût monétaire effectif.
   const verificationCalls = verifyUrls
-    ? (isMultiSource ? cleanedSources.length : maxResults)
+    ? searchCalls * maxResults
     : 0
-  const providerCalls = searchCalls + verificationCalls + cleanedRedirects.length
+  const providerCalls = searchCalls + verificationCalls + (verifyUrls ? cleanedRedirects.length : 0)
 
   // Cap journalier par email sur la clé de recherche PAYANTE du owner
   // (Linkup/Brave), appliqué aux seuls plans non-payants. Compté en appels
-  // provider réels. Le filet contre l'abus multi-comptes est le plafond DUR
-  // côté provider (budget Linkup) — cf. docs ops.
+  // potentiels, sans restitution des tentatives non exécutées. Ce cap par
+  // compte n'est pas un budget global ni une preuve de plafond provider actif.
   if (planSubjectToOwnerApiCap(user.planType)) {
     const cap = await consumeOwnerApiQuota(env, user.email, 'web-search', providerCalls)
     if (cap.unavailable) return admissionUnavailableResponse()

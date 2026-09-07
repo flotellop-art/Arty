@@ -46,6 +46,10 @@ const PROGRESS_KEY = 'auto-memory-progress'
 export const EXTRACT_EVERY_N_USER_MSGS = 3
 const MIN_SUBSTANCE_CHARS = 150
 const MAX_USER_MSG_CHARS = 800
+// Transport mirrors the extraction endpoint, without changing stored content.
+const MAX_TRANSCRIPT_CHARS = 6000
+const MAX_TRANSPORT_FACTS = 80
+const MAX_TRANSPORT_ID_CHARS = 64
 
 // ── Settings (pattern promptEnhancerSettings) ────────────────────────────────
 
@@ -87,9 +91,26 @@ export function hasSubstance(userMessages: string[]): boolean {
 
 /** Transcript des derniers messages user, borné en taille. */
 export function buildTranscript(userMessages: string[]): string {
-  return userMessages
-    .map((m) => `- ${m.slice(0, MAX_USER_MSG_CHARS)}`)
-    .join('\n')
+  let transcript = ''
+  for (const message of userMessages) {
+    const line = `${transcript ? '\n' : ''}- ${message.slice(0, MAX_USER_MSG_CHARS)}`
+    transcript += line.slice(0, MAX_TRANSCRIPT_CHARS - transcript.length)
+    if (transcript.length >= MAX_TRANSCRIPT_CHARS) break
+  }
+  return transcript
+}
+
+function projectExtractionFacts(facts: LocalMemoryFact[]): Array<{ id: string; content: string }> {
+  const projected: Array<{ id: string; content: string }> = []
+  for (const fact of facts) {
+    if (projected.length >= MAX_TRANSPORT_FACTS) break
+    if (typeof fact?.id !== 'string' || fact.id.length > MAX_TRANSPORT_ID_CHARS || !/^lm-[\w-]+$/.test(fact.id)) continue
+    if (typeof fact.content !== 'string') continue
+    const content = fact.content.slice(0, 200)
+    if (!content.trim()) continue
+    projected.push({ id: fact.id, content })
+  }
+  return projected
 }
 
 interface ExtractionResult {
@@ -183,7 +204,7 @@ export async function maybeExtractMemory(conv: Conversation | null | undefined):
       },
       body: JSON.stringify({
         transcript: buildTranscript(fresh),
-        facts: existing.map((f) => ({ id: f.id, content: f.content })),
+        facts: projectExtractionFacts(existing),
       }),
     })
     scope.assertCurrent()

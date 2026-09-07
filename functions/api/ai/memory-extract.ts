@@ -6,6 +6,7 @@ import {
 } from '../_lib/checkAllowedUser'
 import { consumeSubsidizedDailyQuota } from '../_lib/subsidizedDailyQuota'
 import { recordUsage } from '../_lib/quota'
+import { readRequestTextWithLimit, RequestBodyTooLargeError, requestBodyTooLargeResponse } from '../_lib/boundedRequestBody'
 
 /**
  * P1.1 — Extraction de mémoire automatique (plan d'action concurrentiel).
@@ -32,6 +33,10 @@ const EXTRACT_MODEL = 'claude-haiku-4-5-20251001'
 const DAILY_EXTRACT_CAP = 20
 const MAX_TRANSCRIPT_CHARS = 6000
 const MAX_FACTS_CHARS = 5000
+const MAX_BODY_BYTES = 262144
+const MAX_FACTS = 80
+const MAX_FACT_ID_CHARS = 64
+const MAX_FACT_LINES_BYTES = 32768
 
 const EXTRACTION_SYSTEM = `Tu extrais des faits durables sur l'utilisateur depuis ses messages, pour personnaliser un assistant personnel.
 
@@ -60,15 +65,20 @@ interface ExistingFact {
 function sanitizeFacts(raw: unknown): ExistingFact[] {
   if (!Array.isArray(raw)) return []
   const out: ExistingFact[] = []
-  let total = 0
+  let total = 0, lineBytes = 0
+  const encoder = new TextEncoder()
   for (const f of raw) {
+    if (out.length >= MAX_FACTS) break
     const id = (f as { id?: unknown })?.id
     const content = (f as { content?: unknown })?.content
     if (typeof id !== 'string' || typeof content !== 'string') continue
-    if (!/^lm-[\w-]+$/.test(id)) continue
+    // Never truncate an identity: a shortened ID could target a different fact.
+    if (id.length > MAX_FACT_ID_CHARS || !/^lm-[\w-]+$/.test(id)) continue
     const c = content.slice(0, 200)
-    total += c.length
-    if (total > MAX_FACTS_CHARS) break
+    if (!c.trim()) continue
+    const bytes = encoder.encode(`${out.length ? '\n' : ''}[${id}] ${c}`).byteLength
+    if (total + c.length > MAX_FACTS_CHARS || lineBytes + bytes > MAX_FACT_LINES_BYTES) break
+    total += c.length; lineBytes += bytes
     out.push({ id, content: c })
   }
   return out
@@ -83,6 +93,22 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   if (!env.ANTHROPIC_API_KEY) {
     return Response.json({ error: 'extract_unavailable' }, { status: 503 })
   }
+
+  // Validate and bound the actual bytes before consuming an extraction attempt.
+  let payload: ExtractRequest
+  try {
+    const parsed: unknown = JSON.parse(await readRequestTextWithLimit(request, MAX_BODY_BYTES))
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return Response.json({ error: 'Invalid request' }, { status: 400 })
+    }
+    payload = parsed as ExtractRequest
+  } catch (error) {
+    if (error instanceof RequestBodyTooLargeError) return requestBodyTooLargeResponse(MAX_BODY_BYTES)
+    return Response.json({ error: 'Invalid request' }, { status: 400 })
+  }
+  const transcript = typeof payload.transcript === 'string' ? payload.transcript.slice(0, MAX_TRANSCRIPT_CHARS) : ''
+  if (transcript.trim().length < 50) return Response.json({ add: [], replace: [] })
+  const facts = sanitizeFacts(payload.facts)
 
   // Rate-limit dédié : 20/jour/utilisateur (anti-boucle + borne le coût et
   // l'usage de cet endpoint comme mini-proxy Haiku gratuit).
@@ -109,22 +135,6 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
       return Response.json({ error: 'extract_quota' }, { status: 429 })
     }
   }
-
-  let payload: ExtractRequest
-  try {
-    payload = (await request.json()) as ExtractRequest
-  } catch {
-    return Response.json({ error: 'Invalid request' }, { status: 400 })
-  }
-
-  const transcript =
-    typeof payload.transcript === 'string'
-      ? payload.transcript.slice(0, MAX_TRANSCRIPT_CHARS)
-      : ''
-  if (transcript.trim().length < 50) {
-    return Response.json({ add: [], replace: [] })
-  }
-  const facts = sanitizeFacts(payload.facts)
 
   const userContent = `FAITS EXISTANTS :\n${
     facts.length > 0 ? facts.map((f) => `[${f.id}] ${f.content}`).join('\n') : '(aucun)'

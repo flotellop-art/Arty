@@ -1,6 +1,7 @@
 # Admission gratuite vérifiée — lot candidat du 7 septembre 2026
 
-Statut : **local, non livré**. Base publique `db6249d` (#490), branche
+Statut : **livré le 7 septembre 2026**, [PR491](https://github.com/flotellop-art/Arty/pull/491),
+main `7339bff`. Base publique `db6249d` (#490), branche
 `codex/trial-admission-safety-20260907`. Aucune migration, donnée personnelle,
 clé, configuration fournisseur ou identité d'autorisation modifiée.
 
@@ -81,8 +82,8 @@ complète, ont aussi été exécutées séparément avec succès.
 
 Cette première exécution n'est **pas** un `verify` réussi : elle s'est arrêtée
 avant la compilation et le contrôle du worker Office. La preuve complète sur
-l'état final sera exigée en CI Node 22 avant fusion. Pas encore de
-CI/preview/déploiement ou recette téléphone de ce lot.
+l'état final a ensuite été obtenue en CI Node 22 avant fusion (ci-dessous).
+Aucune recette sur téléphone physique n'est attestée pour ce lot.
 
 Recontrôle local séparé après correction des fixtures : `npm run typecheck`,
 `npm run build` et `node scripts/check-office-export-worker.mjs` réussis. Le
@@ -91,18 +92,30 @@ cela ne vaut pas une inspection visuelle ou un test Office natif.
 
 ## Porte de livraison et retour arrière
 
-- [ ] CI Node 22 `npm run verify` : types, tests et couverture, compilation,
+- [x] CI Node 22 `npm run verify` : types, tests et couverture, compilation,
   worker Office. L'exécution locale initiale utilisait Node 24.14.1 et
   `VITEST_MAX_WORKERS=2` pour borner les connexions Miniflare sur Windows ;
   son résultat partiel ne remplace pas cette porte de fusion.
 - [x] Deux contre-revues indépendantes du code et examen de leurs objections.
 - [x] Aucun schéma, secret, catalogue, tarif ou indicateur d'activation modifié.
-- [ ] Branche publique issue directement de `db6249d`, diff autorisé uniquement,
+- [x] Branche publique issue directement de `db6249d`, diff autorisé uniquement,
   CI et preview conformes avant fusion normale ; pas d'exception administrateur.
-- [ ] Production : SHA publié relié au déploiement, version publique/immuable
+- [x] Production : SHA publié relié au déploiement, version publique/immuable
   identique, refus anonyme et absence de régression des garde-fous existants.
-- [ ] Observation de 15 minutes après production. Les sondes publiques ne
+- [x] Observation de 15 minutes après production. Les sondes publiques ne
   remplacent pas une mesure globale des erreurs ni une recette compte réel.
+
+Preuve finale : [CI34119576244](https://github.com/flotellop-art/Arty/actions/runs/34119576244),
+360 suites, 5182 tests réussis, un test préexistant ignoré, 502,23 s. Vérifications
+Android, compilation et worker Office réussies. Fusion normale à 12:11:47 UTC,
+déploiement `b225281d-c709-44c1-b71f-0caca934d41f`, source `7339bff`.
+Sondes publiques/immuables : 16 échantillons en 900802 ms, fin à 12:28:46 UTC ;
+asset `/assets/index-C2TiF-Or.js`, SHA256
+`d855da92cc1ae509b0fc84453a626c8111cdeb4cbe25c3a5174acb17547d44fc`.
+Un premier sondage trop précoce avait rencontré un asset 404 ; il a été suivi
+d'une vérification de disponibilité et n'est pas compté dans la fenêtre réussie.
+CI main et workflow Android/Firebase réussis ; reçu d'identité APK obtenu,
+mais aucune installation physique ni publication sur un store attestée ici.
 
 En cas de nouvelle panne d'accès confirmée pour un droit valide, de dépense
 malgré refus, de double compensation ou de différence de version entre domaines,

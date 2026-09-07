@@ -8,6 +8,13 @@ principal Arty. Priorité P0 avant ouverture commerciale/acquisition à grande
 Le calendrier dépend du diagnostic, des contre-revues et des recettes ; aucune
 date de livraison ou efficacité chiffrée n'est inventée.
 
+Avancement au 7 septembre : admission subventionnée stricte livrée dans la
+[PR491](https://github.com/flotellop-art/Arty/pull/491), avec tests et observation
+production documentés dans [FREE_ADMISSION_SAFETY_RELEASE.md](FREE_ADMISSION_SAFETY_RELEASE.md).
+Cela corrige le repli permissif sur incident décrit au point de départ ci-dessous.
+Le budget global et l'éligibilité multi-compte ne sont pas encore réalisés ;
+aucun de leurs critères n'est clos par cette livraison.
+
 ## Résultat attendu
 
 Rendre le renouvellement abusif des essais difficile et borner la dépense
