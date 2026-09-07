@@ -14,7 +14,7 @@ Extension explicite du 7 septembre : protection contre l'abus des 30 messages
 gratuits par comptes email multiples et VPN. Critères de clôture obligatoires
 dans [FREE_TRIAL_ABUSE_CDC.md](FREE_TRIAL_ABUSE_CDC.md) : quotas serveur fiables,
 éligibilité multi-compte, coût global borné, faux positifs et données minimisées.
-Priorité P0 avant ouverture commerciale/acquisition à grande échelle ; à réaliser,
+Priorité P0 avant ouverture commerciale/acquisition à grande échelle ; réalisation partielle,
 sans retirer W01–W10 ni les obligations abonnements et crédits.
 
 Extension explicite de l'objectif le 6 septembre : abonnements **et** crédits
