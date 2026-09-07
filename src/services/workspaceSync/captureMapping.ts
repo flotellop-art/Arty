@@ -1,5 +1,5 @@
 import type { Conversation } from '../../types'
-import type { SyncLocalBinding } from './privateState'
+import { assertSyncPrivateHead, parseSyncPrivateState, type SyncLocalBinding } from './privateState'
 import { envelopeFail as fail } from './envelopeFormat'
 import { projectLocalSyncConversation } from './localProvenance'
 import { projectSyncConversation } from './captureProjection'
@@ -7,14 +7,40 @@ import { projectSyncConversation } from './captureProjection'
 /** Extends only; an unselected original/peer/crop is a reference, never an
  * implicit request to read it. Document identity IS its project-source ID. */
 export function createSyncCaptureMapping(prior: SyncLocalBinding[]) {
+  return createMapping(prior, false)
+}
+
+/** Internal projection seam for a future materialized-target witness. It does
+ * not read stores or prove B==M, and is never an authorization to write. All
+ * addresses must already belong to the exact private branch; neither missing
+ * identities nor reference promotions can allocate/repair anything here. */
+export function createSyncReadMapping(head: unknown, bindings: SyncLocalBinding[]) {
+  const state = parseSyncPrivateState({ format: 'arty-sync-private-state', version: 1, base: head, bindings })
+  assertSyncPrivateHead(state, state.base)
+  const mapping = createMapping(state.bindings, true)
+  return Object.freeze({ lookup: mapping.bind, conversation: mapping.conversation })
+}
+
+function createMapping(prior: SyncLocalBinding[], readOnly: boolean) {
   const bindings = structuredClone(prior)
   const key = (kind: SyncLocalBinding['kind'], localId: string, parent: string | null) => JSON.stringify([kind, parent, localId])
   const byLocal = new Map(bindings.map(b => [key(b.kind, b.localId, b.parentLocalId), b]))
   function bind(kind: SyncLocalBinding['kind'], localId: string, parentLocalId: string | null = null, materialized = false): string {
+    if (readOnly) {
+      if (typeof kind !== 'string' || !['conversation', 'project', 'file', 'project-source', 'project-text', 'message', 'group'].includes(kind) ||
+        typeof materialized !== 'boolean') return fail('format')
+      const parented = kind === 'message' || kind === 'project-source' || kind === 'project-text'
+      if (parented ? typeof parentLocalId !== 'string' || !parentLocalId.length || parentLocalId.length > 256 : parentLocalId !== null) return fail('format')
+    }
     if (typeof localId !== 'string' || !localId.length || localId.length > 256) return fail('format')
     if (parentLocalId !== null) bind(kind === 'message' ? 'conversation' : 'project', parentLocalId)
     const k = key(kind, localId, parentLocalId), old = byLocal.get(k)
     const presence = materialized ? kind === 'message' || kind === 'group' ? 'embedded' : 'record' : 'reference'
+    if (readOnly) {
+      if (!old) return fail('missing')
+      if (materialized && old.presence !== presence) return fail('base')
+      return old.logicalId
+    }
     if (old) { if (old.presence === 'reference') old.presence = presence; return old.logicalId }
     if (bindings.length >= 10_000) return fail('limit')
     const entry: SyncLocalBinding = { kind, localId, parentLocalId, logicalId: crypto.randomUUID(), presence }

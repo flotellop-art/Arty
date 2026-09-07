@@ -577,6 +577,38 @@ export function createLocalSyncOutbox() {
             return { ...reviewed.report, localPending: remoteCurrent().pair.operation !== null }
           } catch (error) { reviewed?.dispose(); reviewed = null; throw error }
         }) },
+        /** Read-only diagnostic for an EXISTING private materialized branch.
+         * No caller targets/manifest/guard/capability, no selection expansion,
+         * no publication. Even an entirely equal B cannot authorize an update:
+         * R's closure/conflicts and the distinct existing-target journal remain
+         * separate requirements. Dispose private rows before returning counts. */
+        inspectMaterialized() { return exclusive(async () => {
+          const receipt = received, current = remoteCurrent(), before = current.pair, generation = current.generation
+          if (!receipt || current.privateState.version !== 3 || current.privateState.pendingBase || before.operation ||
+            !current.privateState.checkpoint) return fail('base')
+          await receipt.validate()
+          if (!reviewed) reviewed = await reviewReceivedSyncContent(receipt)
+          const review = reviewed
+          const authority: SyncDispatchGuard = { signal: receipt.signal,
+            assertCurrent() {
+              assertActor(); assertUnlocked(generation); receipt.assertCurrent(); review.assertCurrent()
+              if (received !== receipt || reviewed !== review || !expected || !equal(expected, before)) return fail('base')
+            },
+            async validateReadOnly() {
+              this.assertCurrent(); await review.validate()
+              if (!equal(await transaction('readonly', readPair), before)) return fail('base')
+              this.assertCurrent()
+            } }
+          const { attestMaterializedTargets } = await import('./materializedCoverage'); authority.assertCurrent()
+          const proof = await attestMaterializedTargets({ materialized: current.privateState.materialized, bindings: current.privateState.bindings,
+            targetIds: current.privateState.materialized.records.map(r => r.id), authority })
+          try {
+            await proof.validateFresh(); authority.assertCurrent()
+            const remote = review.report
+            return { status: 'materialized-reviewed-not-applied' as const, local: { ...proof.report },
+              remote: { conflicts: remote.conflicts, deletedVariants: remote.deletedVariants, dependencyIssues: remote.dependencyIssues.length } }
+          } finally { proof.dispose() }
+        }) },
         prepareApply() { return exclusive(async () => {
           application?.dispose(); application = null
           const receipt = received, current = remoteCurrent(), before = current.pair, generation = current.generation

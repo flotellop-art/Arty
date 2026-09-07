@@ -11,6 +11,7 @@ import { restrictConversationOutput } from './workflows/outputRestriction'
 import { captureLocalReadScope } from './projects/store'
 import { hasActiveConversationWork } from './conversationWork'
 import { canonicalSyncJSON } from './workspaceSync/captureContent'
+import { rawEncoding } from './workspaceWriter/migrationInventory'
 
 // ─────────────────────────────────────────────────────────────────────────
 // Conversations are encrypted at rest (AES-256) under `conversations-enc`.
@@ -235,6 +236,36 @@ export function captureHistoryForRestore() {
   return { json, snapshot: JSON.parse(json) as Conversation[], assertUnchanged, assertSnapshot() {
     assertUnchanged()
     if (JSON.stringify(cache) !== json) throw new BackupError('changed')
+  } }
+}
+
+/** Read-only sync witness. Validate descriptors BEFORE serializing/cloning the
+ * live cache; a getter/toJSON must never execute as part of a safety proof.
+ * Keep the entire history, including non-sync neighbours and local provenance,
+ * because a future publication replaces one account-wide ciphertext. */
+export function captureHistoryForSyncCoverage() {
+  assertDocumentWorkspace()
+  const scope = captureScope(), cache = memConversations, identity = cacheIdentity
+  const gen = writeGen, boot = bootstrapGen
+  if (!scope.owner || !cacheReady || !cache || !identity || identity.owner !== scope.owner || identity.epoch !== scope.epoch || encryptionDisabled()) throw new BackupError('unavailable')
+  const assertUnchanged = () => {
+    assertDocumentWorkspace()
+    if (!scopeCurrent(scope) || !cacheReady || memConversations !== cache || cacheIdentity?.owner !== identity.owner || cacheIdentity?.epoch !== identity.epoch || writeGen !== gen || bootstrapGen !== boot || encryptionDisabled()) throw new BackupError('changed')
+  }
+  const read = () => {
+    assertUnchanged()
+    const json = canonicalSyncJSON(cache, { nodes: 1_000_000, chars: 32 * 1024 * 1024 })
+    // The graph has now been checked without invoking data accessors.
+    for (const conversation of cache) {
+      const restriction = committedOutputRestrictions.get(conversation.id)
+      if (restriction && conversation.outputRestriction !== restriction) throw new BackupError('changed')
+    }
+    const raw = rawEncoding(cache)
+    assertUnchanged(); return { json, raw }
+  }
+  const { json, raw } = read()
+  return { json, snapshot: structuredClone(cache), assertUnchanged, assertSnapshot() {
+    if (read().raw !== raw) throw new BackupError('changed')
   } }
 }
 

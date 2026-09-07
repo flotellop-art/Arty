@@ -1,6 +1,6 @@
 # W06 — livraison du client et de la réception, démarrages OFF
 
-7 septembre 2026. **Préparation de livraison, pas encore déployée.**
+7 septembre 2026. **Livré sur Pages et Firebase, démarrages OFF ; observation terminée.**
 Le CDC Arty/Mammouth et son extension abonnements/crédits restent ouverts.
 
 ## Périmètre et provenance
@@ -26,12 +26,12 @@ sont pas inclus. Aucun secret ou reçu privé n'est à téléverser avec ce lot.
 - [x] Deux contre-revues indépendantes du dernier raccord ; rapport détaché avant
   révocation et inspection de paire durable corrigés. Pas de GO activation.
 - [x] Contre-revues globales du diff cumulé avant PR/preview.
-- [ ] Branche publique sans bilan privé dans son arbre ni ses ancêtres nouveaux.
-- [ ] CI PR application, growth et Android terminée SUCCESS, sans contournement.
-- [ ] Pages preview du commit exact réussie puis sondes HTTP/UI publiques.
-- [ ] Fusion normale, arbre main égal au candidat vérifié.
-- [ ] Pages production et CI main sur ce commit, reçus Firebase séparés.
-- [ ] Observation post-déploiement 15 minutes : sondes HTTP/static bornées,
+- [x] Branche publique sans bilan privé dans son arbre ni ses ancêtres nouveaux.
+- [x] CI PR application, growth et Android terminée SUCCESS, sans contournement.
+- [x] Pages preview du commit exact réussie puis sondes HTTP/UI publiques.
+- [x] Fusion normale, arbre main égal au candidat vérifié.
+- [x] Pages production et CI main sur ce commit, reçus Firebase séparés.
+- [x] Observation post-déploiement 15 minutes : sondes HTTP/static bornées,
   sans prétendre à une télémétrie globale ou à une recette connectée.
 
 ## Démarrages et données
@@ -77,5 +77,53 @@ Local : `npm run verify` terminé exit 0, 349 suites, **4 804 PASS + 1 skip
 préexistant**, types/OAuth/build/worker Office verts. Log ignoré
 `.playwright-mcp/workspace-sync-supersession-final-verify.log`.
 
-À compléter avec SHA, PR, exécutions CI et URLs immuables réels, après leur
-obtention. Ne pas transformer un démarrage de pipeline en reçu SUCCESS.
+La branche publique porte un seul commit cumulé `9654fa72dd7bd3e3164594c0d0c83c7c41c75d97`
+sur la base main. Arbre technique égal au snapshot local vérifié, sans le bilan
+personnel ; son ancien commit n'est pas un ancêtre nouvellement publié.
+
+[PR #487](https://github.com/flotellop-art/Arty/pull/487), fusion normale le
+7 septembre à 07:27:32 UTC : main `41ab207b1b42072dd369d01516e22986725cb8cb`.
+Le diff d'arbre entre candidat public et main fusionné est vide.
+[CI PR](https://github.com/flotellop-art/Arty/actions/runs/34094385674) et
+[CI main](https://github.com/flotellop-art/Arty/actions/runs/34095563495) : SUCCESS
+application, growth et Android sur leurs SHA exacts.
+
+Pages preview : `6df48d88-715e-43fc-89c3-02e552f24278`, source `9654fa7`,
+[URL immuable](https://6df48d88.appfacade.pages.dev).
+Chrome, profils neufs, FR/EN à 390 et 1280 px : routes publiques de préparation,
+démarrage upgrade absent, aucun App privé ni DB créée sur ces routes. Dans la
+démo propre au preview : pin, branche, rechargement, contrainte UE et export JSON
+conservent leurs invariants ; l'export retire la provenance sync privée tout en
+gardant le marqueur historique. Le témoin local a été ajouté à une conversation
+fictive : ce test n'est pas une preuve d'import réel. Aucun appel IA ou API privé.
+
+Pages production : `c2f3475d-380e-45a7-9528-8d61c177df2d`, source `41ab207`,
+[URL immuable](https://c2f3475d.appfacade.pages.dev). À 07:29:25 UTC, les cinq
+chunks publics sondés de tryarty.com sont identiques octet par octet à cette
+production immuable et le challenge sync anonyme refuse toujours les starts.
+Les quatre cas UI publics passent aussi en production. Deux profils FR/EN de
+390 px, avec root v10 synthétique et job placeholder jamais ouvert, montrent
+la reprise froide malgré START OFF et empêchent le chargement de l'App privé.
+Ce dernier test porte seulement sur l'admission ; aucune reprise/effacement cliqué.
+
+Configuration Pages relue via Wrangler, sans modification : aucun nom
+WORKSPACE_SYNC et aucun binding R2 ; compatibility date inchangée `2026-04-10`.
+SELECT distant de `sqlite_master` limité aux noms `workspace_sync_%` : résultat
+vide, zéro ligne écrite, `changed_db=false`. Aucun contenu utilisateur lu.
+Configurations téléchargées et logs restent ignorés, hors de ce dépôt public.
+
+[Firebase](https://github.com/flotellop-art/Arty/actions/runs/34095563506) : SUCCESS
+sur main `41ab207`, avec étapes distinctes de vérification du candidat, distribution
+et téléversement du reçu d'identité toutes réussies. Le reçu JSON allowlisté
+atteste `com.arty.app`, version `1.0.99`/code `100`, 4 424 787 octets,
+SHA-256 `3f0c1a4f799610dd9eadde64b6929f28937299335842bf644571adcf66e4623f`,
+signature vérifiée et concordance avec assetlinks du checkout. Le succès de
+distribution vient de l'étape Firebase, pas du seul reçu d'identité. Aucun APK
+téléchargé ou installé ici ; ADB ne détectait aucun appareil à 07:39 UTC.
+
+Observation terminée de 07:29:25 à 07:45:17 UTC, soit 951,966 secondes. Quatre
+sondes espacées : les cinq chunks conservent leurs hashes et le challenge reste
+OFF. Aucune anomalie dans ce périmètre. Ce n'est ni une télémétrie globale, ni
+une recette connectée, ni une validation commerciale ou sur téléphone physique.
+Les travaux locaux postérieurs au commit `41ab207` ne font pas partie de cette
+livraison ; leur vérification doit rester séparée.
