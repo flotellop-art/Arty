@@ -14,6 +14,9 @@ import { createSyncVaultSession, prepareSyncUpdate, resumeSyncUpdate, openSyncUp
 import { envelopeFail as fail, envelopeScope, assertEnvelopeScope, SYNC_ENVELOPE_LIMITS } from './envelopeFormat'
 import { parseSyncManifest } from './schema'
 import { parseSyncPrivateState, assertSyncPrivateHead, assertSyncMappingExtension, type SyncLocalBinding, type SyncPrivateState } from './privateState'
+import type { SyncManifest } from './types'
+import type { SyncCaptureSelection, SyncCaptureReport } from './capture'
+import { copySyncCaptureSelection } from './captureProjection'
 
 type Pair = { state: SyncStateRow | null; operation: SyncOperationRow | null }
 type Mode = 'readonly' | 'readwrite'
@@ -31,8 +34,9 @@ export function createLocalSyncOutbox() {
   const context = { generation: layout.generation }, owner = scope.owner, stateKey = ['sync-state', owner]
   const session = createSyncVaultSession()
   let vault: UnlockedSyncVault | null = null, view: SyncPrivateState | null = null, expected: Pair | null = null
+  let localHead: SyncManifest | null = null
   let unlockedGeneration = 0
-  const lock = () => { unlockedGeneration++; session.lock(); vault = null; view = null; expected = null }
+  const lock = () => { unlockedGeneration++; session.lock(); vault = null; view = null; expected = null; localHead = null }
   const assert = () => {
     try {
       scope.assertCurrent(); assertDocumentWorkspace()
@@ -97,7 +101,7 @@ export function createLocalSyncOutbox() {
       assertAttempt(generation)
     } finally { finishWork(); release() }
   }
-  return Object.freeze({ lock, close,
+  const outbox = Object.freeze({ lock, close,
     /** Explicit new local enrollment requires a supplied scope. Existing rows
      * can ONLY be unlocked, never reset after a wrong code or incomplete pair. */
     async unlock(code: string, initialScope?: unknown) {
@@ -122,7 +126,7 @@ export function createLocalSyncOutbox() {
           if (!equal(before, await transaction('readonly', readPair)) || generation !== unlockedGeneration) return fail('base')
           await opened.validate()
           if (generation !== unlockedGeneration) return fail('locked')
-          vault = key; view = parsed; expected = before
+          vault = key; view = parsed; expected = before; localHead = next
         } else {
           const parsed = parseSyncPrivateState({ format: 'arty-sync-private-state', version: 1,
             base: { format: 'arty-sync-causal', version: 1, ...bound, records: [] }, bindings: [] })
@@ -132,14 +136,38 @@ export function createLocalSyncOutbox() {
           if (generation !== unlockedGeneration) return fail('locked')
           const after: Pair = { state: row, operation: null }
           await cas(before, after, generation); assertAttempt(generation)
-          vault = key; view = parsed; expected = after
+          vault = key; view = parsed; expected = after; localHead = parsed.base
         }
         assertUnlocked(generation)
       } catch (error) { if (generation === unlockedGeneration) lock(); throw error }
     },
     get snapshot() {
       const current = authenticated()
-      return { base: parseSyncManifest(current.privateState.base), bindings: structuredClone(current.privateState.bindings), pending: current.pair.state!.pending }
+      return { base: parseSyncManifest(current.privateState.base), localHead: parseSyncManifest(localHead), bindings: structuredClone(current.privateState.bindings), pending: current.pair.state!.pending }
+    },
+    /** Actual local capture into the existing paired CAS. A pending historical A
+     * stays byte-identical while real chat data changes to B. No pretend ACK or
+     * clearing A to make room: callers receive an explicit pending-changes state.
+     * Cancellation retires this handle, including any in-flight IDB adoption. */
+    async capture(selection: SyncCaptureSelection, signal?: AbortSignal): Promise<{ status: 'adopted' | 'unchanged' | 'pending-changes'; report: SyncCaptureReport }> {
+      const { pair, generation, privateState } = authenticated()
+      const selected = copySyncCaptureSelection(selection)
+      if (signal?.aborted) return fail('cancelled')
+      signal?.addEventListener('abort', close, { once: true })
+      try {
+        const { captureLocalSyncSnapshot } = await import('./capture')
+        assertUnlocked(generation)
+        const captured = await captureLocalSyncSnapshot(localHead, privateState.bindings, selected, signal)
+        assertUnlocked(generation); await captured.validate(); assertUnlocked(generation)
+        if (expected !== pair || !equal(pair, await transaction('readonly', readPair))) return fail('base')
+        assertUnlocked(generation)
+        if (!captured.changed) return { status: 'unchanged', report: captured.report }
+        if (pair.operation) return { status: 'pending-changes', report: captured.report }
+        const candidate = await outbox.prepareSnapshot(captured.next, captured.payloads, captured.bindings)
+        await captured.validate(); assertUnlocked(generation)
+        await candidate.adopt(); assertUnlocked(generation)
+        return { status: 'adopted', report: captured.report }
+      } finally { signal?.removeEventListener('abort', close) }
     },
     /** Historical snapshot adoption, not a claim that LS and two IDBs were
      * read atomically or are still current. The future capture/rescan adapter
@@ -167,7 +195,7 @@ export function createLocalSyncOutbox() {
         assertUnlocked(generation)
         // Publish RAM only after successful atomic commit. Exact retry remains
         // possible if acknowledgement of this commit was lost.
-        expected = after; view = proposed
+        expected = after; view = proposed; localHead = next
       } })
     },
     async resume() {
@@ -179,4 +207,5 @@ export function createLocalSyncOutbox() {
       assertUnlocked(generation); return resumed
     },
   })
+  return outbox
 }

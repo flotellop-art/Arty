@@ -2022,8 +2022,8 @@ readonly clôturées ; candidat ni poussé ni déployé.
 La tranche suivante dispose maintenant d'une vraie outbox locale et d'un
 mapping chiffré persisté : adoption atomique état/opération, base ACK séparée,
 reprise des octets exacts, garde de compte et effacement, inventaires raccordés.
-Elle reçoit un snapshot historique détaché ; **la capture fidèle des vrais
-stores n'est pas encore raccordée**. La recette Chrome native finale à 23:26:23 UTC
+Ce commit reçoit un snapshot historique détaché ; la capture réelle est
+raccordée dans la tranche suivante ci-dessous. La recette Chrome à 23:26:23 UTC
 confirme réouverture/quota/commit perdu et absence de rechiffrement. Les vrais
 cycles restauration et effacement/reset conservent le paquet de B, même quand
 A n'a plus qu'une opération orpheline. Détails et limites dans l'ADR.
@@ -2034,3 +2034,30 @@ locaux bornés, aucun défaut bloquant restant identifié. Le candidat
 reste local, START OFF, sans endpoint ni activation UI. Capture stable, rescan,
 transport, ACK, applicateur, effacement serveur et recettes multi-appareils
 restent obligatoires : aucune synchronisation complète annoncée.
+
+### W06-B2b — capture réelle et rescan local (7 septembre, candidat non livré)
+
+`localOutbox.capture` lit désormais les vrais historiques, fichiers, galeries,
+projets, originaux et textes extraits de la sélection explicite. Fidélité des
+comparaisons, métriques nulles, texte brut/vides, restrictions et références
+vérifiée ; identités normalisées des anciens partiels stabilisées durablement.
+Projection fermée, mapping privé domaine/parent et conteneur binaire canonique.
+Un scan réduit ne supprime rien. Une source manquante bloque, sans réussite
+partielle. Rescan inchangé après reboot : aucun UUID, chiffrement ou write.
+Un paquet A pending n'est pas remplacé par une modification locale B ; B reste
+intacte et le service retourne `pending-changes`, sans faux ACK.
+
+84 tests ciblés avec vrais services locaux et quatre scénarios Chrome natif
+réussis ; la capture navigateur inclut projet, fichier vide, galerie et ancien
+`streaming`, puis destruction/réouverture de page. Zéro API externe ni erreur de
+page. Détails et limites dans l'[ADR](ADR_WORKSPACE_SYNC.md).
+
+Passe complète finale Node 22 : **337 suites / 4 458 PASS + 1 ignoré**,
+typechecks, couverture, no-CASA, build et vrai worker Office réussis. Deux GO
+readonly locaux bornés après correction du nettoyage plaintext prioritaire.
+
+Toujours candidat local non poussé/non déployé, START OFF, aucune activation UI
+ni serveur. Snapshot historique, pas transaction globale ou état forcément
+courant des fichiers. Rescan explicite seulement ; transport, ACK, réception/
+application sans ping-pong, effacement distant et recettes multi-appareils
+restent à livrer avant de déclarer W06 terminé.

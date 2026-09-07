@@ -1,5 +1,5 @@
 // Native Chrome IDB/Web Locks/WebCrypto in disposable synthetic profiles.
-// Internal historical snapshot service only, NOT app capture/ACK/mobile proof.
+// Internal actual capture + historical outbox; NOT remote ACK/apply/mobile proof.
 import assert from 'node:assert/strict'
 import { createRequire } from 'node:module'
 import { createServer } from 'vite'
@@ -15,7 +15,7 @@ try {
   await server.listen(); const origin = `http://127.0.0.1:${server.httpServer.address().port}`
   browser = await chromium.launch({ channel: process.env.ARTY_BROWSER_CHANNEL || 'chrome', headless: true })
   const errors = [], unexpectedNetwork = [], receipts = []
-  for (const scenario of ['reopen', 'quota', 'commit-cut']) {
+  for (const scenario of ['reopen', 'quota', 'commit-cut', 'capture']) {
     const context = await browser.newContext({ serviceWorkers: 'block' })
     await context.route('**/*', route => {
       const url = new URL(route.request().url())
@@ -53,6 +53,47 @@ try {
           const { createLocalSyncOutbox } = await import('/src/services/workspaceSync/localOutbox.ts')
           const readRows = async () => { const db = await openDB(layout.projects.name, 2); try { return JSON.stringify([await db.getAllKeys('meta'), await db.getAll('meta')]) } finally { db.close() } }
           const box = createLocalSyncOutbox()
+          if (scenario === 'capture') {
+            const H = await import('/src/services/storage.ts'), F = await import('/src/services/secureFileStorage.ts')
+            const P = await import('/src/services/projects/store.ts'), I = await import('/src/services/projects/documentImport.ts')
+            if (phase === 'adopt') {
+              const operation = await P.beginProjectOperation()
+              let project = await P.createProject(operation, 'Synthetic source project')
+              project = await P.addProjectDocument(operation, project, await I.prepareProjectDocument(operation, new File(['Source\r\n'], 'source.txt')))
+              await F.putFile({ id: 'empty', name: 'empty.txt', type: 'text/plain', data: 'data:text/plain;base64,' })
+              await F.putFile({ id: id(50), name: 'gallery.png', type: 'image/png', data: 'iVBORw0KGgoAAAANSUhEUg==' })
+              const chat = { id: 'chat', title: 'Captured A', createdAt: 1, updatedAt: 2, projectId: project.id, hasProjectContext: true,
+                outputRestriction: 'client-reply-draft-v1', messages: [
+                  { id: 'q', role: 'user', content: '\uFEFFQuestion\r\n', timestamp: 1, files: [{ id: 'empty', name: 'presentation.txt', type: '', size: 0 }] },
+                  { id: 'streaming', role: 'assistant', content: '![image](arty-img://' + id(50) + ')', timestamp: 2, generatedImages: [id(50)], restoredArchive: true }] }
+              localStorage.setItem(workspaceDataKey(layout, 'synthetic-a', 'conversations-enc'), await C.encrypt(JSON.stringify([chat])))
+              await H.bootstrapConversationStorage(); await box.unlock(code, bound)
+              const result = await box.capture({ conversationIds: ['chat'], projectIds: [project.id] })
+              check(result.status === 'adopted' && result.report.capturedObjects === 6, 'real capture missing dependencies')
+              const until = performance.now() + 10_000
+              while (localStorage.getItem(workspaceDataKey(layout, 'synthetic-a', 'conversations'))) {
+                check(performance.now() < until, 'normalized ID not durably encrypted'); await new Promise(r => setTimeout(r, 10))
+              }
+              const normalizedId = H.getConversation('chat').messages[1].id
+              check(normalizedId !== 'streaming', 'placeholder persisted as streaming')
+              return { rows: await readRows(), operationId: (await box.resume()).reference.operationId, normalizedId, snapshot: JSON.stringify(box.snapshot) }
+            }
+            const before = await readRows(), encrypt = crypto.subtle.encrypt, random = crypto.getRandomValues, uuid = crypto.randomUUID
+            crypto.subtle.encrypt = crypto.getRandomValues = crypto.randomUUID = () => { throw new Error('unchanged capture generated/encrypted again') }
+            let receipt
+            try {
+              await H.bootstrapConversationStorage(); await box.unlock(code)
+              const chat = H.getConversation('chat'), result = await box.capture({ conversationIds: ['chat'], projectIds: [chat.projectId] })
+              check(result.status === 'unchanged', 'real unchanged capture produced a revision')
+              check(await readRows() === before && box.snapshot.base.records.length === 0, 'capture rewrote/ACKed pending A')
+              receipt = { rows: before, operationId: (await box.resume()).reference.operationId, normalizedId: chat.messages[1].id, snapshot: JSON.stringify(box.snapshot) }
+            } finally { crypto.subtle.encrypt = encrypt; crypto.getRandomValues = random; crypto.randomUUID = uuid }
+            H.saveConversation({ ...H.getConversation('chat'), title: 'Current local B' })
+            const changed = await box.capture({ conversationIds: ['chat'], projectIds: [] })
+            check(changed.status === 'pending-changes' && await readRows() === before, 'real B overwrote A or was falsely unchanged')
+            check(H.getConversation('chat').title === 'Current local B', 'source B lost')
+            return receipt
+          }
           if (phase === 'adopt') {
             await box.unlock(code, bound)
             const payload = new Blob(['Historical snapshot A']), sha256 = [...new Uint8Array(await crypto.subtle.digest('SHA-256', await payload.arrayBuffer()))].map(b => b.toString(16).padStart(2, '0')).join('')

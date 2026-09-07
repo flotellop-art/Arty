@@ -1,6 +1,6 @@
 # W06-B — synchronisation chiffrée optionnelle
 
-Date : 6 septembre 2026. **Décision de conception / implémentation partielle**.
+Date : 7 septembre 2026. **Décision de conception / implémentation partielle**.
 La sauvegarde/restauration [W06-A](ADR_WORKSPACE_BACKUP.md) existe ; un upload
 d'archive ou un noyau causal isolé **ne valide pas W06-B**. Aucun bucket,
 binding, migration serveur, endpoint public ou activation UI ajouté par ce lot.
@@ -494,10 +494,105 @@ tests sont inclus dans cette dernière passe réussie. Reçus ignorés :
 `workspace-sync-outbox-targeted.log`, `workspace-sync-outbox-browser.log`,
 `workspace-sync-outbox-browser-final.log`.
 
-Le service d'outbox n'est pas appelé par l'UI ; les inventaires sont raccordés.
-START reste OFF, aucun endpoint, bucket, migration distante, checkout ou secret
-de production modifié. Candidat local non poussé/non déployé. Il reste le
-raccord de capture réelle et stable (dont IDs `streaming`, comparaison avec
-nulls, textes vides, galerie et références), le scan de rattrapage, transport,
-ACK, applicateur sans ping-pong et effacement serveur. Ces travaux restent des
-obligations W06, pas des exclusions du cahier des charges.
+Au commit `ebe94b9`, l'outbox n'était pas appelée par l'UI et ne capturait pas
+les sources réelles. La tranche ci-dessous raccorde ces sources ; transport,
+ACK, applicateur et activation restent à livrer.
+
+### B2b — capture applicative réelle et rescan explicite (7 septembre)
+
+`localOutbox.capture` prend une sélection explicite, copiée synchroniquement
+avant toute attente. Le service lit les vraies conversations admises, leurs
+fichiers/galeries chiffrés et les projets sélectionnés avec originaux et textes
+extraits, via les readers readonly existants. Aucun reader fourni par le caller,
+réextraction, accès réseau ou lookup d'URI Markdown. Les objets non sélectionnés
+et toute leur ascendance sont conservés ; absence, quota, verrouillage et
+conflits ne deviennent jamais des suppressions ou résolutions implicites.
+
+La projection sync est dédiée, fermée et par descripteurs de données : champs
+inconnus/exécutables refusés. Elle conserve ordre et texte UTF-16 exact, valeurs
+nulles/vides/fausses/zéro, métadonnées brutes de comparaison (pas les statuts
+reconstruits à l'affichage), fact-check, attribution, `restoredArchive`, flags
+EU/Google/documentaires et restriction de sortie. Une incohérence du couple
+restriction/documentaire ou la suppression du marqueur par alias est refusée.
+
+Le mapping durable est étendu par domaine et parent : branches, groupe,
+original/peer/réponse absents, messages, fichiers, crops et provenance projet.
+Une référence historique absente réserve un binding `reference`, sans importer
+son contenu. L'identité du document est celle de son record `project-source`,
+liée séparément au record `project-text` ; le même ID physique dans deux projets
+ne désigne pas le même document logique. Le propriétaire et la révision CAS du
+projet restent locaux ; les révisions historiques documentaires sont conservées.
+
+Le conteneur privé `ARTYSOBJ1` v1 contient un header, des métadonnées JSON
+canoniques et les octets binaires **sans inflation base64**. Les 10 Mio portent
+sur le conteneur complet ; la capture reste bornée à 16 Mio/256 objets, sans
+troncature (une sélection plus petite est nécessaire au-delà). Texte extrait
+vide, BOM, CRLF et surrogate isolé restent exacts grâce au framing JSON. Un
+fichier durable non-image vide est représenté comme zéro octet, pas comme absent.
+Taille réelle, ancienne taille enregistrée et présentations par message restent
+distinctes. La galerie exige les vrais reçus et octets d'image valides. Le texte
+brut, y compris une URI dans la prose ou du code, n'est **jamais réécrit** ; une
+table privée typée `galleryAliases` lie token historique, message et fichier
+logiques pour le futur applicateur. Elle ne constitue pas une autorité de lookup.
+
+Seule écriture source de cette capture : stabiliser un ancien ID `streaming`
+déjà normalisé au boot. Le suivi privé porte sur le couple exact conversation/ID
+alloué, pas une heuristique texte/date ni un WeakSet perdu après spread. Sous
+garde réelle et hors travail actif, la safety-net complète est écrite avant
+création des tickets. Échec de quota : M1 reste en RAM, ancien ciphertext intact,
+aucune adoption ni quarantaine. Le garde de l'historique complet a son budget
+propre (32 Mio/1 million de nœuds), distinct d'un payload sélectionné. Un boot
+plaintext qui a déjà publié le bon ciphertext acquitte les seuls IDs concernés
+**après** suppression effective de l'ancien plaintext prioritaire, ou preuve que
+celui-ci contient exactement la forme normalisée. Un nettoyage refusé ne doit
+jamais permettre adoption M1 puis reboot M2.
+
+Le résultat est explicitement **historique**, pas une transaction globale ni une
+promesse d'état courant à l'instant d'adoption. Les tickets de conversation et
+leurs alias restent vérifiés jusqu'au retour de capture ; les révisions de tous
+les projets encadrent les lectures ; les fichiers viennent d'un seul instantané
+IDB antérieur. Leur remplacement après cet instant est détecté au scan suivant.
+Owner/clé/fence/document et annulation restent gardés jusqu'au commit. Annuler
+l'adaptateur retire sa capacité, y compris pendant le chiffrement/adoption.
+
+La tête locale déchiffrée (`localHead`) est distincte de la base ACK et disponible
+après réouverture de l'outbox. Le rescan compare hash/longueur des octets canoniques
+au head live unique **avant** d'allouer payload/révision. Un scan inchangé n'écrit
+pas et ne crée ni ID ni ciphertext. Après A pending puis modification locale B,
+le résultat est `pending-changes` : B reste local, A reste exact, pas de faux ACK,
+pas d'écrasement. `adopted` signifie seulement commit local de cette capture.
+
+Preuves : `workspaceSyncCapture.test.ts` utilise vrais compte, crypto, bootstrap,
+files/projects et outbox avec fake-indexeddb. Deux boots de partiel sans save
+fixture, quota, refus de cleanup puis reboot/quota, gros historique voisin,
+comparaisons liées avec original/réponse absents, rescan identique/réduit,
+présentations divergentes, fichier vide, galerie malformée, getters, restriction
+par alias, source étrangère, texte vide/BOM/CRLF/UTF-16, documents homonymes dans
+deux projets, extra de descriptor, mutations, ABA/fence/abort, activité, conflit
+et tombstone refusés. Remplacement réel d'un fichier entre lecture et capture
+puis rescan ; annulation pendant le vrai chiffrement. Avec outbox et archive :
+**84 tests ciblés réussis**. Deux contre-revues indépendantes readonly ont fait
+fermer les cas sélection mutable, restrictions, extras, fichiers vides et
+acquittement trop précoce du plaintext.
+
+Chrome 152.0.7977.77, rejeu final à **23:57:29 UTC le 6 septembre** (7 septembre
+en France) : quatre scénarios natifs passent. Aux trois scénarios outbox déjà
+documentés s'ajoute capture réelle projet/texte/source, fichier vide, galerie et
+partiel → destruction de page → réouverture/rescan sans UUID ni chiffrement →
+vraie modification B, paquet A inchangé. Zéro erreur de page et zéro appel
+externe/API. Log ignoré `workspace-sync-capture-browser-final.log`.
+
+Vérification complète **finale** Node 22.23.2 : **337 suites / 4 458 PASS et
+1 ignoré préexistant**, types front/back, couverture, no-CASA, build et vrai
+worker Office réussis (exit 0). Cette passe inclut les quatre derniers canaris
+après la première passe à 4 454 tests. Log ignoré
+`workspace-sync-capture-verify-final.log`. Deux GO readonly locaux bornés après
+fermeture de la dernière course plaintext/identité ; aucun défaut bloquant
+résiduel identifié dans leur périmètre, pas une preuve de sécurité générale.
+
+START reste OFF, service interne sans activation UI ; aucun endpoint, bucket,
+migration distante, checkout ou secret de production modifié. Candidat local
+non poussé/non déployé. Le rescan est explicite, pas un ordonnanceur automatique.
+Transport, ACK authentifié, rattrapage après ACK, applicateur sans ping-pong
+(y compris alias galerie et restrictions), effacement serveur, consentement UI
+et recettes à deux appareils restent des obligations W06, pas des exclusions.
