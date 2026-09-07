@@ -3,10 +3,18 @@
 État technique du 7 septembre 2026 : objectif global toujours incomplet.
 Projection/recapture fidèle, premier import sous journal et préparation d’un
 envoi concurrent livrés avec démarrages OFF par #487. Le diagnostic des cibles
-matérialisées ajouté ensuite est testé localement, non livré. Application des
+matérialisées et la lecture fidèle ont été livrés par #488 (`b4cfa5d`, fusion
+du 7 septembre à 09:10 UTC), sans autorisation d'écriture. Application des
 mises à jour et résolution des conflits restent à terminer. Preuves et limites
 dans `WORKSPACE_SYNC_APPLY_CONTRACT.md`, `WORKSPACE_SYNC_CLIENT_RELEASE.md` et
 `ADR_WORKSPACE_SYNC_MATERIALIZED_COVERAGE.md`.
+
+Candidat courant : journal v11 de mise à jour aux mêmes identifiants, aperçu
+et reprise raccordés. Aller-retour vers créateur, galerie/comparaison/documents,
+effacement préservant l'autre compte et gardes de lecture passent les canaris
+ciblés. Deux contre-revues locales favorables ; vérification complète non encore
+acquise, aucun nouveau déploiement. Détails et échecs conservés dans
+`SYNC_EXISTING_UPDATE_RELEASE.md`. Le plan global restant est `PLAN_RESTANT_ARTY.md`.
 
 Date : 7 septembre 2026. Statut global : **en cours, livraisons partielles**.
 
@@ -2292,7 +2300,7 @@ installation ou recette réelle. La mise à jour d'un espace déjà matérialis�
 la résolution utilisateur et les autres exigences W06 restent ouvertes, comme
 la validation opérationnelle des abonnements et des crédits.
 
-### W06 — projecteur readonly préparatoire (local, non livré)
+### W06 — projecteur readonly préparatoire (historique de préparation, livré ensuite #488)
 
 Le prochain témoin de couverture peut réutiliser le projecteur existant avec
 un lookup strict : aucun identifiant inventé, aucune référence promue en objet,
@@ -2307,7 +2315,7 @@ et worker Office réels réussis. Log ignoré
 `.playwright-mcp/workspace-sync-read-mapping-final-verify.log`. Ces 25 canaris
 supplémentaires et ce mapper ne sont pas inclus dans la livraison #487.
 
-### W06 — diagnostic des cibles matérialisées (local, non livré)
+### W06 — diagnostic des cibles matérialisées (historique de préparation, livré ensuite #488)
 
 `inspectMaterialized()` utilise maintenant le M privé réel de l'acteur, et non
 sa sélection, pour comparer conversations/fichiers/catalogues/source/texte

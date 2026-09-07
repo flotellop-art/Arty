@@ -256,7 +256,8 @@ export function createLocalSyncOutbox() {
       let observed: SyncDiscovery | null = null, busy = false, closed = false
       let received: ReceivedSyncChain | null = null
       let reviewed: ReviewedSyncContent | null = null
-      let application: Awaited<ReturnType<typeof import('./applyPublication')['prepareFirstSyncApply']>> | null = null
+      let application: Awaited<ReturnType<typeof import('./applyPublication')['prepareFirstSyncApply']>> |
+        Awaited<ReturnType<typeof import('./updatePublication')['prepareExistingSyncUpdate']>> | null = null
       const assertActor = () => { assert(); wire.assertCurrent(); if (closed) fail('cancelled') }
       const actorGuard: SyncDispatchGuard = { signal: wire.signal, assertCurrent: assertActor,
         async validateReadOnly() { assertActor(); await guard.validateReadOnly(); await wire.validateReadOnly(); assertActor() } }
@@ -612,10 +613,11 @@ export function createLocalSyncOutbox() {
         prepareApply() { return exclusive(async () => {
           application?.dispose(); application = null
           const receipt = received, current = remoteCurrent(), before = current.pair, generation = current.generation
-          // This first vertical is an import into an unmaterialized enrollment,
-          // not a silent overwrite, pending supersession or conflict resolver.
-          if (!receipt || current.privateState.version !== 3 || current.privateState.materialized.records.length ||
-            current.privateState.bindings.length || current.privateState.pendingBase || before.operation || !current.privateState.checkpoint) return fail('base')
+          // First import and existing-target updates own distinct journals.
+          // Neither silently supersedes a pending upload or resolves conflicts.
+          if (!receipt || current.privateState.version !== 3 || current.privateState.pendingBase || before.operation || !current.privateState.checkpoint) return fail('base')
+          const existing = current.privateState.materialized.records.length > 0
+          if (!existing && current.privateState.bindings.length) return fail('base')
           await receipt.validate()
           if (!reviewed) reviewed = await reviewReceivedSyncContent(receipt)
           const review = reviewed
@@ -630,8 +632,7 @@ export function createLocalSyncOutbox() {
               if (!equal(await transaction('readonly', readPair), before)) return fail('base')
               this.assertCurrent()
             } }
-          const { prepareFirstSyncApply } = await import('./applyPublication'); authority.assertCurrent()
-          application = await prepareFirstSyncApply({ receipt, reviewed: review, stateBefore: before.state!, authority,
+          const args: Parameters<typeof import('./applyPublication')['prepareFirstSyncApply']>[0] = { receipt, reviewed: review, stateBefore: before.state!, authority,
             async sealState(materialized, bindings) {
               authority.assertCurrent()
               if (before.state!.revision === Number.MAX_SAFE_INTEGER) return fail('limit')
@@ -642,7 +643,14 @@ export function createLocalSyncOutbox() {
               const state: SyncStateRow = { format: 'arty-sync-local-state', version: 2, ...binding,
                 ciphertext: await sealSyncLocalState(current.key, binding, new Blob([JSON.stringify(proposed)])) }
               authority.assertCurrent(); return state
-            } })
+            } }
+          if (existing) {
+            const { prepareExistingSyncUpdate } = await import('./updatePublication'); authority.assertCurrent()
+            application = await prepareExistingSyncUpdate({ ...args, materialized: current.privateState.materialized, bindings: current.privateState.bindings })
+          } else {
+            const { prepareFirstSyncApply } = await import('./applyPublication'); authority.assertCurrent()
+            application = await prepareFirstSyncApply(args)
+          }
           authority.assertCurrent(); return structuredClone(application.preview)
         }) },
         applyReceived() { return exclusive(async () => {

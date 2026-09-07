@@ -5,7 +5,7 @@ import type { WorkspaceStorageLayout } from './layout'
 import type { RestoreHeader } from './restoreProtocol'
 import type { WorkspaceUpgradeHeader } from './upgradeProtocol'
 import { WorkspaceSyncApplyAvailable } from './control'
-import type { SyncApplyHeader } from './syncApplyProtocol'
+import type { SyncPublicationHeader } from './syncPublicationProtocol'
 
 export type WorkspaceAdmissionPhase = 'idle' | 'checking' | 'ready' | AdmissionFailure
 
@@ -17,7 +17,7 @@ export function createWorkspaceAdmission(guard: AdmissionGuard, read = readWorks
   let recovery: Readonly<MigrationHeader> | undefined, erasure = false, claimed = false
   let restore: Readonly<RestoreHeader> | undefined
   let upgrade: Readonly<WorkspaceUpgradeHeader> | undefined
-  let apply: Readonly<SyncApplyHeader> | undefined
+  let apply: Readonly<SyncPublicationHeader> | undefined
   let erasureMode: AccountErasureState = 'confirmed'
   let erasureBinding: string | undefined
   const listeners = new Set<() => void>()

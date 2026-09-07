@@ -10,6 +10,9 @@ type Box = ReturnType<typeof createLocalSyncOutbox>
 type Actor = ReturnType<Box['connect']>
 type Preview = Awaited<ReturnType<Actor['prepareApply']>>
 type Reconciled = Awaited<ReturnType<Actor['reconcilePending']>>
+// Reversible display, not normalization: invisible/bidi/space characters must
+// not make two distinct historical IDs look identical in the consent preview.
+const displayIdentity = (id: string) => JSON.stringify(id).replace(/[^\x21-\x7e]/g, c => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`)
 /** An explicit RECEIVE flow, not background sync or a new-vault publisher.
  * Starts stay OFF until the complete two-way/browser/mobile release is proven. */
 export function WorkspaceSyncReceiver() {
@@ -72,7 +75,7 @@ export function WorkspaceSyncReceiver() {
     if (busy.current || committing.current ||
       action === 'reconcile' && (state !== 'conflict' || !confirmed) ||
       action === 'send' && state !== 'pending' && state !== 'reconciled' ||
-      action === 'receive' && state !== 'receiveAgain') return
+      action === 'receive' && state !== 'receiveAgain' && state !== 'preview') return
     busy.current = true; const ticket = ++attempt.current; setState('busy')
     try {
       eligible(ticket); const current = actor.current
@@ -90,7 +93,7 @@ export function WorkspaceSyncReceiver() {
     finally { if (ticket === attempt.current) busy.current = false }
   }
   const commit = async () => {
-    if (state !== 'preview' || !confirmed || busy.current || committing.current) return
+    if (state !== 'preview' || !confirmed || busy.current || committing.current || preview?.status === 'existing-update-reviewed' && !preview.canApply) return
     committing.current = true; setState('busy')
     try { eligible(); await actor.current!.applyReceived(); if (mounted.current) setState('reload') }
     catch { if (mounted.current) setState('failed') }
@@ -107,9 +110,29 @@ export function WorkspaceSyncReceiver() {
       <button className={button} type="submit" disabled={!code.trim()}>{t('workspaceSyncApply.prepare')}</button>
     </form>}
     {state === 'preview' && preview && <div className="space-y-3">
-      <p>{t('workspaceSyncApply.summary', { ...preview })}</p>
-      <label className="flex gap-3"><input type="checkbox" checked={confirmed} onChange={e => setConfirmed(e.target.checked)} />{t('workspaceSyncApply.consent')}</label>
-      <button className={button} disabled={!confirmed} onClick={() => void commit()}>{t('workspaceSyncApply.apply')}</button>
+      <p role="status">{t(preview.status === 'existing-update-reviewed' ? 'workspaceSyncApply.update.summary' : 'workspaceSyncApply.summary', { ...preview })}</p>
+      {preview.status === 'existing-update-reviewed' && <>
+        {!preview.canApply && <p>{t('workspaceSyncApply.update.none')}</p>}
+        {preview.targets.length > 0 && <section aria-label={t('workspaceSyncApply.update.targets')} className="min-w-0 space-y-2">
+          <h3>{t('workspaceSyncApply.update.targets')}</h3>
+          <ul className="space-y-3">{preview.targets.map(item => <li key={`${item.kind}:${item.localId}`} className="min-w-0 break-words">
+            <p>{t(`workspaceSyncApply.update.kind.${item.kind}`)}</p>
+            <p>{t('workspaceSyncApply.update.before')}{' : '}<span className="whitespace-pre-wrap">{item.before || t('workspaceSyncApply.update.untitled')}</span></p>
+            <p>{t('workspaceSyncApply.update.after')}{' : '}<span className="whitespace-pre-wrap">{item.after || t('workspaceSyncApply.update.untitled')}</span></p>
+            <p>{t('workspaceSyncApply.update.identity')}{' : '}<code className="break-all" dir="ltr">{displayIdentity(item.localId)}</code></p>
+          </li>)}</ul>
+        </section>}
+        {preview.retained.length > 0 && <section aria-label={t('workspaceSyncApply.update.retained')}>
+          <h3>{t('workspaceSyncApply.update.retained')}</h3>
+          <ul className="list-disc pl-5">{preview.retained.map(item => <li key={item.recordId} className="break-words">
+          {item.label || t('workspaceSyncApply.update.item')}{' : '}{t(`workspaceSyncApply.update.reason.${item.reason}`)}
+        </li>)}</ul></section>}
+      </>}
+      {(preview.status !== 'existing-update-reviewed' || preview.canApply) && <>
+        <label className="flex gap-3"><input type="checkbox" checked={confirmed} onChange={e => setConfirmed(e.target.checked)} />{t(preview.status === 'existing-update-reviewed' ? 'workspaceSyncApply.update.consent' : 'workspaceSyncApply.consent')}</label>
+        <button className={button} disabled={!confirmed} onClick={() => void commit()}>{t(preview.status === 'existing-update-reviewed' ? 'workspaceSyncApply.update.apply' : 'workspaceSyncApply.apply')}</button>
+      </>}
+      <button className={button} onClick={() => void pendingAction('receive')}>{t('workspaceSyncApply.receiveAgain')}</button>
     </div>}
     {state === 'conflict' && <div className="space-y-3">
       <label className="flex gap-3"><input type="checkbox" checked={confirmed} onChange={e => setConfirmed(e.target.checked)} />{t('workspaceSyncApply.reconcileConsent')}</label>

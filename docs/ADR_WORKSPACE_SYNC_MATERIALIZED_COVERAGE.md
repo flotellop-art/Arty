@@ -1,6 +1,7 @@
 # ADR — lecture fidèle des cibles déjà matérialisées
 
-Statut : accepté pour le diagnostic local en lecture seule, non livré.
+Statut : diagnostic en lecture seule livré par #488 (`b4cfa5d`, 7 septembre
+2026 à 09:10 UTC). Aucun writer de mise à jour ni démarrage activé par ce lot.
 Date : 7 septembre 2026.
 Décision : implémentation principale et deux contre-revues indépendantes,
 produit/données et sécurité. Aucun GO d'activation ou d'écriture.
