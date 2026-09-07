@@ -8,6 +8,9 @@ import { assertDocumentWorkspace, documentWorkspaceSignal, documentHistoryKey } 
 import type { HistorySlot } from './workspaceWriter/layout'
 import { BackupError } from './workspaceBackup/types'
 import { restrictConversationOutput } from './workflows/outputRestriction'
+import { captureLocalReadScope } from './projects/store'
+import { hasActiveConversationWork } from './conversationWork'
+import { canonicalSyncJSON } from './workspaceSync/captureContent'
 
 // ─────────────────────────────────────────────────────────────────────────
 // Conversations are encrypted at rest (AES-256) under `conversations-enc`.
@@ -42,6 +45,13 @@ let memConversations: Conversation[] | null = null
 // Independent of the mutable cache objects exposed by legacy callers. Updating
 // an alias must not erase the last committed restrictive authority.
 let committedOutputRestrictions = new Map<string, Conversation['outputRestriction']>()
+// Only IDs actually allocated by the legacy normalizer, never inferred from
+// content/date/index. A spread-cloned message must not lose this provenance.
+const recoveredMessageIdentities = new Set<string>()
+function acknowledgeRecoveredIdentities(list: Conversation[]): void {
+  if (!recoveredMessageIdentities.size) return
+  for (const c of list) for (const m of c.messages) recoveredMessageIdentities.delete(JSON.stringify([c.id, m.id]))
+}
 function installMemoryConversations(list: Conversation[]): void {
   const restrictions = new Map<string, Conversation['outputRestriction']>()
   for (const c of list) if (c.outputRestriction) restrictions.set(c.id, c.outputRestriction)
@@ -93,7 +103,10 @@ export function sanitizeConversationPayloads(
       changed = true
       conversationChanged = true
       // A recovered partial is historical, never the placeholder of a NEW stream.
-      return message.id === 'streaming' ? { ...safeMessage, id: generateId(), interrupted: true } : safeMessage
+      if (message.id !== 'streaming') return safeMessage
+      const normalized = { ...safeMessage, id: generateId(), interrupted: true }
+      recoveredMessageIdentities.add(JSON.stringify([conversation.id, normalized.id]))
+      return normalized
     })
     const restricted = restrictConversationOutput(conversationChanged ? { ...conversation, messages } : conversation)
     if (restricted !== conversation) changed = true
@@ -160,6 +173,8 @@ export function captureConversationForBackup<T>(id: string, clone: (source: Conv
   if (!scope.owner || !cacheReady || !cache || !identity || identity.owner !== scope.owner || identity.epoch !== scope.epoch) throw new BackupError('unavailable')
   const source = cache.find(conversation => conversation.id === id)
   if (!source) throw new BackupError('missing')
+  const restrictive = committedOutputRestrictions.get(id)
+  if (restrictive && source.outputRestriction !== restrictive) throw new BackupError('changed')
   const assertUnchanged = () => {
     assertDocumentWorkspace()
     if (!scopeCurrent(scope) || !cacheReady || memConversations !== cache || cacheIdentity?.owner !== identity.owner || cacheIdentity?.epoch !== identity.epoch || writeGen !== gen || bootstrapGen !== boot) throw new BackupError('changed')
@@ -173,6 +188,36 @@ export function captureConversationForBackup<T>(id: string, clone: (source: Conv
     if (!equal(snapshot, clone(source))) throw new BackupError('changed')
     assertUnchanged()
   } }
+}
+
+/** Sync's sole source write: make a recovered placeholder's already allocated
+ * ID durable BEFORE binding it to a logical ID. No heuristic matching or new
+ * UUID on capture/retry. Quota leaves the old ciphertext and RAM identity
+ * intact, and the caller must abort capture, not quarantine or assume success. */
+export async function ensureDurableConversationIdentities(signal?: AbortSignal): Promise<void> {
+  const scope = captureLocalReadScope(signal)
+  ensureCacheScope()
+  const cache = memConversations, gen = writeGen, boot = bootstrapGen
+  if (!cacheReady || !cache) throw new BackupError('unavailable')
+  if (!recoveredMessageIdentities.size) return
+  // This guard covers the whole source store, not one selected sync object.
+  // Allow many ordinary neighbouring conversations without sharing the smaller
+  // per-payload budget. Still bounded, descriptor-only, shared aliases allowed.
+  const snapshot = () => canonicalSyncJSON(cache, { nodes: 1_000_000, chars: 32 * 1024 * 1024 })
+  const raw = snapshot()
+  const needed = cache.some(c => c.messages.some(m => recoveredMessageIdentities.has(JSON.stringify([c.id, m.id]))))
+  if (!needed) return
+  const assert = () => {
+    scope.assertCurrent()
+    if (hasActiveConversationWork()) throw new BackupError('busy')
+    if (!cacheReady || memConversations !== cache || writeGen !== gen || bootstrapGen !== boot || snapshot() !== raw) throw new BackupError('changed')
+    for (const c of cache) {
+      const restrictive = committedOutputRestrictions.get(c.id)
+      if (restrictive && c.outputRestriction !== restrictive) throw new BackupError('changed')
+    }
+  }
+  assert(); await scope.validateReadOnly(); assert()
+  persist(cache) // actual synchronous safety-net write, never save's silent skip
 }
 
 /** Full authoritative history for additive restore; preserve existing fields,
@@ -201,6 +246,7 @@ function persist(list: Conversation[]): void {
   const gen = ++writeGen
   const serialized = JSON.stringify(list)
   localStorage.setItem(physicalKey(scope, PLAIN_KEY), serialized)
+  acknowledgeRecoveredIdentities(list)
   installMemoryConversations(list)
   if (encryptionDisabled()) {
     // The durable plain copy already won. A denied cleanup must not turn a
@@ -222,6 +268,11 @@ async function persistEncrypted(serialized: string, gen: number, scope: StoreSco
     if (localStorage.getItem(plainKey) !== expectedPlain) return
     localStorage.setItem(physicalKey(scope, ENC_KEY), blob)
     if (localStorage.getItem(plainKey) === expectedPlain) localStorage.removeItem(plainKey)
+    // Plain takes precedence at boot. Cipher publication alone is NOT enough
+    // when removal of the old plaintext (still containing streaming) failed.
+    const remainingPlain = localStorage.getItem(plainKey)
+    if (recoveredMessageIdentities.size && (remainingPlain === null || remainingPlain === serialized))
+      acknowledgeRecoveredIdentities(JSON.parse(serialized) as Conversation[])
   } catch {
     // Keep the original owner's plain safety net; no migration or destructive retry.
   }
@@ -425,5 +476,6 @@ export function resetConversationMemCache(): void {
   cacheIdentity = null
   memConversations = null
   committedOutputRestrictions.clear()
+  recoveredMessageIdentities.clear()
   cacheReady = false
 }

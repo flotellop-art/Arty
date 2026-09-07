@@ -1,4 +1,14 @@
 {
+  "workspaceUpgrade": {
+    "title": "Local storage preparation",
+    "choose": "This step prepares local storage without uploading or replacing conversations or files. It does not activate sync yet.",
+    "working": "Preparing… Arty stays closed in this window.",
+    "done": "Preparation complete. Reload Arty to reopen your local workspace.",
+    "failed": "Preparation could not be confirmed. Reload Arty to resume the interrupted step. Do not clear browser storage.",
+    "disabled": "Starting this preparation is not available yet. Your local workspace is unchanged.",
+    "start": "Prepare local storage",
+    "resume": "Resume preparation"
+  },
   "productMeasurement": {
     "title": "Share technical outcomes from the Client reply guide",
     "on": "On",

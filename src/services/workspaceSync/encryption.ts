@@ -1,29 +1,18 @@
 import { encodeSyncManifest, parseSyncManifest } from './schema'
 import { reconcileSyncManifests } from './causal'
 import { SYNC_LIMITS, type SyncManifest, type SyncValue } from './types'
+import { parseSyncStateBinding, SYNC_STATE_BYTES, SYNC_STATE_OVERHEAD, syncBase64ToBytes, syncBytesToBase64 } from './localFormat'
+import { SYNC_ENVELOPE_LIMITS, parseSyncEnvelopeReference, envelopeFail as fail, envelopeFields as exact,
+  envelopeScope as scope, assertEnvelopeScope as sameScope, envelopeHash as hash, type SyncVaultScope, type SyncEnvelopeReference } from './envelopeFormat'
+export { SYNC_ENVELOPE_LIMITS, SyncEnvelopeError, parseSyncEnvelopeReference, type SyncVaultScope, type SyncEnvelopeReference } from './envelopeFormat'
 
-/** Candidate transport only: no storage, network, UI, ACK or server authority. */
-export const SYNC_ENVELOPE_LIMITS = {
-  metadataBytes: SYNC_LIMITS.manifestBytes + 1024,
-  plaintextBytes: 16 * 1024 * 1024,
-  ciphertextBytes: 17 * 1024 * 1024,
-  payloads: 256,
-  frames: 512,
-  chunkBytes: 256 * 1024,
-} as const
+/** Encryption only: no storage, network, UI, ACK or server authority. */
 const L = SYNC_ENVELOPE_LIMITS, HEADER = 104, PREFIX = 9, TAG = 16
 const utf8 = new TextEncoder(), MAGIC = utf8.encode('ARTYSYN1')
 const hex = (bytes: Uint8Array): string => Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('')
 const unhex = (text: string): Uint8Array => Uint8Array.from(text.match(/../g)!, pair => parseInt(pair, 16))
 const digest = async (bytes: Uint8Array): Promise<string> => hex(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes)))
 
-export class SyncEnvelopeError extends Error {
-  constructor(public readonly code: 'format' | 'limit' | 'secret' | 'locked' | 'cancelled' | 'scope' | 'integrity' | 'base' | 'missing') {
-    super(`sync_envelope_${code}`); this.name = 'SyncEnvelopeError'
-  }
-}
-const fail = (code: SyncEnvelopeError['code']): never => { throw new SyncEnvelopeError(code) }
-export interface SyncVaultScope { vaultId: string; epoch: string }
 /** Captured account/document/erasure lifetime, NOT source-content freshness.
  * The application adapter must bind this to real owner/epoch/fence admission. */
 export interface SyncVaultGuard {
@@ -37,10 +26,6 @@ export interface SyncCaptureGuard { assertCurrent(): void; validate(): Promise<v
  * intended vault. Only opening an independently expected envelope proves that;
  * the future UI must not equate unlock() success with a confirmed secret. */
 export interface UnlockedSyncVault extends Readonly<SyncVaultScope> {}
-/** Public transport reference. Parsing this does NOT authenticate a server ACK. */
-export interface SyncEnvelopeReference extends SyncVaultScope {
-  format: 'arty-sync-envelope-ref'; version: 1; operationId: string; bytes: number; sha256: string
-}
 export interface PreparedSyncUpdate {
   readonly reference: Readonly<SyncEnvelopeReference>
   readonly ciphertext: Blob
@@ -55,40 +40,6 @@ export interface OpenedSyncUpdate {
   validate(): Promise<void>
 }
 
-function exact(input: unknown, keys: readonly string[]): Record<string, unknown> {
-  if (!input || typeof input !== 'object' || Object.getPrototypeOf(input) !== Object.prototype || Object.getOwnPropertySymbols(input).length) return fail('format')
-  const names = Object.getOwnPropertyNames(input), result: Record<string, unknown> = {}
-  if (names.length !== keys.length || names.some(name => !keys.includes(name))) return fail('format')
-  for (const key of keys) {
-    const property = Object.getOwnPropertyDescriptor(input, key)
-    if (!property?.enumerable || !('value' in property)) return fail('format')
-    result[key] = property.value
-  }
-  return result
-}
-function uuid(value: unknown): string {
-  if (typeof value !== 'string' || value.length !== 36 || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(value)) return fail('format')
-  return value
-}
-function scope(input: unknown): SyncVaultScope {
-  const value = exact(input, ['vaultId', 'epoch'])
-  return { vaultId: uuid(value.vaultId), epoch: uuid(value.epoch) }
-}
-function sameScope(a: SyncVaultScope, b: SyncVaultScope): void {
-  if (a.vaultId !== b.vaultId || a.epoch !== b.epoch) fail('scope')
-}
-function hash(value: unknown): string {
-  if (typeof value !== 'string' || value.length !== 64 || !/^[0-9a-f]{64}$/.test(value)) return fail('format')
-  return value
-}
-export function parseSyncEnvelopeReference(input: unknown): Readonly<SyncEnvelopeReference> {
-  const value = exact(input, ['format', 'version', 'vaultId', 'epoch', 'operationId', 'bytes', 'sha256'])
-  if (value.format !== 'arty-sync-envelope-ref' || value.version !== 1 || typeof value.bytes !== 'number' ||
-    !Number.isSafeInteger(value.bytes) || value.bytes <= HEADER + PREFIX + TAG) return fail('format')
-  if (value.bytes > L.ciphertextBytes) return fail('limit')
-  return Object.freeze({ format: 'arty-sync-envelope-ref', version: 1, vaultId: uuid(value.vaultId), epoch: uuid(value.epoch),
-    operationId: uuid(value.operationId), bytes: value.bytes, sha256: hash(value.sha256) })
-}
 function immutableBlob(input: Blob): Blob {
   // Native intrinsic rejects non-Blobs and avoids overridden size/slice methods.
   try { return Blob.prototype.slice.call(input, 0, undefined, 'application/octet-stream') }
@@ -101,6 +52,48 @@ function active(vault: UnlockedSyncVault): VaultState {
   const state = vaults.get(vault)
   if (!state) return fail('locked')
   state.assertCurrent(); return state
+}
+
+const STATE_MAGIC = utf8.encode('ARTYSST1'), STATE_HEADER = 52
+async function stateKey(state: VaultState, header: Uint8Array) {
+  state.assertCurrent()
+  const key = await crypto.subtle.deriveKey({ name: 'HKDF', hash: 'SHA-256', salt: header.slice(8, 40),
+    info: utf8.encode('arty-workspace-sync/local-state/v1') }, state.root!, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt'])
+  state.assertCurrent(); return key
+}
+function stateAAD(binding: unknown, state: VaultState) {
+  const parsed = parseSyncStateBinding(binding); sameScope(parsed, state.scope)
+  // Authenticates owner, generation, enrollment, revision AND the entire exact
+  // pending reference, including its ciphertext digest and byte length.
+  return utf8.encode(JSON.stringify(parsed))
+}
+export async function sealSyncLocalState(vault: UnlockedSyncVault, binding: unknown, plaintext: Blob): Promise<string> {
+  const state = active(vault), aad = stateAAD(binding, state), input = immutableBlob(plaintext)
+  if (!input.size || input.size > SYNC_STATE_BYTES) return fail('limit')
+  const header = new Uint8Array(STATE_HEADER); header.set(STATE_MAGIC)
+  header.set(crypto.getRandomValues(new Uint8Array(44)), 8)
+  const raw = await bytes(input, state)
+  try {
+    const key = await stateKey(state, header)
+    const sealed = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv: header.slice(40), additionalData: aad, tagLength: 128 }, key, raw))
+    state.assertCurrent(); await state.validate(); state.assertCurrent()
+    const packet = new Uint8Array(STATE_HEADER + sealed.length); packet.set(header); packet.set(sealed, STATE_HEADER)
+    return syncBytesToBase64(packet, SYNC_STATE_OVERHEAD + 1, SYNC_STATE_BYTES + SYNC_STATE_OVERHEAD)
+  } finally { raw.fill(0) }
+}
+export async function openSyncLocalState(vault: UnlockedSyncVault, binding: unknown, ciphertext: string) {
+  const state = active(vault), aad = stateAAD(binding, state)
+  const packet = syncBase64ToBytes(ciphertext, SYNC_STATE_OVERHEAD + 1, SYNC_STATE_BYTES + SYNC_STATE_OVERHEAD)
+  if (!STATE_MAGIC.every((v, i) => packet[i] === v)) return fail('format')
+  const key = await stateKey(state, packet.slice(0, STATE_HEADER))
+  let plaintext: Uint8Array | undefined
+  try {
+    try { plaintext = new Uint8Array(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: packet.slice(40, STATE_HEADER), additionalData: aad, tagLength: 128 }, key, packet.slice(STATE_HEADER))) }
+    catch { state.assertCurrent(); return fail('integrity') }
+    state.assertCurrent(); await state.validate(); state.assertCurrent()
+    const blob = new Blob([plaintext], { type: 'application/octet-stream' })
+    return Object.freeze({ get plaintext() { state.assertCurrent(); return blob }, validate: () => state.validate() })
+  } finally { plaintext?.fill(0) }
 }
 
 export function createSyncRecoveryCode(): string {

@@ -1,6 +1,6 @@
 import type { IDBPDatabase } from 'idb'
 import { openExistingDB } from '../readOnlyExistingDB'
-import { LEGACY_WORKSPACE_LAYOUT, isolatedWorkspaceLayout, type WorkspaceStorageLayout } from './layout'
+import { LEGACY_WORKSPACE_LAYOUT, isolatedWorkspaceLayout, controlProjectsVersion, projectVersionKeys, type WorkspaceStorageLayout } from './layout'
 import { ISOLATED_WORKSPACE_ENABLED } from './activation'
 import { CONTROL_SHAPE, FILE_SHAPE, PROJECT_SHAPE, assertDatabaseShape, type StoreShape } from './schema'
 import { parseMigrationHeader, type MigrationHeader } from './migrationProtocol'
@@ -8,11 +8,14 @@ import { parseErasureHeader } from './erasureProtocol'
 import { parseAccountErasureRecord, erasureRecordState, type AccountErasureState } from '../accountErasureJournal'
 import { parseResetReadyControl } from './resetProtocol'
 import { parseRestoreHeader, restoreJobKey, type RestoreHeader } from './restoreProtocol'
+import { parseWorkspaceUpgrade, type WorkspaceUpgradeHeader } from './upgradeProtocol'
+import { syncStorageContext, type SyncStorageContext } from '../workspaceSync/localFormat'
+import { inspectSyncInventory } from '../workspaceSync/localInventory'
 
 export const WORKSPACE_CONTROL_DB = 'arty-workspace-control'
 export const WORKSPACE_CONTROL_VERSION = 1
 export const WORKSPACE_CONTROL_KEY = 'workspace'
-export type AdmissionFailure = 'maintenance' | 'recoverable' | 'restoring' | 'erasure' | 'incompatible' | 'corrupt' | 'unavailable' | 'lost'
+export type AdmissionFailure = 'maintenance' | 'recoverable' | 'restoring' | 'upgrading' | 'erasure' | 'incompatible' | 'corrupt' | 'unavailable' | 'lost'
 export class WorkspaceAdmissionError extends Error {
   constructor(public readonly code: AdmissionFailure) { super(`workspace_admission_${code}`); this.name = 'WorkspaceAdmissionError' }
 }
@@ -21,6 +24,9 @@ export class WorkspaceRecoveryAvailable extends WorkspaceAdmissionError {
 }
 export class WorkspaceRestoreAvailable extends WorkspaceAdmissionError {
   constructor(public readonly header: Readonly<RestoreHeader>) { super('restoring') }
+}
+export class WorkspaceUpgradeAvailable extends WorkspaceAdmissionError {
+  constructor(public readonly header: Readonly<WorkspaceUpgradeHeader>) { super('upgrading') }
 }
 export class WorkspaceErasureRecoveryAvailable extends WorkspaceAdmissionError {
   constructor(public readonly mode: AccountErasureState = 'confirmed', public readonly binding?: string) { super('erasure') }
@@ -40,6 +46,8 @@ function fields(value: unknown, keys: string[]): value is Record<string, unknown
 /** No generic ready/unknown-generation fallback. Metadata is not account data
  * or a restore journal, and this module exposes NO writer or repair operation. */
 export function validateWorkspaceControl(value: unknown): WorkspaceStorageLayout {
+  const upgrade = parseWorkspaceUpgrade(value)
+  if (upgrade) throw new WorkspaceUpgradeAvailable(upgrade)
   const restore = parseRestoreHeader(value)
   if (restore) throw new WorkspaceRestoreAvailable(restore)
   const erasure = parseErasureHeader(value)
@@ -47,12 +55,12 @@ export function validateWorkspaceControl(value: unknown): WorkspaceStorageLayout
   const reset = parseResetReadyControl(value)
   if (reset) {
     if (!ISOLATED_WORKSPACE_ENABLED) reject('incompatible')
-    return isolatedWorkspaceLayout(reset.generation, reset.requiredOwners)
+    return isolatedWorkspaceLayout(reset.generation, reset.requiredOwners, controlProjectsVersion(reset))
   }
   const migration = parseMigrationHeader(value)
   if (migration) throw new WorkspaceRecoveryAvailable(migration)
   const legacyFields = ['format', 'version', 'layout', 'revision', 'state']
-  if (!fields(value, legacyFields) && !fields(value, [...legacyFields, 'generation', 'requiredOwners'])) reject('corrupt')
+  if (!fields(value, legacyFields) && !fields(value, [...legacyFields, 'generation', 'requiredOwners', ...projectVersionKeys(value)])) reject('corrupt')
   if (value.format !== 'arty-workspace-control' || !Number.isSafeInteger(value.version) || (value.version as number) < 1) reject('corrupt')
   if (value.version !== 1 && value.version !== 2) reject('incompatible')
   if (typeof value.layout !== 'string' || !value.layout.length || value.layout.length > 64 ||
@@ -62,8 +70,8 @@ export function validateWorkspaceControl(value: unknown): WorkspaceStorageLayout
     if (!fields(value, legacyFields)) reject('corrupt')
     layout = LEGACY_WORKSPACE_LAYOUT
   } else if (value.version === 2 && value.layout === 'isolated-v1') {
-    if (!fields(value, [...legacyFields, 'generation', 'requiredOwners'])) reject('corrupt')
-    try { layout = isolatedWorkspaceLayout(value.generation as string, value.requiredOwners as (string | null)[]) }
+    if (!fields(value, [...legacyFields, 'generation', 'requiredOwners', ...projectVersionKeys(value)])) reject('corrupt')
+    try { layout = isolatedWorkspaceLayout(value.generation as string, value.requiredOwners as (string | null)[], controlProjectsVersion(value)) }
     catch { reject('corrupt') }
     if (!ISOLATED_WORKSPACE_ENABLED) reject('incompatible')
   } else reject('incompatible')
@@ -92,14 +100,14 @@ export async function readWorkspaceStorageLayout(guard: AdmissionGuard, timeoutM
   const stopped = new Promise<never>((_resolve, no) => { rejectStop = no })
   const stop = () => rejectStop(new WorkspaceAdmissionError(timedOut ? 'unavailable' : 'lost'))
   retired.signal.addEventListener('abort', stop, { once: true })
-  const inspect = async (name: string, version: number, shape: readonly StoreShape[], control = false, required = false, cleanup?: string) => {
+  const inspect = async (name: string, version: number, shape: readonly StoreShape[], control = false, required = false, cleanup?: string, activeLayout?: WorkspaceStorageLayout) => {
     assertCurrent()
     const db = await openExistingDB(name, version, assertCurrent, retired.signal)
     try {
       assertCurrent()
       if (!db) { if (required) reject('corrupt'); return }
       if (db.version !== version || [...db.objectStoreNames].sort().join() !== shape.map(s => s[0]).sort().join()) reject('corrupt')
-      const layout = await inspectDatabase(db, shape, control, assertCurrent, retired.signal, cleanup)
+      const layout = await inspectDatabase(db, shape, control, assertCurrent, retired.signal, cleanup, activeLayout ? syncStorageContext(activeLayout, db) : undefined)
       assertCurrent()
       return layout
     } finally { db?.close() }
@@ -116,7 +124,7 @@ export async function readWorkspaceStorageLayout(guard: AdmissionGuard, timeoutM
         await inspect(LEGACY_WORKSPACE_LAYOUT.projects.name, 2, PROJECT_SHAPE, false, true)
       }
       await inspect(layout.files.name, layout.files.version, FILE_SHAPE, false, layout.kind === 'isolated-v1')
-      await inspect(layout.projects.name, layout.projects.version, PROJECT_SHAPE, false, layout.kind === 'isolated-v1', layout.kind === 'isolated-v1' ? layout.generation : undefined)
+      await inspect(layout.projects.name, layout.projects.version, PROJECT_SHAPE, false, layout.kind === 'isolated-v1', layout.kind === 'isolated-v1' ? layout.generation : undefined, layout)
       assertCurrent()
       return layout
     })()
@@ -134,7 +142,7 @@ export async function readWorkspaceStorageLayout(guard: AdmissionGuard, timeoutM
   }
 }
 
-async function inspectDatabase(db: IDBPDatabase, shape: readonly StoreShape[], control: boolean, assertCurrent: () => void, signal: AbortSignal, cleanup?: string) {
+async function inspectDatabase(db: IDBPDatabase, shape: readonly StoreShape[], control: boolean, assertCurrent: () => void, signal: AbortSignal, cleanup?: string, context?: SyncStorageContext) {
   let layout: WorkspaceStorageLayout | undefined
   const tx = db.transaction(shape.map(s => s[0]), 'readonly')
   const abort = () => { try { tx.abort() } catch { /* settled */ } }
@@ -157,12 +165,12 @@ async function inspectDatabase(db: IDBPDatabase, shape: readonly StoreShape[], c
       layout = validateWorkspaceControl(root)
     }
     if (cleanup) {
-      let cursor = await tx.objectStore('meta').openCursor(), mode: AccountErasureState | undefined, binding: string | undefined, found = 0
+      let cursor = await tx.objectStore('meta').openKeyCursor(), mode: AccountErasureState | undefined, binding: string | undefined, found = 0
       while (cursor) {
         assertCurrent()
         if (Array.isArray(cursor.key) && cursor.key[0] === 'erasing') {
           found++
-          const parsed = parseAccountErasureRecord(cursor.value)
+          const parsed = parseAccountErasureRecord(await tx.objectStore('meta').get(cursor.key))
           if (!parsed || cursor.key.length !== 2 || cursor.key[1] !== parsed.owner) reject('maintenance')
           mode = erasureRecordState(parsed)
           binding = erasureAdmissionBinding(cleanup, parsed)
@@ -172,6 +180,8 @@ async function inspectDatabase(db: IDBPDatabase, shape: readonly StoreShape[], c
       if (found > 1) reject('maintenance')
       if (mode) throw new WorkspaceErasureRecoveryAvailable(mode, binding)
     }
+    // Recovery precedes pair validation so a confirmed owner can purge an orphan.
+    if (!control && db.objectStoreNames.contains('meta')) await inspectSyncInventory(tx.objectStore('meta'), context, assertCurrent)
     await tx.done
     assertCurrent()
     return layout

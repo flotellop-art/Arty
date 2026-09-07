@@ -22,15 +22,18 @@ const PrivateApp = lazy(async () => {
 const ColdMigrationRecovery = lazy(() => import('./ColdMigrationRecovery'))
 const ColdRestoreRecovery = lazy(() => import('./ColdRestoreRecovery'))
 const ColdWorkspaceSetup = lazy(() => import('./ColdWorkspaceSetup'))
+const ColdWorkspaceUpgrade = lazy(() => import('./ColdWorkspaceUpgrade'))
 
 type Controller = ReturnType<typeof createDocumentWorkspaceLock>
-export function DocumentWorkspaceGate({ controller = documentWorkspace, admission = workspaceAdmission, Content = PrivateApp, setup = false }: {
-  controller?: Controller; admission?: ReturnType<typeof createWorkspaceAdmission>; Content?: ComponentType; setup?: boolean
+export function DocumentWorkspaceGate({ controller = documentWorkspace, admission = workspaceAdmission, Content = PrivateApp, setup = false, upgrade = false }: {
+  controller?: Controller; admission?: ReturnType<typeof createWorkspaceAdmission>; Content?: ComponentType; setup?: boolean; upgrade?: boolean
 }) {
   const { t } = useTranslation()
   const phase = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot)
   useEffect(() => { void controller.acquire() }, [controller]) // no cleanup release
-  if (phase === 'held') return <ErrorBoundary fallback={<WorkspaceBootFailure />}>{setup
+  if (phase === 'held') return <ErrorBoundary fallback={<WorkspaceBootFailure />}>{upgrade
+    ? <Wait title={t('workspaceUpgrade.title')}><Suspense fallback={null}><ColdWorkspaceUpgrade /></Suspense></Wait>
+    : setup
     ? <Suspense fallback={<Wait title={t('workspaceWindow.loading')} />}><ColdWorkspaceSetup /></Suspense>
     : <StorageAdmissionGate admission={admission} Content={Content} />}</ErrorBoundary>
   const checking = phase === 'idle' || phase === 'acquiring'
@@ -56,6 +59,9 @@ function StorageAdmissionGate({ admission, Content }: { admission: ReturnType<ty
   const phase = useSyncExternalStore(admission.subscribe, admission.getSnapshot, admission.getSnapshot)
   useEffect(() => { void admission.admit() }, [admission])
   if (phase === 'ready') return <Suspense fallback={<Wait title={t('workspaceWindow.loading')} />}><Content /></Suspense>
+  if ((phase === 'upgrading' || phase === 'maintenance') && admission.getUpgradeRecovery()) return <Wait title={t('workspaceUpgrade.title')}>
+    <Suspense fallback={null}><ColdWorkspaceUpgrade recovery /></Suspense>
+  </Wait>
   if ((phase === 'restoring' || phase === 'maintenance') && admission.getRestoreRecovery()) return <Wait title={t('workspaceRestore.recoveryTitle')}>
     <Suspense fallback={null}><ColdRestoreRecovery /></Suspense>
   </Wait>

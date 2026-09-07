@@ -5,6 +5,8 @@ import { assertDocumentWorkspace, documentWorkspaceSignal, getDocumentStorageLay
 import { getActiveUserId, getActiveSessionEpoch, getSessionProjectFence, PROJECT_ERASURE_FENCE_KEY } from '../userSession'
 import { captureOwnerErasureGuard } from '../projects/localErasureGuard'
 import { parseOwnedLocalKey } from './localOwnership'
+import { syncStorageContext, type SyncStorageContext } from '../workspaceSync/localFormat'
+import { inspectSyncInventory } from '../workspaceSync/localInventory'
 
 export class LocalCryptoRecoveryRequired extends Error {
   constructor() {
@@ -62,7 +64,7 @@ export async function provisionIsolatedSalt(layout: IsolatedWorkspaceLayout, own
     try {
       assertCurrent()
       if (!db) throw new LocalCryptoRecoveryRequired()
-      await inspectOwner(db, family, owner!, legacy ? null : guard.fence, assertCurrent, retired.signal)
+      await inspectOwner(db, family, owner!, legacy ? null : guard.fence, assertCurrent, retired.signal, legacy ? undefined : syncStorageContext(layout, db))
       assertCurrent()
     } finally { db?.close() }
   }
@@ -92,7 +94,7 @@ export async function provisionIsolatedSalt(layout: IsolatedWorkspaceLayout, own
 }
 
 async function inspectOwner(db: IDBPDatabase, family: 'files' | 'projects', owner: string, fence: string | null,
-  assertCurrent: () => void, signal: AbortSignal) {
+  assertCurrent: () => void, signal: AbortSignal, context?: SyncStorageContext) {
   const tx = db.transaction(family === 'files' ? ['files'] : ['projects', 'documents', 'usage', 'meta'], 'readonly')
   const abort = () => { try { tx.abort() } catch { /* settled */ } }
   signal.addEventListener('abort', abort, { once: true })
@@ -105,11 +107,12 @@ async function inspectOwner(db: IDBPDatabase, family: 'files' | 'projects', owne
       const [projects, documents, usage, erasing, storedFence] = await Promise.all([
         tx.objectStore('projects').index('owner').count(owner),
         tx.objectStore('documents').index('owner').count(owner),
-        tx.objectStore('usage').get(owner), tx.objectStore('meta').get(['erasing', owner]),
+        tx.objectStore('usage').getKey(owner), tx.objectStore('meta').getKey(['erasing', owner]),
         tx.objectStore('meta').get('erasure-fence'),
       ])
       if (projects || documents || usage !== undefined || erasing !== undefined ||
         (fence !== null && (storedFence === undefined ? 'initial' : storedFence) !== fence)) refuse()
+      if ((await inspectSyncInventory(tx.objectStore('meta'), context, assertCurrent, false)).has(owner)) refuse()
     }
     await tx.done; assertCurrent()
   } catch (error) { abort(); await tx.done.catch(() => {}); throw error }

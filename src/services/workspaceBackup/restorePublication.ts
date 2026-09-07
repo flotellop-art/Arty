@@ -16,6 +16,8 @@ import { assertRestoreLocal, deriveRestoreUsage, openRestoreDatabases, proveRest
 import { prepareWorkspaceRestore } from './restorePlan'
 import { decodeUTF8 } from './bytes'
 import { RESTORE_ARCHIVE_BYTES, RESTORE_ADOPTION_BYTES } from './restoreLimits'
+import { controlProjectsVersion, projectVersionFields } from '../workspaceWriter/layout'
+import { captureLocalSyncQuiescence } from '../workspaceWriter/localSyncActivity'
 
 /** Warm target preparation. Neither archive data nor callers choose the owner,
  * generation, baseline, destination addresses, ciphertexts or commit header. */
@@ -26,11 +28,13 @@ export async function prepareRestorePublication(file: Blob, code: string, receip
   const scope = captureLocalReadScope(signal), history = captureHistoryForRestore(), layout = getDocumentStorageLayout()
   if (layout.kind !== 'isolated-v1' || scope.owner === 'anon') return restoreFail('unavailable')
   const capturedDocument = documentWorkspace
+  const syncQuiescence = captureLocalSyncQuiescence()
   let disposed = false, attempted = false
   const guard = { signal: documentWorkspaceSignal, assertCurrent() {
     if (!WORKSPACE_RESTORE_START_ENABLED) restoreFail('unavailable')
     if (disposed || signal?.aborted) restoreFail('cancelled')
     if (hasActiveConversationWork()) restoreFail('busy')
+    syncQuiescence.assertCurrent()
     scope.assertCurrent(); history.assertUnchanged()
   } }
   const local = restoreLocalSnapshot({ generation: layout.generation, owner: scope.owner })
@@ -57,7 +61,7 @@ export async function prepareRestorePublication(file: Blob, code: string, receip
         if (await tx.objectStore('meta').count() !== 1) return restoreFail()
         return parseRestoreReady(await tx.objectStore('meta').get(WORKSPACE_CONTROL_KEY)) ?? restoreFail()
       })
-      if (base.generation !== layout.generation || !restoreEqual(base.requiredOwners, layout.requiredOwners)) return restoreFail()
+      if (base.generation !== layout.generation || controlProjectsVersion(base) !== layout.projects.version || !restoreEqual(base.requiredOwners, layout.requiredOwners)) return restoreFail()
       const plan = archive.plan, now = Date.now(), conversations = structuredClone(plan.conversations.map(c => c.conversation))
       const allNewIds = new Set(plan.mapping.ids.map(i => i.target))
       const fresh = () => { const id = crypto.randomUUID(); if (allNewIds.has(id)) return restoreFail(); allNewIds.add(id); return id }
@@ -161,7 +165,7 @@ export async function prepareRestorePublication(file: Blob, code: string, receip
       const bytes = new TextEncoder().encode(raw).length
       if (bytes > RESTORE_ADOPTION_BYTES) return restoreFail('limit')
       const header: RestoreHeader = { format: 'arty-workspace-control', version: 8, layout: 'isolated-v1', state: 'restoring', revision: base.revision + 1,
-        generation: base.generation, requiredOwners: [...base.requiredOwners], base, restore: { id: payload.id, owner: scope.owner, phase: 'copies', bytes, hash: await digestText(raw) } }
+        generation: base.generation, requiredOwners: [...base.requiredOwners], ...projectVersionFields(layout.projects.version), base, restore: { id: payload.id, owner: scope.owner, phase: 'copies', bytes, hash: await digestText(raw) } }
       if (!parseRestoreHeader(header)) return restoreFail('format')
       await parseRestorePayload(raw, header, guard)
       const preview = Object.freeze({ ...plan.resources, addedConversations: conversations.length, addedMessages: conversations.reduce((n, c) => n + c.messages.length, 0),
@@ -170,27 +174,30 @@ export async function prepareRestorePublication(file: Blob, code: string, receip
         if (attempted) return restoreFail('changed')
         guard.assertCurrent()
         attempted = true // bind the user's choice before any awaited preflight
-        // Reopen under the same captured warm scope: preview connections close.
-        const [control, files, projects] = await openAll()
+        const releaseSync = syncQuiescence.claimPublication()
         try {
-          if (!restoreEqual(payload.baseline.stores, await restoreStoreProof(files, projects, payload, guard))) return restoreFail()
-          await scope.validateReadOnly(); assertRestoreLocal(local, guard); history.assertSnapshot()
+          // Reopen under the same captured warm scope: preview connections close.
+          const [control, files, projects] = await openAll()
           try {
-            await restoreTransaction(control, ['meta'], 'readwrite', guard, async tx => {
-              const store = tx.objectStore('meta')
-              if (await store.count() !== 1 || !restoreEqual(await store.get(WORKSPACE_CONTROL_KEY), base)) return restoreFail()
-              assertRestoreLocal(local, guard); history.assertSnapshot()
-              if (raw === undefined) return restoreFail('cancelled')
-              await store.add(raw, restoreJobKey(payload.id))
-              assertRestoreLocal(local, guard); history.assertSnapshot()
-              await store.put(header, WORKSPACE_CONTROL_KEY)
-            })
-          } finally {
-            // No private callback or second write between uncertain adoption
-            // and irrevocable retirement of THIS document instance.
-            raw = undefined; disposed = true; capturedDocument.retire()
-          }
-        } finally { control.close(); files.close(); projects.close() }
+            if (!restoreEqual(payload.baseline.stores, await restoreStoreProof(files, projects, payload, guard))) return restoreFail()
+            await scope.validateReadOnly(); assertRestoreLocal(local, guard); history.assertSnapshot()
+            try {
+              await restoreTransaction(control, ['meta'], 'readwrite', guard, async tx => {
+                const store = tx.objectStore('meta')
+                if (await store.count() !== 1 || !restoreEqual(await store.get(WORKSPACE_CONTROL_KEY), base)) return restoreFail()
+                assertRestoreLocal(local, guard); history.assertSnapshot()
+                if (raw === undefined) return restoreFail('cancelled')
+                await store.add(raw, restoreJobKey(payload.id))
+                assertRestoreLocal(local, guard); history.assertSnapshot()
+                await store.put(header, WORKSPACE_CONTROL_KEY)
+              })
+            } finally {
+              // No private callback or second write between uncertain adoption
+              // and irrevocable retirement of THIS document instance.
+              raw = undefined; disposed = true; capturedDocument.retire()
+            }
+          } finally { control.close(); files.close(); projects.close() }
+        } finally { releaseSync() }
       } })
     } finally { control.close(); files.close(); projects.close() }
   } finally { archive.dispose() }

@@ -1,7 +1,8 @@
 import 'fake-indexeddb/auto'
 import { IDBFactory } from 'fake-indexeddb'
 import { openDB } from 'idb'
-import { File as NodeFile } from 'node:buffer'
+import { File as NodeFile, Blob as NodeBlob } from 'node:buffer'
+import { webcrypto } from 'node:crypto'
 import { createElement } from 'react'
 import { act, cleanup, fireEvent, render, renderHook, screen } from '@testing-library/react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
@@ -11,7 +12,7 @@ import { workspaceDataKey } from '../../services/workspaceWriter/layout'
 vi.unmock('../../services/workspaceWriter/runtime')
 vi.mock('react', async original => original()) // one React identity across simulated cold documents
 vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => key }) }))
-vi.mock('../../services/workspaceWriter/activation', () => ({ ISOLATED_WORKSPACE_ENABLED: true, WORKSPACE_RESTORE_START_ENABLED: true }))
+vi.mock('../../services/workspaceWriter/activation', () => ({ ISOLATED_WORKSPACE_ENABLED: true, WORKSPACE_RESTORE_START_ENABLED: true, WORKSPACE_UPGRADE_START_ENABLED: true }))
 vi.mock('@capacitor/core', () => ({ Capacitor: { isNativePlatform: () => false, getPlatform: () => 'web' }, registerPlugin: () => ({}) }))
 const native = vi.hoisted(() => ({ reopen: vi.fn(async () => {}) }))
 vi.mock('../../services/native/coldMailErasure', async original => ({ ...await original<typeof import('../../services/native/coldMailErasure')>(), reopenColdMailScope: native.reopen }))
@@ -874,6 +875,54 @@ it.each(['allocated', 'salt', 'check', 'version', 'native', 'consumed'])('crash 
   expect(localStorage.getItem(workspaceDataKey(layout, a, 'crypto-salt'))).toBe((allocated as { salt: string }).salt)
   expect((await control()).resets[0].phase).toBe('consumed')
   users.rememberSession(account(a)); await writeAndRead(`after-${point}`)
+}, 30_000)
+
+it.each([false, true])('physical upgrade preserves salt-only reset, real B outbox and next erasure/reset; orphan A=%s', async orphan => {
+  vi.stubGlobal('Blob', NodeBlob); vi.stubGlobal('crypto', webcrypto)
+  const { a, b, savedB, layout } = await prepare(); await handoff(); await cold()
+  const set = Storage.prototype.setItem
+  const fault = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(function (this: Storage, key, value) {
+    set.call(this, key, value)
+    if (key === workspaceDataKey(layout, a, 'crypto-salt')) throw new Error('salt-only cut')
+  })
+  await expect(explicit(a)).rejects.toThrow('salt-only cut'); fault.mockRestore()
+  const allocated = await control(), bundle = allocated.resets[0].bundle
+  expect(allocated.resets[0].phase).toBe('provisioning')
+  expect(localStorage.getItem(workspaceDataKey(layout, a, 'crypto-salt'))).toBe(bundle.salt)
+  expect(localStorage.getItem(workspaceDataKey(layout, a, 'crypto-check'))).toBeNull()
+  await newDocument()
+  await (await import('../../services/workspaceWriter/upgrade')).createColdWorkspaceUpgrade('start').run()
+  expect(await control()).toEqual({ ...allocated, projectsVersion: 2, revision: allocated.revision + 2 })
+  expect(runtime.workspaceAdmission.getSnapshot()).toBe('maintenance')
+  await newDocument(); expect(await runtime.workspaceAdmission.admit()).toBe('ready')
+  let { users, crypt } = await explicit(a)
+  expect(await crypt.selfTestCrypto()).toBe(true)
+  expect(localStorage.getItem(workspaceDataKey(layout, a, 'crypto-salt'))).toBe(bundle.salt)
+  expect((await control()).resets[0].phase).toBe('consumed')
+  users.rememberSession(account(a)); await writeAndRead('after-physical-upgrade')
+  users.setActiveSession(account(b)); await crypt.initCrypto('key-b'); await readAndUpdate(savedB)
+  const sync = await import('../../services/workspaceSync/localOutbox'), syncCode = 'ARTYSYNC1-00112233-44556677-8899AABB-CCDDEEFF-00112233-44556677-8899AABB-CCDDEEFF'
+  const bBox = sync.createLocalSyncOutbox(); await bBox.unlock(syncCode, { vaultId: crypto.randomUUID(), epoch: crypto.randomUUID() })
+  await (await bBox.prepareSnapshot(bBox.snapshot.base, new Map(), [])).adopt()
+  const bPacket = (await bBox.resume())!, bBytes = await bPacket.ciphertext.arrayBuffer(), bReference = bPacket.reference
+  bBox.close()
+  users.setActiveSession(account(a)); await crypt.initCrypto('new-key-a')
+  const aBox = sync.createLocalSyncOutbox(); await aBox.unlock(syncCode, { vaultId: crypto.randomUUID(), epoch: crypto.randomUUID() })
+  await (await aBox.prepareSnapshot(aBox.snapshot.base, new Map(), [])).adopt()
+  if (orphan) { const damaged = await openDB(layout.projects.name, 2); await damaged.delete('meta', ['sync-state', a]); damaged.close() }
+  await handoff(); await cold()
+  expect((await control()).projectsVersion).toBe(2)
+  ;({ users, crypt } = await explicit(a))
+  expect(localStorage.getItem(workspaceDataKey(layout, a, 'crypto-salt'))).not.toBe(bundle.salt)
+  users.rememberSession(account(a)); await writeAndRead('second-physical-reset')
+  users.setActiveSession(account(b)); await crypt.initCrypto('key-b'); await readAndUpdate(savedB)
+  const recovered = (await import('../../services/workspaceSync/localOutbox')).createLocalSyncOutbox(); await recovered.unlock(syncCode)
+  const resumed = (await recovered.resume())!
+  expect(resumed.reference).toEqual(bReference); expect(await resumed.ciphertext.arrayBuffer()).toEqual(bBytes)
+  const db = await openDB(layout.projects.name, 2)
+  expect((await db.getAllKeys('meta')).some(k => Array.isArray(k) && k[1] === a)).toBe(false); db.close()
+  await expect(aBox.unlock(syncCode)).rejects.toThrow()
+  expect(fetch).not.toHaveBeenCalled()
 }, 30_000)
 
 it('pending rights cannot be consumed by ordinary init; wrong key and consumed missing salt never allocate', async () => {

@@ -32,7 +32,7 @@ function staticGraph(entry: string): Set<string> {
 }
 
 describe('workspace entry static dependency boundary', () => {
-  it.each(['src/main.tsx', 'src/screens/landing.tsx', 'src/components/share/SharedConversationView.tsx', 'src/services/workspaceWriter/control.ts'])('%s does not statically import private identity/crypto/stores', entry => {
+  it.each(['src/main.tsx', 'src/screens/landing.tsx', 'src/components/share/SharedConversationView.tsx', 'src/services/workspaceWriter/control.ts', 'src/services/workspaceWriter/upgrade.ts', 'src/components/workspace/ColdWorkspaceUpgrade.tsx'])('%s does not statically import private identity/crypto/stores', entry => {
     const graph = staticGraph(entry)
     for (const forbidden of ['src/App.tsx', 'src/hooks/useAuth.ts', 'src/services/userSession.ts', 'src/services/crypto.ts', 'src/services/storage.ts', 'src/services/secureFileStorage.ts', 'src/services/projects/store.ts', 'src/services/previewDemo.ts']) {
       expect(graph.has(resolve(forbidden)), forbidden).toBe(false)

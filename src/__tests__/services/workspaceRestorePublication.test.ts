@@ -12,7 +12,7 @@ import { renderHook, act, cleanup } from '@testing-library/react'
 
 vi.unmock('../../services/workspaceWriter/runtime')
 const policy = vi.hoisted(() => ({ start: true }))
-vi.mock('../../services/workspaceWriter/activation', () => ({ ISOLATED_WORKSPACE_ENABLED: true, get WORKSPACE_RESTORE_START_ENABLED() { return policy.start } }))
+vi.mock('../../services/workspaceWriter/activation', () => ({ ISOLATED_WORKSPACE_ENABLED: true, WORKSPACE_UPGRADE_START_ENABLED: true, get WORKSPACE_RESTORE_START_ENABLED() { return policy.start } }))
 vi.mock('@capacitor/core', () => ({ Capacitor: { isNativePlatform: () => false, getPlatform: () => 'web' }, registerPlugin: () => ({}) }))
 let runtime: typeof import('../../services/workspaceWriter/runtime'), users: typeof import('../../services/userSession'), crypt: typeof import('../../services/crypto')
 let history: typeof import('../../services/storage'), warm: typeof import('../../services/workspaceBackup/restorePublication'), cold: typeof import('../../services/workspaceWriter/restore')
@@ -111,7 +111,20 @@ it.each(['same', 'token-account-change', 'response-account-change', 'body-accoun
   }
 })
 
-it.each([1, 2, 3] as const)('real archive v%s → atomic adoption → no-key cold publication → usable copies', async version => {
+it.each([[1, 1], [2, 1], [3, 1], [1, 2], [2, 2], [3, 2]] as const)('real archive v%s → projects physical %s → atomic adoption → no-key cold publication → usable copies', async (version, physical) => {
+  let syncBefore: unknown
+  const syncCode = 'ARTYSYNC1-00112233-44556677-8899AABB-CCDDEEFF-00112233-44556677-8899AABB-CCDDEEFF'
+  if (physical === 2) {
+    await newDocument(); await (await import('../../services/workspaceWriter/upgrade')).createColdWorkspaceUpgrade('start').run()
+    await ready(); layout = runtime.getDocumentStorageLayout() as IsolatedWorkspaceLayout
+    expect(layout.projects.version).toBe(2)
+    await enter('b')
+    const box = (await import('../../services/workspaceSync/localOutbox')).createLocalSyncOutbox()
+    await box.unlock(syncCode, { vaultId: crypto.randomUUID(), epoch: crypto.randomUUID() })
+    await (await box.prepareSnapshot(box.snapshot.base, new Map(), [])).adopt(); box.close()
+    const db = await openDB(layout.projects.name); syncBefore = [await db.getAllKeys('meta'), await db.getAll('meta')]; db.close()
+    await enter('a')
+  }
   const existing = structuredClone(history.getConversations()), before = await root(), { prepared, source, objects } = await prepare('full', version)
   expect(prepared.preview.targetOwner).toBe('a'); expect(prepared.preview.receiptFiles).toBe(0)
   expect(await root()).toEqual(before); expect(await journal()).toHaveLength(1)
@@ -123,6 +136,11 @@ it.each([1, 2, 3] as const)('real archive v%s → atomic adoption → no-key col
   await actor.resume(); expect(derive).not.toHaveBeenCalled(); expect(decrypt).not.toHaveBeenCalled(); expect(fetch).not.toHaveBeenCalled()
   expect(await journal()).toEqual([{ ...before, revision: before.revision + 2 }]); expect(runtime.workspaceAdmission.getSnapshot()).toBe('maintenance')
   await ready()
+  if (physical === 2) {
+    const db = await openDB(layout.projects.name); expect([await db.getAllKeys('meta'), await db.getAll('meta')]).toEqual(syncBefore); db.close()
+    await enter('b'); const box = (await import('../../services/workspaceSync/localOutbox')).createLocalSyncOutbox()
+    await box.unlock(syncCode); expect(await box.resume()).not.toBeNull(); box.close(); await enter('a')
+  }
   const all = history.getConversations(), restored = all[0]!
   expect(all.slice(1)).toEqual(existing); expect(restored.title).toBe(source.conversations[0]!.title); expect(restored.id).not.toBe(ids.conv)
   expect(restored.messages.every(m => m.restoredArchive === true)).toBe(true); expect(restored.euOnly).toBe(true)
@@ -135,6 +153,27 @@ it.each([1, 2, 3] as const)('real archive v%s → atomic adoption → no-key col
   const fileStore = await import('../../services/secureFileStorage'), file = await fileStore.getFile(restored.messages[0]!.files![0]!.id)
   expect(Buffer.from(file!.data!, 'base64')).toEqual(Buffer.from(await objects.get(ids.fileObj)!.arrayBuffer()))
   expect(file!.size).toBe(version === 1 ? 13 : 52)
+})
+
+it('sync adoption cannot enter the actual restore control commit window or invalidate its cold baseline', async () => {
+  await newDocument(); await (await import('../../services/workspaceWriter/upgrade')).createColdWorkspaceUpgrade('start').run()
+  await ready(); layout = runtime.getDocumentStorageLayout() as IsolatedWorkspaceLayout
+  const box = (await import('../../services/workspaceSync/localOutbox')).createLocalSyncOutbox()
+  const syncCode = 'ARTYSYNC1-00112233-44556677-8899AABB-CCDDEEFF-00112233-44556677-8899AABB-CCDDEEFF'
+  await box.unlock(syncCode, { vaultId: crypto.randomUUID(), epoch: crypto.randomUUID() })
+  const candidate = await box.prepareSnapshot(box.snapshot.base, new Map(), [])
+  const { prepared } = await prepare(), put = IDBObjectStore.prototype.put
+  let result: Promise<unknown> | undefined
+  const hook = vi.spyOn(IDBObjectStore.prototype, 'put').mockImplementation(function (this: IDBObjectStore, value, key) {
+    if (this.transaction.db.name === 'arty-workspace-control' && value?.version === 8) result = candidate.adopt().then(() => 'unexpected success', error => error.message)
+    return put.call(this, value, key)
+  })
+  await prepared.commit(); hook.mockRestore()
+  expect(await result).toBe('workspace_sync_publication_busy')
+  await (await recover()).resume(); await ready()
+  const db = await openDB(layout.projects.name, 2)
+  expect(await db.getAllKeys('meta')).toEqual([['sync-state', 'a']]); db.close()
+  expect(history.getConversations()).toHaveLength(2)
 })
 
 it('files-only produces the announced durable inert receipt; projects-only leaves history exact', async () => {

@@ -5,7 +5,7 @@ import { ISOLATED_WORKSPACE_ENABLED } from './activation'
 import { WORKSPACE_CONTROL_DB, WORKSPACE_CONTROL_KEY } from './control'
 import { restoreCompletedBase, parseRestoreHeader, restoreJobKey, type RestoreHeader } from './restoreProtocol'
 import { CONTROL_SHAPE, FILE_SHAPE, PROJECT_SHAPE } from './schema'
-import { isolatedWorkspaceLayout } from './layout'
+import { isolatedWorkspaceLayout, controlProjectsVersion } from './layout'
 import { digestRaw } from './migrationInventory'
 import { assertRestoreLocal, deriveRestoreUsage, openRestoreDatabase, parseRestorePayload, proveRestoreSlots, restoreEqual, restoreFail,
   restoreHistoryKeys, restoreLocalSnapshot, restoreStoreProof, restoreTransaction, validRestoreUsage, zeroRestoreUsage,
@@ -54,7 +54,7 @@ async function publish(initial: RestoreHeader, action: 'resume' | 'abort', guard
       if (await store.count() !== 2 || !restoreEqual(await store.get(WORKSPACE_CONTROL_KEY), initial)) return restoreFail()
       return store.get(jobKey) as Promise<unknown>
     })
-    const p = await parseRestorePayload(raw, initial, guard), layout = isolatedWorkspaceLayout(initial.generation, initial.requiredOwners)
+    const p = await parseRestorePayload(raw, initial, guard), layout = isolatedWorkspaceLayout(initial.generation, initial.requiredOwners, controlProjectsVersion(initial))
     files = await openRestoreDatabase(layout.files, FILE_SHAPE, guard)
     projects = await openRestoreDatabase(layout.projects, PROJECT_SHAPE, guard)
     const assertControl = async (tx: IDBPTransaction<unknown, string[], 'readonly' | 'readwrite'>) => {

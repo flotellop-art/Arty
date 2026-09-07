@@ -1,4 +1,4 @@
-export type EntryRoute = 'private' | 'share' | 'landing' | 'workspace-setup'
+export type EntryRoute = 'private' | 'share' | 'landing' | 'workspace-setup' | 'workspace-upgrade'
 
 /** Routing reads only: do not import userSession (its cache must first hydrate
  * AFTER acquisition), useAuth, crypto, or preview seeding from the public boot.
@@ -9,6 +9,7 @@ export function getWorkspaceEntryRoute(
   storage: Pick<Storage, 'getItem'>,
 ): EntryRoute {
   if (pathname === '/workspace/prepare') return 'workspace-setup'
+  if (pathname === '/workspace/upgrade') return 'workspace-upgrade'
   if (/^\/share\/[^/]+\/?$/.test(pathname)) return 'share'
   if (pathname === '/discover' || pathname === '/discover/') return 'landing'
   if (pathname !== '/' || native || previewBuild || new URLSearchParams(search).has('start')) return 'private'
