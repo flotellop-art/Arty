@@ -93,6 +93,21 @@ export function clearWalletCache(): void {
   notifyBalanceChanged()
 }
 
+/** A terminal Arty AI refusal closes spendability without inventing a balance,
+ * refetching, or changing the verified subscription. Retire older GETs first. */
+export function markWalletReconciliationPending(context: BillingContext): void {
+  if (!context.isCurrent()) return
+  const previous = getWalletSnapshot()
+  walletRequestSerial += 1
+  sharedBalance = null
+  snapshot = previous?.hasWallet ? { context, data: { ...previous, availableMicro: 0, reversalPending: true } } : null
+  try {
+    localStorage.removeItem(WALLET_CACHE_KEY)
+    localStorage.removeItem(WALLET_HAS_KEY)
+  } catch { /* RAM is already closed; persisted hints are not authority. */ }
+  notifyBalanceChanged()
+}
+
 /**
  * L'utilisateur peut-il payer un modèle PREMIUM avec ses crédits MAINTENANT ?
  * = il a des crédits ET n'est PAS sur un essai gratuit encore actif.

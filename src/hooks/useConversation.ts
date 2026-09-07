@@ -1124,7 +1124,7 @@ export function useConversation(options?: { onNavigate?: (id: string) => void })
       if (provider === 'hybrid') {
         setProgressContent('🔍 Recherche en cours (Gemini)...', targetId)
         Promise.all([
-          geminiResearch(modelText, undefined, getReflectionLevel(), targetId),
+          geminiResearch(modelText, undefined, getReflectionLevel(), targetId, assertInvocationCurrent),
           buildApiMessages(conv.messages),
         ]).then(([research, enrichedMessages]) => {
           // Si l'utilisateur a cliqué Stop PENDANT la recherche Gemini,

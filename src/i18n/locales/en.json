@@ -1094,7 +1094,7 @@
       "loading": "Generating audio...",
       "connectGoogleToListen": "Connect Google to listen",
       "error401": "Google session expired. Reconnect Google.",
-      "error429": "Daily free voice limit reached. Try again tomorrow or upgrade to Pro for unlimited voice.",
+      "error429": "Daily free voice attempt limit reached. Try again tomorrow; availability also depends on Arty’s voice budget.",
       "error502": "Voice service error. Try again.",
       "errorGeneric": "Text-to-speech error."
     }
@@ -1822,6 +1822,7 @@
     }
   },
   "trial": {
+    "expiredError": "Your 30 trial messages are used up. See the options to continue or use your own API key.",
     "banner": {
       "remaining_one": "✨ Free trial — {{count}} message left · Claude Haiku",
       "remaining_other": "✨ Free trial — {{count}} messages left · Claude Haiku",

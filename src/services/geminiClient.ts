@@ -5,12 +5,11 @@ import { buildLocationContext } from './locationContext'
 import { recordUsage } from './costTracker'
 import { createModelReporter, validModelId, type ModelInvocationOptions } from './modelLabels'
 import { TEXT_DEFAULTS } from './modelCatalog'
-import { walletReconciliationError } from './walletFailure'
+import { captureAiEntitlementReceipt } from './aiEntitlementReceipt'
 import { admissionUnavailableError } from './admissionFailure'
 import { extractYouTubeUrls } from './aiRouter'
 import { isMapToolQuery, isWeatherQuery } from './router/intentPatterns'
 import type { RouteReason } from './router/types'
-import { updateTrialFromResponse } from './trialClient'
 import { setSearchContext, type SearchContext } from './factChecker'
 import type { ReflectionLevel } from './reflectionLevel'
 import i18n from '../i18n'
@@ -317,6 +316,7 @@ async function runGeminiStream(
   // au début pour que l'event "model-used", la requête, et le tracking
   // de coût remontent tous le même nom.
   const model = options?.model || geminiChatModel()
+  const receipt = captureAiEntitlementReceipt(!apiKey || apiKey === 'server-provided', controller.signal, options?.assertRequestCurrent)
   const reportModel = createModelReporter(options, model)
   try {
     options?.assertRequestCurrent?.()
@@ -411,7 +411,7 @@ async function runGeminiStream(
       controller.signal,
     )
     options?.assertRequestCurrent?.()
-    updateTrialFromResponse(response)
+    receipt.updateTrial(response)
 
     // Le proxy peut appliquer le killswitch global ou le fallback 3.6 → 3.5.
     // Corrige l'attribution optimiste et le coût local avec le modèle servi.
@@ -434,7 +434,7 @@ async function runGeminiStream(
       // P0.7 — cap premium mensuel : code structuré surfacé tel quel (la
       // modale de choix l'intercepte), au lieu du générique « Gemini error ».
       const errBody = await response.clone().text().catch(() => '')
-      const walletError = admissionUnavailableError(response.status, errBody) ?? walletReconciliationError(response.status, errBody)
+      const walletError = admissionUnavailableError(response.status, errBody) ?? receipt.error(response.status, errBody)
       if (walletError) throw walletError
       try {
         const parsed = JSON.parse(errBody) as { error?: string; bucket?: string; cap?: number }
@@ -574,8 +574,10 @@ export async function geminiResearch(
   apiKeyOverride?: string,
   reflectionLevel?: ReflectionLevel,
   conversationId?: string,
+  assertRequestCurrent?: () => void,
 ): Promise<string> {
   const apiKey = apiKeyOverride || getGeminiKey()
+  const receipt = captureAiEntitlementReceipt(!apiKey || apiKey === 'server-provided', undefined, assertRequestCurrent)
 
   const model = geminiResearchModel()
   const thinkingLevel = resolveGeminiResearchThinkingLevel(reflectionLevel ?? 'auto')
@@ -605,7 +607,7 @@ export async function geminiResearch(
     ],
   }
 
-  const headers = await buildAiHeaders({ byokKey: apiKey, auth: 'bearer' })
+  const headers = await buildAiHeaders({ byokKey: apiKey, auth: 'bearer', assertRequestCurrent })
 
   try {
     const res = await fetchWithTimeout(
@@ -613,16 +615,22 @@ export async function geminiResearch(
       { method: 'POST', headers, body: JSON.stringify(requestBody) },
       GEMINI_TIMEOUT_MS,
     )
-    updateTrialFromResponse(res)
+    receipt.updateTrial(res)
 
-    if (!res.ok) return ''
+    if (!res.ok) {
+      const error = receipt.error(res.status, await res.text().catch(() => ''))
+      if (error) throw error
+      return ''
+    }
 
     const data = await res.json()
+    assertRequestCurrent?.()
     const searchContext = extractGeminiSearchContext(data, query)
     if (searchContext) setSearchContext(searchContext, conversationId)
     const parts = data.candidates?.[0]?.content?.parts || []
     return parts.map((p: { text?: string }) => p.text || '').join('\n')
-  } catch {
+  } catch (error) {
+    if (error instanceof Error && (error.name === 'TrialExpiredError' || error.name === 'WalletReconciliationError')) throw error
     return ''
   }
 }

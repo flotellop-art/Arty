@@ -332,7 +332,7 @@ export function usePlanStatus(enabled = true): PlanStatus & { refresh: () => Pro
     const offOwner = onLocalDataInvalidated(() => {
       if (receiptContext.current && !receiptContext.current.isCurrent()) invalidate()
     })
-    const offWallet = onWalletBalanceChanged(() => {
+    const projectFunding = () => {
       // All subscribers must project the newest verified plan, not a local
       // Free receipt predating another hook's paid-plan refresh.
       const latest = latestBaseReceipt
@@ -342,8 +342,10 @@ export function usePlanStatus(enabled = true): PlanStatus & { refresh: () => Pro
       const next = withWalletAccess(base)
       cacheEffectiveFamilies(next)
       setState(next)
-      // Local projection only. Never refetch from a wallet publication.
-    })
+      // Local projection only. Neither a wallet nor a trial publication refetches.
+    }
+    const offWallet = onWalletBalanceChanged(projectFunding)
+    window.addEventListener('arty-trial-remaining-changed', projectFunding)
     void refresh()
     // Re-sync sur événements custom : `arty-message-sent` (après chaque
     // message → décrémenter le compteur en live), `google-storage-ready`
@@ -368,6 +370,7 @@ export function usePlanStatus(enabled = true): PlanStatus & { refresh: () => Pro
       // refresh. That task still has its original owner/session/grant guard.
       refreshSerialRef.current += 1
       receiptContext.current = null; offGrant(); offOwner(); offWallet()
+      window.removeEventListener('arty-trial-remaining-changed', projectFunding)
       events.forEach((e) => window.removeEventListener(e, refresh))
       window.removeEventListener('focus', handleFocus)
       window.removeEventListener('online', handleFocus)
