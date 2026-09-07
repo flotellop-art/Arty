@@ -2061,3 +2061,27 @@ ni serveur. Snapshot historique, pas transaction globale ou état forcément
 courant des fichiers. Rescan explicite seulement ; transport, ACK, réception/
 application sans ping-pong, effacement distant et recettes multi-appareils
 restent à livrer avant de déclarer W06 terminé.
+
+### W06-B2b — livraison du socle local (7 septembre)
+
+Les trois candidats ci-dessus sont fusionnés via
+[#485](https://github.com/flotellop-art/Arty/pull/485), main `cadf1ab` : stockage
+projets physique 2 récupérable à froid, outbox durable chiffrée, capture réelle
+et rescan explicite. CI PR/main réussies, **4 458 tests PASS + 1 ignoré** ;
+Pages production `2bf7374d` vérifié sur tryarty.com. Parcours publics FR/EN en
+390/1280 px contrôlés, vrais rejeux locaux upgrade/restauration réussis.
+Observation HTTP ciblée achevée : 16 points concordants entre 00:12:09 et
+00:27:09 UTC (15 minutes), pas une télémétrie globale ni une session connectée.
+Firebase a distribué l'APK signé exact 1.0.99 / code 100 (run `34068949155`
+réussi). Aucune installation ni recette sur téléphone physique : ADB vide.
+L'[ADR](ADR_WORKSPACE_SYNC.md) conserve heures UTC, hashes, limites et repli.
+
+`WORKSPACE_UPGRADE_START_ENABLED=false`, sans désactiver les START déjà livrés
+d'isolation/restauration. Aucun endpoint/bucket sync ni activation cloud. Le
+contrat B3 proposé intègre deux challenges readonly : ACK exact atomique,
+supersession sur conflit attesté, chaîne complète pour le second appareil,
+alias galerie stables, identité/révocation communes et nettoyage durable.
+Un spike R2 local a éprouvé un véritable PUT incomplet, pas la garantie de
+production. **W06 reste partiel** ; réception/application, effacement serveur,
+consentement et recettes multi-appareils restent nécessaires. Abonnements et
+crédits restent également dans le périmètre global du CDC.

@@ -596,3 +596,178 @@ non poussé/non déployé. Le rescan est explicite, pas un ordonnanceur automati
 Transport, ACK authentifié, rattrapage après ACK, applicateur sans ping-pong
 (y compris alias galerie et restrictions), effacement serveur, consentement UI
 et recettes à deux appareils restent des obligations W06, pas des exclusions.
+
+### Livraison B2b — stockage récupérable, outbox et capture (7 septembre)
+
+Les candidats locaux ci-dessus sont maintenant livrés :
+[PR #485](https://github.com/flotellop-art/Arty/pull/485), fusion normale à
+00:10:19 UTC, main `cadf1abc738b949b26ce0cb04a209b00dff8d734`. Les trois commits
+0dd036b/ebe94b9/284bb4b ont été squashés sans changement de leur arbre vérifié.
+Deux GO readonly indépendants bornés avant fusion. [CI PR](https://github.com/flotellop-art/Arty/actions/runs/34068623055)
+et [CI main](https://github.com/flotellop-art/Arty/actions/runs/34068949051)
+réussies : 337 suites / **4 458 PASS + 1 ignoré préexistant**, types,
+couverture, no-CASA, build, vrai worker Office, Android et Worker de croissance.
+
+Pages preview `36ac4704-754f-46ee-99e8-70eec2088c8c`, puis production
+`2bf7374d-0a14-40f5-b73e-de4c4d174a46` réussies. À 00:12:08 UTC, tryarty.com et
+[le déploiement immuable](https://2bf7374d.appfacade.pages.dev) servent les mêmes
+octets des chunks déclarés contrôlés. Entrée `index-D_D2RtDz.js`, SHA-256
+`0ac50ae4482de3fe4cf8752069388710e63384e3293cd0ff5752747f5d01d63d`.
+Chrome public réel : FR/EN, 390 et 1280 px ; routes upgrade/prepare conformes,
+aucun débordement ni erreur de page, aucune DB créée par leur simple visite.
+Les polices et le beacon Cloudflare sont tentés puis bloqués et recensés dans
+la recette ; aucun appel API autorisé. Ce test DOM n'est pas une revue visuelle
+générale ni une session utilisateur authentifiée.
+
+Observation achevée de **00:12:09 à 00:27:09 UTC** : 16 points sur 15 minutes,
+HTTP 200 et entrée JS identique entre domaine canonique et déploiement immuable
+à chaque point ; exit 0 (`workspace-sync-production-observe.log`). Les sept
+chunks contrôlés restent identiques au contrôle final de 00:27:06 UTC
+(`workspace-sync-production-final-static.log`). Ce sondage anonyme ciblé ne
+mesure pas le taux global d'erreur des utilisateurs ni les parcours connectés.
+
+Rejeux locaux dans Chrome avec vrais services et comptes synthétiques : cinq
+scénarios upgrade natifs à 00:03:29 UTC ; vraie UI de restauration à 00:07:05,
+téléchargement exact PDF/TXT, projets, deux propriétaires relus/écrits après
+reload et repli compatible du START de restauration. Aucune donnée personnelle
+de production utilisée. Logs ignorés `workspace-sync-release-upgrade-browser`,
+`workspace-sync-release-restore-ui`, `workspace-sync-preview-ui`,
+`workspace-sync-production-static` et `workspace-sync-production-ui` (`.log`).
+
+[Firebase](https://github.com/flotellop-art/Arty/actions/runs/34068949155)
+réussi à 00:19:55 UTC, y compris vérification du candidat exact, distribution
+et nettoyage des secrets. Reçu `arty-apk-identity-<main>-1` : `com.arty.app`,
+1.0.99 / code 100, 4 411 137 octets, signature vérifiée, SHA-256
+`69358159d5a0c457a2f740b6db975105b158d418cb9aad9c1081d005a4aa81fe`.
+Le JSON est une preuve d'identité d'artefact ; c'est le job Firebase réussi
+qui atteste la distribution. ADB ne voyait aucun appareil connecté lors du
+contrôle : **aucune installation ni recette sur téléphone physique annoncée**.
+À 00:24:15 UTC, le `/.well-known/assetlinks.json` réellement servi sur
+tryarty.com correspond octet pour octet au reçu du checkout, avec le package
+et le fingerprint du signataire vérifié (`workspace-sync-production-assetlinks.log`).
+Cela ne constitue pas la vérification de liens par Android sur un appareil.
+
+Seul `WORKSPACE_UPGRADE_START_ENABLED` reste false ;
+`ISOLATED_WORKSPACE_ENABLED` et `WORKSPACE_RESTORE_START_ENABLED` restent true.
+Pas d'activation de capture/outbox par l'UI, d'endpoint sync, de bucket ni de
+migration distante. Le lot touche réellement admission, inventaires et reprise
+locale : il n'est pas « inerte » dans son ensemble. Repli vers #484 seulement
+si aucun layout physique 2/journal v9 n'a été adopté ; sinon conserver les
+readers projectsVersion 2 et la reprise v9 avec un correctif en avant. Aucun
+downgrade IndexedDB ni suppression du journal/ticket pour forcer un repli.
+W06 distant reste ouvert.
+
+### B3 — contrat de raccord transport/ACK avant code (7 septembre)
+
+**Statut : conception proposée, non implémentée ni activée.** Deux challenges
+readonly indépendants (continuité/produit et sécurité/publication) ont relevé
+les raccords suivants. Ils ne remettent pas en cause la livraison locale B2b,
+mais interdisent de la présenter comme une synchronisation distante.
+
+1. **Identité et révocation communes.** Partir de
+   `verifyGoogleIdentityStrictDetailed`, puis exiger explicitement un `sub`
+   string non vide ; son résultat `ok` actuel ne suffit pas. Ni identité proxy,
+   whitelist, email fourni par le client, ni repli email pour ce coffre Google.
+   L'enrôlement coffre/incarnation doit être attesté par le serveur avant les
+   opérations : `unlock(initialScope)` n'atteste aujourd'hui qu'un état local.
+   Les deux routes `account/delete.ts` et `account/erasure-v1.ts` doivent porter
+   ce sujet vérifié jusqu'à la révocation du coffre, tout en conservant leurs
+   effacements email existants. Aucun nouveau writer distant avant ce raccord.
+2. **Trois checkpoints distincts.** La base B1 privée, le head de transport
+   opaque acquitté et l'état réellement matérialisé dans les stores ne sont pas
+   interchangeables. Le serveur ne reçoit pas le hash de base plaintext B1.
+   Un reçu lie incarnation, opération, hash/longueur du ciphertext, prédécesseur
+   et nouveau head opaques ; le client vérifie aussi son manifeste A exact.
+   Aucun avancement de base d'application sur simple téléchargement de R.
+3. **ACK A atomique.** L'état privé actuel ne contient que `base` et `bindings`
+   (`privateState.ts`) ; le CAS actuel ajoute une opération et écrit l'état,
+   mais n'en supprime aucune (`localOutbox.ts`). La future transition adopte
+   ensemble l'état chiffré avec base A/checkpoint et la suppression de la seule
+   row A. Sceller avant la transaction ; propriétaire/fence/génération/pending
+   exacts dans celle-ci ; publier la RAM après commit. Quota/coupure conserve
+   soit l'ancienne paire complète, soit le nouvel état complet reconnaissable.
+   Seul un doublon du reçu exact d'un A déjà acquitté est un no-op pendant un
+   nouveau paquet B pending ; l'operationId seul n'atteste pas ce doublon.
+   Le premier ACK A avance bien la base vers A même si B a entre-temps été
+   sauvegardé dans les stores. Jamais de clear global. Après ACK A,
+   rescanner les vrais stores pour B, sans remplacer B par le snapshot A.
+   La nouvelle forme privée exige un format/version et une compatibilité de
+   reprise explicites ; pas de champs glissés dans la grammaire v1 fermée.
+4. **Issue inconnue versus conflit définitif.** Réponse perdue : rejouer les
+   octets A ou consulter son reçu durable. Un 404, timeout ou échec d'auth n'est
+   pas un refus définitif. Si le serveur atteste que R a gagné le CAS et que A
+   ne pourra plus être publié, conserver A jusqu'à adoption atomique d'une
+   supersession fusionnant la base commune exacte, A figé et R vérifié via B1.
+   Les modifications B non capturées restent dans les stores pour le rescan
+   suivant. Préserver les révisions de A et ses
+   payloads ; ni faux ACK, ni nouvelle opération sur base vide. Le retry exact
+   seul ne peut résoudre ce conflit : l'outbox actuelle bloque à juste titre
+   une nouvelle préparation pendant A.
+5. **Un second appareil a besoin de la chaîne.** B2a n'embarque que les nouveaux
+   payloads contre une base exacte. Choix initial proposé : chaîne publiée
+   conservée par incarnation, pagination ancrée sur un head précis et limites
+   cumulées d'objets/octets incluant réservations et orphelins. Ne pas collecter
+   les anciens paquets à leur ACK : un fichier inchangé peut n'exister que dans
+   le premier. Une base absente/inaccessible bloque la réception. Alternative
+   reportée : checkpoints autonomes et collecte attestée, plus complexes mais
+   nécessaires si la rétention bornée limite trop les usages ; jamais une
+   troncature silencieuse ni un quota calculé seulement sur le dernier paquet.
+6. **Application fidèle et recapture inchangée.** Le futur journal `sync-apply`
+   coordonne stores, mapping et checkpoint matérialisé dans la génération
+   active ; il ne détourne pas la restauration additive. `captureMapping.ts`
+   tire actuellement les alias galerie des IDs physiques. Un autre appareil
+   peut allouer d'autres IDs sans changer le texte historique : conserver une
+   provenance d'alias durable réutilisable à la recapture, indépendante des
+   adresses physiques. Aucun lookup d'URI ni réécriture du texte brut. Éprouver
+   aussi présentations/tailles, comparaison, restrictions et marqueurs inertes.
+
+Réservation D1 atomique avant les octets R2 : sujet, coffre/incarnation,
+operationId, head attendu et hash/longueur du ciphertext figés, budgets octets
+**et nombre d'opérations**. Même opération identique = même réservation ;
+toute variation est un conflit. Corps binaire borné via `limitReadableStream`,
+taille réellement consommée et checksum SHA-256 R2 vérifiés ; clé calculée
+serveur, sans chemin fourni par le client. `put=null` impose de relire et
+attester l'objet existant ; des métadonnées déclaratives seules ne suffisent
+pas. Publication head/reçu/compteurs sous le même ticket et gate SQL dans le
+batch D1 ; zéro ligne modifiée n'est pas une erreur SQL. Les compteurs IA
+fail-open et la limite IP en RAM ne constituent pas ce budget de stockage.
+
+Pour l'effacement R2, la révocation D1 suivie d'un DELETE et d'un délai ne prouve
+pas qu'un PUT déjà admis ne recréera pas l'objet. La documentation indique que
+le dernier PUT/DELETE terminé gagne ([cohérence R2](https://developers.cloudflare.com/r2/reference/consistency/)).
+Piste à éprouver, **non adoptée comme garantie** : clés create-only par opération
+avec `If-None-Match: *`, neutralisées par une tombstone sans contenu conservée
+sur la même clé. R2 documente le refus de stockage si la condition échoue
+([API conditionnelle](https://developers.cloudflare.com/r2/api/workers/workers-api-reference/#conditional-operations)),
+mais un test local ne certifie pas à lui seul l'atomicité d'un PUT déjà en vol
+contre cette neutralisation en production. Tant que les écritures admises ne
+sont pas neutralisées avec une preuve suffisante, garder le nettoyage durable
+incomplet ; aucun reçu « effacé » ni expiration qui supprime cette obligation.
+Le GET de reçu `erasure-v1.ts` reste SELECT-only : prévoir un exécuteur durable
+de nettoyage distinct et réellement appelable après crash ; ne pas faire du
+GET actuel ou de `waitUntil` un faux mécanisme de reprise.
+
+Spike local, rejeu final à **00:22:50 UTC**, Miniflare 4.20260730.0, compatibilité Workerd
+2026-08-06, bucket synthétique éphémère : le vrai `FixedLengthStream(2)` est
+suspendu après résolution de l'écriture du premier octet, puis repris après
+neutralisation. Le PUT n'est pas résolu et le dernier octet n'a pas encore été
+fourni ; le test ne voit pas le moment où R2 évalue sa condition côté stockage.
+Contrôle négatif DELETE : les deux octets réapparaissent. Tombstone vide sur
+la même clé : PUT conditionnel retourne null et la tombstone reste intacte.
+La tombstone préexistante refuse aussi le PUT. Trois scénarios passent ; aucun
+stockage distant ou handler Arty, ni preuve de transaction D1 ou d'atomicité
+en production. Script/log ignorés `workspace-sync-r2-race-probe.mjs`/`.log`.
+
+**Recette de passage obligatoire** : deux profils indépendants, vrais stores
+et API locale D1/R2. A contient comparaison, galerie, pièce jointe et projet ;
+B est sauvegardé localement pendant A. Publication A réussie/réponse perdue,
+reload, reçu exact, ACK A, rescan/publication B. L'autre profil rejoint depuis
+zéro, retrouve aussi les anciens payloads, applique/recharge puis recapture
+inchangée (aucune nouvelle révision). Réponse dans l'autre sens sans doublon ;
+variante modifications concurrentes avec toutes les versions et conflit
+visible. Coupures à chaque frontière, second compte intact, corruption/quota,
+révocation/recréation et PUT suspendu avant sa vraie consommation finale.
+Un stub retardant seulement la réponse d'un PUT terminé n'éprouve pas ce cas.
+Les états « local », « publication inconnue », « publication confirmée »,
+« reçu non appliqué » et « conflit » restent distincts ; aucun ne signifie à
+lui seul « tous les appareils à jour ».
