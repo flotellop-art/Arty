@@ -157,6 +157,29 @@ CREATE TABLE IF NOT EXISTS premium_packs (
 );
 CREATE INDEX IF NOT EXISTS idx_premium_packs_user_email ON premium_packs(user_email);
 
+-- Invoice observations only, not rights or ledger entries (migration 0010).
+CREATE TABLE IF NOT EXISTS lemon_invoice_receipt_v1 (
+  receipt_hash TEXT PRIMARY KEY NOT NULL,
+  event_name TEXT NOT NULL,
+  invoice_id TEXT,
+  subscription_id TEXT,
+  store_id TEXT,
+  customer_id TEXT,
+  test_mode INTEGER CHECK (test_mode IN (0, 1)),
+  invoice_status TEXT,
+  currency TEXT,
+  total_minor INTEGER CHECK (total_minor >= 0),
+  refunded_minor INTEGER CHECK (refunded_minor >= 0),
+  refunded INTEGER CHECK (refunded IN (0, 1)),
+  provider_refunded_at TEXT,
+  provider_updated_at TEXT,
+  outcome TEXT NOT NULL CHECK (outcome IN ('captured', 'review')),
+  reason TEXT,
+  received_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_lemon_invoice_receipt_scope
+  ON lemon_invoice_receipt_v1(store_id, test_mode, invoice_id, received_at);
+
 -- ── Wallet crédits (pay-as-you-go) — functions/api/_lib/wallet.ts ──
 CREATE TABLE IF NOT EXISTS wallet (
   user_email TEXT PRIMARY KEY,

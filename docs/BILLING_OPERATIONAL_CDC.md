@@ -59,6 +59,25 @@ Aucune session marchande accessible dans ce navigateur ; le statut reste
 **non vérifiable**, et non « refusé ». Connexion du propriétaire requise pour
 continuer ce contrôle. Aucun contrat, KYC, activation ni paiement effectué.
 
+Au 7 septembre, le statut marchand actuel reste non vérifié. Aucune activation
+ni transaction effectuée ; aucun refus marchand conclu.
+
+Le candidat serveur crédits `codex/credit-checkout-intents` pointe sur
+`20e009996725d5cb2a92e89a1ffad0601a7fb105` : code `0d1e434` puis documentation.
+Il n'est pas intégré au main `41ab207` de #487. Ses preuves antérieures restent
+distinctes d'une nouvelle exécution ou d'un déploiement. La séparation des
+notifications de facture et d'abonnement Lemon reste notamment à terminer ;
+la validation marchande ne remplace pas ce travail serveur.
+
+Lot suivant du 7 septembre : le défaut facture → abonnement a été reproduit
+dans D1 puis corrigé localement. Les quatre notifications de facture écrivent
+un journal documentaire indépendant, jamais des droits/solde ; garde du type
+fournisseur, replay et pannes testés (50 nouveaux tests, 70 ciblés au total).
+Voir [contrat et livraison](LEMON_INVOICE_RECEIPTS_RELEASE.md). La migration
+0010 doit précéder le déploiement du handler. Ce résultat ne valide ni le
+prestataire live, ni le rattachement checkout, ni les droits historiques ou
+la réconciliation ; l'exigence abonnements **et** crédits reste non livrée.
+
 Références officielles consultées le 6 septembre :
 [activation et distinction test/live Lemon](https://docs.lemonsqueezy.com/help/getting-started/activate-your-store),
 [événements Lemon](https://docs.lemonsqueezy.com/help/webhooks/event-types),

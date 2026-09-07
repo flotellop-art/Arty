@@ -1,4 +1,5 @@
 import type { Env } from '../../env'
+import { captureLemonInvoice } from '../_lib/lemonInvoiceReceipts'
 
 // Product IDs Lemon Squeezy — figés côté store, on les hardcode ici plutôt
 // que d'avoir une variable d'env pour qu'un changement nécessite une review
@@ -153,14 +154,6 @@ const MONOTONIC_SUBSCRIPTION_UPDATE = `
       )
     )
   )`
-
-/** N'affiche que le domaine de l'email pour les logs (privacy). */
-function maskEmail(email: string | undefined): string {
-  if (!email) return '<no-email>'
-  const at = email.indexOf('@')
-  if (at < 0) return '***'
-  return `***@${email.slice(at + 1)}`
-}
 
 // ─────────────────────────────────────────────────────────────────────────
 // Schémas alignés sur la PROD (migration 0002) — réconciliation 15 juin 2026.
@@ -371,7 +364,7 @@ async function handleSubscriptionUpsert(
 async function handleSubscriptionStatusUpdate(
   env: Env,
   data: LemonSqueezyData,
-  newStatus: 'cancelled' | 'expired' | 'past_due' | 'active'
+  newStatus: 'cancelled' | 'expired'
 ): Promise<void> {
   const attrs = data.attributes ?? {}
   const email = attrs.user_email?.toLowerCase()
@@ -472,6 +465,9 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   try {
     const text = new TextDecoder().decode(rawBody)
     payload = JSON.parse(text) as LemonSqueezyWebhookPayload
+    if (payload === null || typeof payload !== 'object' || Array.isArray(payload)) {
+      return Response.json({ error: 'Invalid payload' }, { status: 400 })
+    }
   } catch {
     return Response.json({ error: 'Invalid JSON' }, { status: 400 })
   }
@@ -482,8 +478,22 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   }
 
   const data = payload.data ?? {}
-  const email = data.attributes?.user_email
-  console.log(`[lemonsqueezy] event=${eventName} user=${maskEmail(email)}`)
+  // A signed invoice is still not a subscription. Enforce the provider object's
+  // type on EVERY handled path, including an invoice labelled subscription_updated.
+  const expectedType: Record<string, string> = {
+    order_created: 'orders',
+    subscription_created: 'subscriptions', subscription_updated: 'subscriptions',
+    subscription_cancelled: 'subscriptions', subscription_expired: 'subscriptions',
+    subscription_payment_failed: 'subscription-invoices', subscription_payment_success: 'subscription-invoices',
+    subscription_payment_recovered: 'subscription-invoices', subscription_payment_refunded: 'subscription-invoices',
+    license_key_created: 'license-keys',
+  }
+  const handled = Object.hasOwn(expectedType, eventName)
+  if (handled && (typeof data !== 'object' || Array.isArray(data) || data.type !== expectedType[eventName])) {
+    return Response.json({ error: 'Unexpected event object type' }, { status: 400 })
+  }
+  // Invoice receipts deliberately retain/log no customer email, even masked.
+  if (handled) console.log(`[lemonsqueezy] event=${eventName}`)
 
   try {
     switch (eventName) {
@@ -505,11 +515,10 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
         break
 
       case 'subscription_payment_failed':
-        await handleSubscriptionStatusUpdate(env, data, 'past_due')
-        break
-
       case 'subscription_payment_success':
-        await handleSubscriptionStatusUpdate(env, data, 'active')
+      case 'subscription_payment_recovered':
+      case 'subscription_payment_refunded':
+        await captureLemonInvoice(env.DB, eventName, data, rawBody)
         break
 
       case 'license_key_created':

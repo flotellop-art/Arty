@@ -2,12 +2,13 @@
 
 État technique du 7 septembre 2026 : objectif global toujours incomplet.
 Projection/recapture fidèle, premier import sous journal et préparation d’un
-envoi concurrent raccordés et testés localement ; application des mises à jour
-et résolution des conflits restent à terminer. Livraison OFF en préparation ;
-preuves dans `WORKSPACE_SYNC_APPLY_CONTRACT.md` et
-`WORKSPACE_SYNC_CLIENT_RELEASE.md`.
+envoi concurrent livrés avec démarrages OFF par #487. Le diagnostic des cibles
+matérialisées ajouté ensuite est testé localement, non livré. Application des
+mises à jour et résolution des conflits restent à terminer. Preuves et limites
+dans `WORKSPACE_SYNC_APPLY_CONTRACT.md`, `WORKSPACE_SYNC_CLIENT_RELEASE.md` et
+`ADR_WORKSPACE_SYNC_MATERIALIZED_COVERAGE.md`.
 
-Date : 6 septembre 2026. Statut global : **en cours, non livré**.
+Date : 7 septembre 2026. Statut global : **en cours, livraisons partielles**.
 
 Extension explicite de l'objectif le 6 septembre : abonnements **et** crédits
 réellement opérationnels, y compris qualification du prestataire marchand et
@@ -2257,3 +2258,64 @@ restrictions EU/sortie, le couple source/texte, les suppressions et le choix
 explicite entre versions restent nécessaires. W06 est toujours partiel ; le
 CDC complet et la qualification opérationnelle abonnements/crédits restent
 les critères de l'objectif, pas seulement ce raccord transport.
+
+### W06-B3c à B3f — livraison OFF vérifiée (#487, 7 septembre)
+
+Les checkpoints locaux ci-dessus sont désormais livrés par #487 : main
+`41ab207b1b42072dd369d01516e22986725cb8cb`, arbre égal au candidat public vérifié.
+CI PR/main, Pages production et distribution Firebase sont réussies. Recettes
+Chrome FR/EN publiques, démo synthétique de pin/branche/rechargement/export et
+barrière froide v10 réussies ; quatre sondes stables pendant 15 min 52 s.
+Voir [les reçus et limites de livraison](WORKSPACE_SYNC_CLIENT_RELEASE.md).
+
+Aucun START sync/upgrade, bucket, binding, migration distante ou secret activé.
+Aucun téléphone connecté lors du contrôle ADB : distribution ne vaut pas
+installation ou recette réelle. La mise à jour d'un espace déjà matérialisé,
+la résolution utilisateur et les autres exigences W06 restent ouvertes, comme
+la validation opérationnelle des abonnements et des crédits.
+
+### W06 — projecteur readonly préparatoire (local, non livré)
+
+Le prochain témoin de couverture peut réutiliser le projecteur existant avec
+un lookup strict : aucun identifiant inventé, aucune référence promue en objet,
+aucune coercition d'argument avant validation. Cette fonction pure ne lit pas
+les stores, n'atteste pas B==M et n'autorise aucune publication. Le contrôle
+de fraîcheur puis le journal de mise à jour restent à implémenter.
+
+Deux contre-revues indépendantes : cas de coercition corrigé et couple
+source/texte ajouté aux canaris. Vérification finale locale sur code figé :
+350 suites, 4 829 PASS et un skip préexistant ; types, inventaire OAuth, build
+et worker Office réels réussis. Log ignoré
+`.playwright-mcp/workspace-sync-read-mapping-final-verify.log`. Ces 25 canaris
+supplémentaires et ce mapper ne sont pas inclus dans la livraison #487.
+
+### W06 — diagnostic des cibles matérialisées (local, non livré)
+
+`inspectMaterialized()` utilise maintenant le M privé réel de l'acteur, et non
+sa sélection, pour comparer conversations/fichiers/catalogues/source/texte
+avec les stores courants. Les statuts égal/différent/absent/illisible restent
+distincts ; le rapport local ne masque pas les conflits/dépendances de R.
+Les lignes déchiffrées sont exactement celles épinglées et les mutations
+ultérieures de ces lignes, de l'historique complet, des quatre slots et des
+gardes invalident définitivement le témoin. Aucun write ni activation.
+
+Les deux contre-revues ont fait corriger la perte des propriétés undefined
+pendant la copie et la confusion fence absente/fence présente `initial`.
+Le [contrat, les choix et le plan de tests](ADR_WORKSPACE_SYNC_MATERIALIZED_COVERAGE.md)
+expliquent le raccord et ses limites. Les premières recettes acteur utilisent
+un vrai import froid entre profils JSDOM/fake-IDB et un worker D1/R2 local,
+pas une simple injection de M.
+
+Vérification finale sur code/tests figés : `npm run verify` terminé exit 0,
+**351 suites / 4 883 PASS + 1 skip préexistant**. Types frontend/functions,
+inventaire OAuth, build et vrai worker Office isolé réussis. Log ignoré :
+`.playwright-mcp/workspace-sync-coverage-final-verify.log`.
+Le lot ajoute 49 canaris locaux et 5 tests acteur, et étend le roundtrip
+galerie/comparaison/document existant à une attestation de ses 7 objets.
+Deux contre-revues indépendantes GO bornés au diagnostic readonly ; ni
+autorisation d'écriture ni validation commerciale ou appareil impliquées.
+
+Ce diagnostic prépare le remplacement protégé d'un espace déjà importé, mais
+ne l'effectue pas : journal v11, fichiers partagés, suppressions, résolution,
+UI et validation terrain restent requis. W06 et l'objectif complet incluant
+abonnements/crédits ne sont pas terminés. Aucun déploiement après #487 revendiqué.

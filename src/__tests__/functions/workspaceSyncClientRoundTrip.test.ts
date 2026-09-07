@@ -479,6 +479,42 @@ async function readyProfile(next: Profile) {
   await (await import('../../services/storage')).bootstrapConversationStorage()
   const box = await localBox(); await box.unlock(code); return box
 }
+it('materialized coverage uses the real private M after cold import with an EMPTY selection, returning counts only and writing nothing', async () => {
+  const f = await pendingFirstApply(); await (await coldApply()).resume()
+  const box = await reopenBox(), actor = box.connect(); await actor.receive()
+  expect(box.snapshot.remote!.selection).toEqual({ conversationIds: [], projectIds: [] })
+  const before = await rows(), view = box.snapshot, traffic = exchanges.length, originalHistory = localStorage.getItem(f.historyKey)
+  const encrypt = vi.spyOn(crypto.subtle, 'encrypt'), random = vi.spyOn(crypto, 'randomUUID')
+  const report = await actor.inspectMaterialized()
+  expect(report).toEqual({ status: 'materialized-reviewed-not-applied', local: { requested: 5, inspected: 5, equal: 5, different: 0,
+    missing: 0, unreadable: 0, notInspected: 0, missingDependencies: 0, remoteClosureChecked: false, writeAuthorized: false },
+    remote: { conflicts: 0, deletedVariants: 0, dependencyIssues: 0 } })
+  expect(Object.keys(report)).toEqual(['status', 'local', 'remote'])
+  expect(exchanges).toHaveLength(traffic); expect(encrypt).not.toHaveBeenCalled(); expect(random).not.toHaveBeenCalled()
+  expect(await rows()).toEqual(before); expect(box.snapshot).toEqual(view); expect(localStorage.getItem(f.historyKey)).toBe(originalHistory)
+  encrypt.mockRestore(); random.mockRestore()
+  const history = await import('../../services/storage'), chatId = view.bindings.find(b => b.kind === 'conversation' && b.presence === 'record')!.localId
+  await saveExact({ ...history.getConversation(chatId)!, messages: [...history.getConversation(chatId)!.messages,
+    { id: 'new-local-message', role: 'user', content: 'Not in M', timestamp: 3 }] })
+  report.local.equal = 999 // A detached count cannot be replayed as authority.
+  expect(await actor.inspectMaterialized()).toMatchObject({ local: { equal: 4, different: 1, missing: 0, unreadable: 0 } })
+  expect(box.snapshot.remote!.selection).toEqual({ conversationIds: [], projectIds: [] })
+}, 30_000)
+it.each(['durable-pair', 'grant', 'key', 'last-await-cache'])('materialized coverage rejects actual actor %s invalidation during private decryption', async mode => {
+  const f = await pendingFirstApply(); await (await coldApply()).resume()
+  const box = await reopenBox(), actor = box.connect(); await actor.receive(); await actor.prepareReceived()
+  const crypt = await import('../../services/crypto'), original = crypt.decrypt
+  vi.spyOn(crypt, 'decrypt').mockImplementationOnce(async cipher => {
+    const result = await original(cipher)
+    if (mode === 'durable-pair') await replaceRows(f.before)
+    if (mode === 'key') box.lock()
+    if (mode === 'grant') (await import('../../services/googleAuth')).logout()
+    if (mode === 'last-await-cache') (await import('../../services/storage')).getConversations()[0]!.title = 'Changed during decrypt'
+    return result
+  })
+  await expect(actor.inspectMaterialized()).rejects.toThrow()
+  expect(await controlRoot()).toMatchObject({ state: 'ready' })
+}, 30_000)
 // Real two-device import/edit/publication, not a fabricated M or conflict DTO.
 // Only the delete variant uses the lower causal adapter: deletion capture/UI
 // remains a separate, unfinished writer contract.
@@ -1041,6 +1077,9 @@ it('two storage-prepared profiles apply comparison/gallery/documents through the
   const captureSelection = { conversationIds: imported.map(c => c.id), projectIds: [projectId] }
   const capture = await (await import('../../services/workspaceSync/capture')).captureLocalSyncSnapshot(state.localHead, state.bindings, captureSelection)
   expect(capture.changed).toBe(false); expect(capture.payloads.size).toBe(0)
+  const diagnostic = reopened.connect(); await diagnostic.receive()
+  expect(await diagnostic.inspectMaterialized()).toMatchObject({ local: { requested: 7, equal: 7, unreadable: 0, missing: 0 }, remote: { dependencyIssues: 0 } })
+  diagnostic.close()
   const edited = imported[0]!; edited.title = 'Edited after receive'; await saveExact(edited)
   expect(await reopened.capture(captureSelection)).toMatchObject({ status: 'adopted', report: { changedObjects: 1 } })
   expect((await rows()).find(r => (r.key as string[])[0] === 'sync-state')!.value.version).toBe(2)

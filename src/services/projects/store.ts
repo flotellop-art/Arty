@@ -1,5 +1,5 @@
 import { openDB, type IDBPDatabase, type IDBPTransaction } from 'idb'
-import { captureCryptoGuard, captureCryptoGenerationGuard, encrypt, decrypt, isCryptoReady, isCryptoContextChanged } from '../crypto'
+import { captureCryptoGuard, captureCryptoGenerationGuard, encrypt, isCryptoReady, isCryptoContextChanged } from '../crypto'
 import { getActiveUserId, getActiveSessionEpoch, getKnownSessions, getSessionProjectFence, PROJECT_ERASURE_FENCE_KEY } from '../userSession'
 import { assertPreparedForOperation, consumePreparedDocument } from './documentImport'
 import { generateId } from '../../utils/generateId'
@@ -11,20 +11,13 @@ import { parseRemoteErasure, type RemoteErasureIntent } from '../accountErasureP
 import { parseAccountErasureRecord } from '../accountErasureJournal'
 import { parseSyncStorageKey, parseSyncStorageRow, syncStorageContext } from '../workspaceSync/localFormat'
 export { blockProjectOperations } from './localErasureGuard'
-import { PROJECT_LIMITS, ProjectError, boundedInteger, validProject, validProjectId, validDescriptor,
-  type PreparedProjectDocument, type ProjectDocument, type Project, type ProjectSummary } from './types'
+import { PROJECT_LIMITS, ProjectError, boundedInteger, validProject, validProjectId,
+  type PreparedProjectDocument, type Project, type ProjectSummary } from './types'
+import { validProjectRow as validRow, decodeProjectSnapshot, decodeDocumentSnapshot, snapshotDescriptor, verifyOriginal,
+  type ProjectRow, type DocumentRow, type DocumentPayload } from './snapshotDecoding'
 
 const STORES = ['projects', 'documents', 'usage', 'meta'] as const
 type Transaction = IDBPTransaction<unknown, string[], 'readwrite'>
-type ProjectRow = {
-  key: [string, string]; owner: string; id: string; revision: number; state: 'live' | 'deleted'
-  euOnly: boolean; createdAt: number; updatedAt: number; cipher: string | null
-}
-type DocumentRow = {
-  key: [string, string, string, 'source' | 'text' | 'tombstone']; owner: string; projectId: string; id: string
-  kind: 'source' | 'text' | 'tombstone'; state: 'live' | 'deleted'; sourceBytes: number; textChars: number
-  updatedAt: number; cipher: string | null
-}
 type Usage = { owner: string; projects: number; documents: number; sourceBytes: number }
 let dbPromise: Promise<IDBPDatabase> | null = null
 
@@ -153,21 +146,14 @@ async function checkFence(tx: Transaction, operation: ProjectOperation): Promise
   if (await tx.objectStore('meta').get(['erasing', operation.owner])) throw new ProjectError('cancelled')
   checkOperation(operation)
 }
-function validRow(row: ProjectRow, owner: string, id: string): boolean {
-  return row.owner === owner && row.id === id && Array.isArray(row.key) && row.key.length === 2 && row.key[0] === owner && row.key[1] === id &&
-    validProjectId(id) && boundedInteger(row.revision) && row.revision > 0 && typeof row.euOnly === 'boolean' &&
-    boundedInteger(row.createdAt) && boundedInteger(row.updatedAt) && ['live', 'deleted'].includes(row.state)
-}
 async function decodeProject(operation: ProjectOperation, row: ProjectRow): Promise<Project> {
   checkOperation(operation)
   if (!validRow(row, operation.owner, row.id)) throw new ProjectError('corrupt')
   if (row.state === 'deleted') throw new ProjectError('deleted')
   if (typeof row.cipher !== 'string' || row.cipher.length > 100_000) throw new ProjectError('locked')
   try {
-    const payload = JSON.parse(await decrypt(row.cipher)) as Project
+    const payload = await decodeProjectSnapshot(operation.owner, row, () => checkOperation(operation))
     await assertProjectOperation(operation)
-    if (!validProject(payload) || payload.owner !== operation.owner || payload.id !== row.id || payload.revision !== row.revision ||
-      payload.euOnly !== row.euOnly || payload.createdAt !== row.createdAt || payload.updatedAt !== row.updatedAt) throw new ProjectError('locked')
     const current = await (await operationDB(operation)).get('projects', [operation.owner, row.id]) as ProjectRow | undefined
     checkOperation(operation)
     if (!current || current.state === 'deleted') throw new ProjectError('deleted')
@@ -309,25 +295,6 @@ async function requireProject(operation: ProjectOperation, id: string, revision:
   return summary.project
 }
 
-type DocumentPayload = {
-  schema: 1; owner: string; projectId: string; kind: 'source' | 'text'; descriptor: ProjectDocument; content: string
-}
-function snapshotDescriptor(d: ProjectDocument): ProjectDocument {
-  if (!validDescriptor(d)) throw new ProjectError('corrupt')
-  return { id: d.id, name: d.name, originalName: d.originalName, format: d.format, revision: d.revision,
-    sourceHash: d.sourceHash, sourceBytes: d.sourceBytes, textChars: d.textChars, extractorVersion: d.extractorVersion, createdAt: d.createdAt }
-}
-function sameDescriptor(a: ProjectDocument, b: ProjectDocument): boolean {
-  return JSON.stringify(snapshotDescriptor(a)) === JSON.stringify(snapshotDescriptor(b))
-}
-async function verifyOriginal(base64: string, descriptor: ProjectDocument): Promise<void> {
-  if (base64.length !== 4 * Math.ceil(descriptor.sourceBytes / 3) || !/^[A-Za-z0-9+/]*={0,2}$/.test(base64)) throw new ProjectError('corrupt')
-  let bytes: Uint8Array
-  try { bytes = Uint8Array.from(atob(base64), c => c.charCodeAt(0)) } catch { throw new ProjectError('corrupt') }
-  if (bytes.length !== descriptor.sourceBytes) throw new ProjectError('corrupt')
-  const hash = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes)), byte => byte.toString(16).padStart(2, '0')).join('')
-  if (hash !== descriptor.sourceHash) throw new ProjectError('corrupt')
-}
 export async function addProjectDocument(operation: ProjectOperation, project: Project, prepared: PreparedProjectDocument): Promise<Project> {
   checkOperation(operation)
   assertPreparedForOperation(prepared, operation)
@@ -359,22 +326,12 @@ async function readDocument(operation: ProjectOperation, project: Project, docum
   const key = [operation.owner, current.id, documentId, kind]
   const row = await db.get('documents', key) as DocumentRow | undefined
   checkOperation(operation)
-  const maxPlainChars = (kind === 'source' ? 4 * Math.ceil(descriptor.sourceBytes / 3) : descriptor.textChars * 6) + 5000
-  if (!row || row.owner !== operation.owner || row.projectId !== current.id || row.id !== documentId || row.kind !== kind || row.state !== 'live' ||
-    JSON.stringify(row.key) !== JSON.stringify(key) || row.sourceBytes !== descriptor.sourceBytes || row.textChars !== descriptor.textChars ||
-    typeof row.cipher !== 'string' || row.cipher.length > maxPlainChars * 2) throw new ProjectError('locked')
   try {
-    const plain = await decrypt(row.cipher); checkOperation(operation)
-    if (plain.length > maxPlainChars) throw new ProjectError('locked')
-    const payload = JSON.parse(plain) as DocumentPayload
-    if (payload.schema !== 1 || payload.owner !== operation.owner || payload.projectId !== current.id || payload.kind !== kind ||
-      !sameDescriptor(payload.descriptor, descriptor) || typeof payload.content !== 'string') throw new ProjectError('locked')
-    if (kind === 'text' && payload.content.length !== descriptor.textChars) throw new ProjectError('locked')
-    if (kind === 'source') await verifyOriginal(payload.content, descriptor)
+    const content = await decodeDocumentSnapshot(operation.owner, current, documentId, kind, row, () => checkOperation(operation))
     await assertProjectOperation(operation)
     // A project/document deleted or replaced during decryption is not published.
     await requireProject(operation, current.id, current.revision)
-    return payload.content
+    return content
   } catch (error) {
     checkOperation(operation)
     if (isCryptoContextChanged(error)) throw new ProjectError('cancelled')
