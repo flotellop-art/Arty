@@ -1,5 +1,6 @@
+import { readTrialCounterRemaining } from '../_lib/trialAdmission'
 import type { Env } from '../../env'
-import { verifyGoogleUserStrict } from '../_lib/checkAllowedUser'
+import { checkAllowedVerifiedUserPeek, verifyGoogleUserStrict } from '../_lib/checkAllowedUser'
 import { readWalletBalance } from '../_lib/wallet'
 
 // GET /api/wallet/balance — solde de crédits prépayés de l'utilisateur.
@@ -18,8 +19,18 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
   if (result.status === 'unavailable') return Response.json(
     { error: 'wallet_temporarily_unavailable' }, { status: 503, headers: { 'cache-control': 'no-store' } },
   )
+  const user = await checkAllowedVerifiedUserPeek(email, env)
+  let trialState: 'unknown' | 'active' | 'exhausted' | 'outside-trial' = 'unknown'
+  if (user && 'planType' in user) {
+    if (user.planType !== 'trial') trialState = 'outside-trial'
+    else {
+      const remaining = await readTrialCounterRemaining(env, email, 'trial_usage')
+      if (remaining !== null) trialState = remaining === 0 ? 'exhausted' : 'active'
+    }
+  }
   const bal = result.status === 'ready' ? result.balance : null
   return Response.json({
+    trialState,
     hasWallet: bal !== null,
     balanceMicro: bal?.balanceMicro ?? 0,
     reservedMicro: bal?.reservedMicro ?? 0,

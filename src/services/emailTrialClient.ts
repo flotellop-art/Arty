@@ -88,7 +88,7 @@ export async function requestOtp(email: string, turnstileToken?: string): Promis
 export async function verifyOtp(
   email: string,
   code: string
-): Promise<{ token: string; email: string }> {
+): Promise<{ token: string; email: string; trial_messages_remaining?: number | null }> {
   let res: Response
   try {
     res = await fetch(apiUrl('/api/auth/email/verify-otp'), {
@@ -100,5 +100,5 @@ export async function verifyOtp(
     throw new EmailTrialError('network')
   }
   if (!res.ok) throw new EmailTrialError(await errorCode(res))
-  return (await res.json()) as { token: string; email: string }
+  return (await res.json()) as { token: string; email: string; trial_messages_remaining?: number | null }
 }

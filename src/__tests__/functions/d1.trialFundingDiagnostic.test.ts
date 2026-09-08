@@ -20,7 +20,8 @@ beforeEach(async () => {
   await h.db.prepare('DELETE FROM subsidized_budget_v1').run()
   await h.db.prepare("INSERT INTO subsidized_budget_v1(scope,revision,enabled,limit_micro_usd,limit_attempts) VALUES('arty-subsidized',1,1,50000000,10)").run()
   await h.db.prepare("INSERT INTO subscriptions(user_email,status,plan_type) VALUES(?,'active','trial')").bind(EMAIL).run()
-  await h.db.prepare('INSERT INTO trial_usage(email,used,updated_at) VALUES(?,30,123)').bind(EMAIL).run()
+  await h.db.prepare('INSERT INTO trial_usage(email,used,updated_at) VALUES(?,17,123)').bind(EMAIL).run()
+  await h.db.prepare('INSERT INTO email_trial_usage(email,used,updated_at) VALUES(?,13,123)').bind(EMAIL).run()
   await h.db.prepare('INSERT INTO wallet(user_email,balance_micro) VALUES(?,100000000)').bind(EMAIL).run()
   vi.spyOn(Math, 'random').mockReturnValue(1)
 })
@@ -98,6 +99,16 @@ it.each([
     } })
   }
   h.env.DB = new Proxy(h.db, { get(target, key) {
+    if (key === 'batch') return (statements: D1PreparedStatement[]) => {
+      const entry: Trace = { operation: 'trial-batch', startMs: performance.now() - start }; trace.push(entry)
+      const task = (async () => {
+        if (fault === 'sql-error') throw new Error('synthetic SQL failure')
+        const result = await target.batch(statements); entry.sqlMs = performance.now() - start
+        if (['insert-late', 'read-late', 'combined-late'].includes(fault)) await new Promise(resolve => setTimeout(resolve, 350))
+        if (fault === 'corrupt-read') result[result.length - 1].results = [{ total: 0, invalid: 1 }]
+        entry.endMs = performance.now() - start; return result
+      })(); pending.push(task); return task
+    }
     if (key === 'prepare') return (sql: string) => {
       const entry: Trace = { operation: `prepare: ${sql.trim().replace(/\s+/g, ' ')}`, startMs: performance.now() - start }
       trace.push(entry)
@@ -133,7 +144,7 @@ it.each([
     tickets: (await h.db.prepare('SELECT id FROM subsidized_attempt_v1').all()).results,
     providerCalls,
   }
-  const trialStart = trace.find(row => row.operation === 'trial-insert')?.startMs
+  const trialStart = trace.find(row => row.operation === 'trial-batch')?.startMs
   const record = { fault, status: response.status, body: responseBody, responseMs,
     admissionMsAtResponse: trialStart === undefined ? null : responseMs - trialStart,
     authCalls, trace, financialState,
@@ -142,7 +153,7 @@ it.each([
   }
   evidence.push(record)
   // Read all financial evidence BEFORE asserting status, even on failure.
-  expect(financialState).toEqual({ trial: { used: 30, updated_at: 123 },
+  expect(financialState).toEqual({ trial: { used: 17, updated_at: 123 },
     wallet: { balance_micro: 100000000, reserved_micro: 0 }, holds: [], tickets: [], providerCalls: 0 })
   expect(authCalls).toBe(1)
   expect(backgroundOutcomes.every(value => value.status === 'fulfilled')).toBe(true)

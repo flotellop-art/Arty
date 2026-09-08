@@ -121,19 +121,17 @@ describe('qualified chat funding and outcome boundaries, actual local D1', () =>
     let interceptedRead: Promise<Record<string, unknown> | null> | undefined
     const lateRead = new Promise<void>(resolve => { releaseRead = resolve })
     h.env.DB = new Proxy(h.db, { get(target, key) {
-      if (key === 'prepare') return (sql: string) => {
-        const statement = target.prepare(sql)
-        if (sql !== 'SELECT used FROM trial_usage WHERE email = ?1') return statement
-        return { bind: (...values: unknown[]) => ({ first: () => {
-          reads++; readOwner = values[0]
-          interceptedRead = (async () => {
-            if (fault === 'error') throw new Error('synthetic trial snapshot failure')
-            const row = await statement.bind(...values).first<Record<string, unknown>>()
-            if (fault === 'late') await lateRead
-            return fault === 'corrupt' ? { ...row, used: -1 } : row
-          })()
-          return interceptedRead
-        } }) }
+      if (key === 'batch') return async (statements: D1PreparedStatement[]) => {
+        reads++; readOwner = EMAIL
+        let results: D1Result[] = []
+        interceptedRead = (async () => {
+          if (fault === 'error') throw new Error('synthetic trial snapshot failure')
+          results = await target.batch(statements)
+          if (fault === 'late') await lateRead
+          if (fault === 'corrupt') results[results.length - 1].results = [{ total: 0, invalid: 1 }]
+          return { used: fault === 'corrupt' ? -1 : 30 }
+        })()
+        await interceptedRead; return results
       }
       const value = Reflect.get(target, key); return typeof value === 'function' ? value.bind(target) : value
     } })
@@ -224,14 +222,10 @@ describe('qualified chat funding and outcome boundaries, actual local D1', () =>
     await h.db.prepare('INSERT INTO wallet (user_email,balance_micro) VALUES (?,100000000)').bind(EMAIL).run()
     let changed = false
     h.env.DB = new Proxy(h.db, { get(target, key) {
-      if (key === 'prepare') return (sql: string) => {
-        const stmt = target.prepare(sql)
-        if (!sql.includes('SELECT used FROM trial_usage WHERE email = ?1')) return stmt
-        return { bind: (...values: unknown[]) => ({ first: async () => {
-          const row = await stmt.bind(...values).first()
-          if (!changed) { changed = true; await h.db.prepare('UPDATE trial_usage SET used=7').run() }
-          return row
-        } }) }
+      if (key === 'batch') return async (statements: D1PreparedStatement[]) => {
+        const result = await target.batch(statements)
+        if (!changed) { changed = true; await h.db.prepare('UPDATE trial_usage SET used=7').run() }
+        return result
       }
       const value = Reflect.get(target, key); return typeof value === 'function' ? value.bind(target) : value
     } })

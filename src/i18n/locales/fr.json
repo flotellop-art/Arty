@@ -1762,6 +1762,7 @@
     "autoChecksToday_other": "Vérifications auto aujourd'hui : {{count}} — hors quota premium (compteur de fond dédié)"
   },
   "onboardingChoice": {
+    "trialBenefitNote": "Les 30 admissions sont communes aux connexions Google et e-mail correspondantes. Les variantes « + » partagent aussi cette limite.",
     "tryFree": {
       "title": "Essaie Arty gratuitement",
       "subtitle": "30 messages offerts. Sans carte bancaire.",

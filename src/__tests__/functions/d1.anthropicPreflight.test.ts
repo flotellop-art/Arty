@@ -84,7 +84,7 @@ describe('Anthropic preflight before every funding mutation — real local D1', 
     expect(sent).toHaveLength(0)
     expect(await counters()).toEqual([{ used: 7 }, { used: 13 }])
   })
-  it.each(paths)('%s preserves attachments, cache, custom/native tools, signatures, headers and funding', async path => {
+  it.each(paths)('%s preserves paid tools or refuses unsupported free tools without spending', async path => {
     await seed(path)
     const subsidized = path === 'google' || path === 'otp' || path === 'free'
     if (subsidized) await fundSyntheticSubsidizedBudget(h.db)
@@ -97,6 +97,15 @@ describe('Anthropic preflight before every funding mutation — real local D1', 
           { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: 'JVBERi0xLjQK' } },
           { type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'iVBORw0KGgo=' } }] }] }] }
     const response = await invoke(request(path, JSON.stringify(body)))
+    if (subsidized) {
+      expect(response.status).toBe(400)
+      expect(await response.json()).toMatchObject({ error: 'subsidized_request_unsupported' })
+      await Promise.all(background)
+      expect(sent).toHaveLength(0)
+      expect(await counters()).toEqual([{ used: 7 }, { used: 13 }])
+      expect((await h.db.prepare('SELECT id FROM subsidized_attempt_v1').all()).results).toEqual([])
+      return
+    }
     expect(response.status).toBe(200)
     await response.text(); await Promise.all(background)
     expect(sent).toHaveLength(1)
@@ -130,8 +139,8 @@ describe('Anthropic preflight before every funding mutation — real local D1', 
     expect(response.status).toBe(200)
     await response.text(); await Promise.all(background)
     if (path === 'google' || path === 'otp') {
-      expect(sent[0].body).toEqual({ model: MODEL, max_tokens: 64000, stream: false,
-        tools: [body.tools[1]], messages: body.messages, service_tier: 'standard_only' })
+      expect(sent[0].body).toEqual({ model: MODEL, max_tokens: 2000, stream: false,
+        tools: [{ ...body.tools[1], max_uses: 1 }], messages: body.messages, service_tier: 'standard_only' })
     } else expect(sent[0].body).toEqual(body)
   })
   it('refuses oversized declared input before trial consumption', async () => {
@@ -158,7 +167,7 @@ describe('Anthropic preflight before every funding mutation — real local D1', 
     const response = await invoke(request('free', JSON.stringify(body)))
     expect(response.status).toBe(200)
     await response.text(); await Promise.all(background)
-    expect(sent[0].body).toEqual({ ...body, service_tier: 'standard_only' })
+    expect(sent[0].body).toEqual({ ...body, max_tokens: 2000, service_tier: 'standard_only' })
   })
   it.each(['free', 'google', 'otp'] as const)('%s refuses missing max_tokens before provider/subsidy and compensates only its trial debit', async path => {
     await seed(path); await fundSyntheticSubsidizedBudget(h.db)

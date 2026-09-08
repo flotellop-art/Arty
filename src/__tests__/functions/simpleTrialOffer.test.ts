@@ -38,12 +38,19 @@ beforeEach(() => {
   raw = new DatabaseSync(':memory:'); raw.exec(readFileSync('schema.sql', 'utf8'))
   const db = { prepare(sql: string) {
     let args: (string|number)[] = []
+    function query() { const stmt = raw.prepare(sql); stmt.setAllowUnknownNamedParameters(true); return stmt }
+    function bindings() { return Object.fromEntries(args.map((v, i) => [String(i + 1), v])) }
     return {
       bind(...values: (string|number)[]) { args = values; return this },
-      async first() { const row = raw.prepare(sql).get(...args); return row ? { ...row } : null },
-      async run() { const result = raw.prepare(sql).run(...args); return { success: true, meta: { changes: Number(result.changes) } } },
-      async all() { return { success: true, results: raw.prepare(sql).all(...args).map(r => ({ ...r })) } },
+      async first() { const row = query().get(...(sql.includes('?1') || sql.includes('?2') ? [bindings()] : args)); return row ? { ...row } : null },
+      async run() { const result = query().run(...(sql.includes('?1') || sql.includes('?2') ? [bindings()] : args)); return { success: true, meta: { changes: Number(result.changes) } } },
+      async all() { return { success: true, results: query().all(...(sql.includes('?1') || sql.includes('?2') ? [bindings()] : args)).map(r => ({ ...r })) } },
     }
+  }, async batch(statements: D1PreparedStatement[]) {
+    raw.exec('BEGIN')
+    try { const results = []; for (const statement of statements) results.push(await statement.all())
+      raw.exec('COMMIT'); return results
+    } catch (error) { raw.exec('ROLLBACK'); throw error }
   } } as unknown as D1Database
   env = { DB: db, GOOGLE_CLIENT_ID: 'synthetic-client', ANTHROPIC_API_KEY: 'synthetic', OPENAI_API_KEY: 'synthetic',
     MISTRAL_API_KEY: 'synthetic', GEMINI_API_KEY: 'synthetic', LINKUP_API_KEY: 'synthetic', GOOGLE_MAPS_API_KEY: 'synthetic' } as Env

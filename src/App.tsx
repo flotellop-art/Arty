@@ -1054,7 +1054,7 @@ export default function App() {
         const tokens = await exchangeCode(code, undefined, false)
         const user = await fetchGoogleUser(tokens.access_token, false)
         // Pose le splash post-login (vip|trial) AVANT de flipper l'auth.
-        await initTrial(tokens.access_token)
+        await initTrial(tokens.access_token, user.email)
         const { generateUserId } = await import('./services/userSession')
         const userId = await generateUserId('google', user.email)
         const { getJSONForUser } = await import('./services/scopedStorage')
@@ -1092,7 +1092,13 @@ export default function App() {
   }, [deepLinkCode])
 
   const [choiceDone, setChoiceDone] = useState(isOnboardingChoiceDone)
-  const [splash, setSplash] = useState(() => getOnboardingSplash())
+  const [splash, setSplash] = useState(() => getOnboardingSplash(auth.currentUser?.userId ?? null))
+  useEffect(() => {
+    const refresh = () => setSplash(getOnboardingSplash(auth.currentUser?.userId ?? null))
+    refresh()
+    window.addEventListener('arty-trial-remaining-changed', refresh)
+    return () => window.removeEventListener('arty-trial-remaining-changed', refresh)
+  }, [auth.currentUser?.userId])
 
   if (!auth.isAuthenticated) {
     // Le routeur englobe TOUTE la zone non authentifiée. Avant, la branche
@@ -1140,7 +1146,7 @@ export default function App() {
 
   // Authenticated. If we just came back from Google with a fresh trial /
   // VIP plan, show the matching splash before mounting the main app.
-  if (splash === 'vip') {
+  if (splash === 'vip' && getOnboardingSplash(auth.currentUser?.userId ?? null) === 'vip') {
     return (
       <VipSplash
         onDone={() => {
@@ -1150,7 +1156,7 @@ export default function App() {
       />
     )
   }
-  if (splash === 'trial') {
+  if (splash === 'trial' && getOnboardingSplash(auth.currentUser?.userId ?? null) === 'trial') {
     return (
       <TrialIntro
         onDone={() => {
@@ -1293,13 +1299,13 @@ function LoggedOutHome({
           markOnboardingChoiceDone()
           setChoiceDone(true)
         }}
-        onEmailTrialLogin={async (email, token) => {
+        onEmailTrialLogin={async (email, token, remaining) => {
           // Crée la session AVANT de stocker le jeton (scopedStorage a besoin
           // du préfixe userId actif). Pas de clé BYOK → 'server-provided'
           // (même posture que Google sans BYOK, BUG 25). Identifiant namespacé
           // `emailtrial:` pour ne JAMAIS collisionner avec le compte local
           // email+password ni le compte Google du même email.
-          await auth.login('email', {
+          const session = await auth.login('email', {
             displayName: email,
             email,
             anthropicKey: 'server-provided',
@@ -1307,7 +1313,7 @@ function LoggedOutHome({
           }, async () => {
             setTrialToken(token)
           })
-          initEmailTrialSplash(30)
+          initEmailTrialSplash(remaining, session.userId)
           markOnboardingChoiceDone()
           setChoiceDone(true)
           setSplash(getOnboardingSplash())
@@ -1344,7 +1350,7 @@ function OAuthCallbackAuth({
       // Initialise (ou récupère) le statut trial AVANT de finaliser l'auth :
       // ça pose le splash post-login en localStorage avant que le state
       // React ne flippe et ne remonte le composant racine.
-      await initTrial(tokens.access_token)
+      await initTrial(tokens.access_token, user.email)
 
       // Check if this Google user already has API keys saved
       const { generateUserId } = await import('./services/userSession')

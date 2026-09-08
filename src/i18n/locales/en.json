@@ -1762,6 +1762,7 @@
     "autoChecksToday_other": "Auto fact-checks today: {{count}} — outside your premium quota (dedicated background counter)"
   },
   "onboardingChoice": {
+    "trialBenefitNote": "The 30 trial admissions are shared across matching Google and email logins. Plus-address variants also share this limit.",
     "tryFree": {
       "title": "Try Arty for free",
       "subtitle": "30 free messages. No credit card.",

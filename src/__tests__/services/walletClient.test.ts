@@ -17,9 +17,9 @@ vi.mock('../../services/apiBase', () => ({ apiUrl: (p: string) => p }))
 
 import { creditsCoverPremium, getCachedWalletAvailableMicro, fetchWalletBalance, clearWalletCache, hasWalletCached, getWalletSnapshot, onWalletBalanceChanged } from '../../services/walletClient'
 
-async function setWallet(micro: number | null) {
+async function setWallet(micro: number | null, trialState: string | undefined = 'outside-trial') {
   if (micro === null) { clearWalletCache(); return }
-  vi.stubGlobal('fetch', vi.fn(async () => Response.json({ hasWallet: true, balanceMicro: micro, reservedMicro: 0, availableMicro: micro, reversalPending: false })))
+  vi.stubGlobal('fetch', vi.fn(async () => Response.json({ trialState, hasWallet: true, balanceMicro: micro, reservedMicro: 0, availableMicro: micro, reversalPending: false })))
   await fetchWalletBalance()
 }
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); clearWalletCache() })
@@ -41,6 +41,7 @@ describe('creditsCoverPremium — débloque le premium seulement APRÈS l\'essai
   it('false avec crédits MAIS essai encore actif (restant > 0)', async () => {
     await setWallet(40_000_000)
     trialRemaining = 12
+    window.dispatchEvent(new CustomEvent('arty-trial-remaining-changed'))
     expect(creditsCoverPremium()).toBe(false)
   })
 
@@ -56,6 +57,43 @@ describe('creditsCoverPremium — débloque le premium seulement APRÈS l\'essai
     expect(creditsCoverPremium()).toBe(true)
   })
 
+  it('an older server with no trial classification cannot unlock credits from a missing display cache', async () => {
+    trialRemaining = null
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json({ hasWallet: true, balanceMicro: 9000, reservedMicro: 0, availableMicro: 9000, reversalPending: false })))
+    await fetchWalletBalance()
+    expect(getWalletSnapshot()?.trialState).toBe('unknown')
+    expect(creditsCoverPremium()).toBe(false)
+  })
+  it.each(['unknown', 'active', undefined, 'invalid'])('never opens premium on unverified/active classification %s', async state => {
+    await setWallet(9000, state === undefined ? 'unknown' : state)
+    trialRemaining = null
+    expect(creditsCoverPremium()).toBe(false)
+  })
+  it.each(['exhausted', 'outside-trial'])('fresh %s supersedes an old positive display from another channel', async state => {
+    trialRemaining = 20
+    await setWallet(9000, state)
+    expect(creditsCoverPremium()).toBe(true)
+  })
+  it('new unknown quota after a wallet receipt closes it until refreshed', async () => {
+    await setWallet(9000)
+    trialRemaining = null
+    window.dispatchEvent(new CustomEvent('arty-trial-remaining-changed'))
+    expect(creditsCoverPremium()).toBe(false)
+    await setWallet(9000)
+    expect(creditsCoverPremium()).toBe(true)
+  })
+  it('a quota update during a held wallet read cannot be erased by its late response', async () => {
+    let release!: (r: Response) => void
+    const http = vi.fn(() => new Promise<Response>(resolve => { release = resolve }))
+    vi.stubGlobal('fetch', http)
+    const reading = fetchWalletBalance()
+    await vi.waitFor(() => expect(http).toHaveBeenCalledOnce())
+    trialRemaining = 20
+    window.dispatchEvent(new CustomEvent('arty-trial-remaining-changed'))
+    release(Response.json({ trialState: 'outside-trial', hasWallet: true, balanceMicro: 9000, reservedMicro: 0, availableMicro: 9000, reversalPending: false }))
+    await reading
+    expect(creditsCoverPremium()).toBe(false)
+  })
   it('reads only the verified current in-memory snapshot', async () => {
     localStorage.setItem('arty-wallet-available', '9000000')
     expect(getCachedWalletAvailableMicro()).toBe(0)

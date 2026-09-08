@@ -4,16 +4,21 @@ import type { Env } from '../../../functions/env'
 
 function fixture(read: () => Promise<unknown>) {
   const first = vi.fn(read), bind = vi.fn(() => ({ first })), prepare = vi.fn(() => ({ bind }))
-  return { env: { DB: { prepare } } as unknown as Env, prepare, bind, first }
+  const batch = async () => { const row = await first() as { used?: unknown } | null
+    const valid = row === null || (typeof row.used === 'number' && Number.isInteger(row.used) && row.used >= 0 && row.used <= 30)
+    return [...Array.from({ length: 4 }, () => ({ success: true, results: [] })),
+      { success: true, results: [{ total: valid ? row?.used ?? 0 : 0, invalid: valid ? 0 : 1 }] }]
+  }
+  return { env: { DB: { prepare, batch } } as unknown as Env, prepare, bind, first }
 }
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks() })
 
 describe('continuation snapshot preserves the public trial identity contract', () => {
-  it.each(['trial_usage', 'email_trial_usage'] as const)('only reads the exact identity in %s', async table => {
+  it.each(['trial_usage', 'email_trial_usage'] as const)('reads the shared restriction without changing identity in %s', async table => {
     const f = fixture(async () => ({ used: 30 }))
     expect(await readTrialCounterRemaining(f.env, 'exact.name+tag@gmail.com', table)).toBe(0)
-    expect(f.prepare).toHaveBeenCalledExactlyOnceWith(`SELECT used FROM ${table} WHERE email = ?1`)
-    expect(f.bind).toHaveBeenCalledExactlyOnceWith('exact.name+tag@gmail.com')
+    expect(f.prepare).toHaveBeenCalledTimes(5)
+    expect(f.bind).toHaveBeenCalledExactlyOnceWith('exact.name+tag@gmail.com', 'exactname@gmail.com')
     expect(f.first).toHaveBeenCalledOnce()
   })
   it.each([{ row: null, remaining: 30 }, { row: { used: 0 }, remaining: 30 }, { row: { used: 7 }, remaining: 23 },
