@@ -40,6 +40,26 @@ beforeEach(async () => {
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals() })
 
 describe('real text-client handling of an unconfirmed admission', () => {
+  it.each(['fr', 'en'])('localizes the terminal transport refusal in %s without retry', async language => {
+    await i18n.changeLanguage(language)
+    const http = vi.fn(async () => Response.json({ error: 'upstream_outcome_unknown' }, { status: 409 }))
+    vi.stubGlobal('fetch', http)
+    const call = invoke('anthropic')
+    expect((await call.outcome).message).toBe(i18n.t('errors.apiOutcomeUnknown'))
+    expect(http).toHaveBeenCalledOnce(); expect(getTrialRemaining()).toBe(17)
+  })
+  it.each([
+    ['subsidized_budget_exhausted', 503, 'SubsidizedBudgetExhaustedError', 'errors.subsidizedBudgetExhausted'],
+    ['subsidized_request_unsupported', 400, 'SubsidizedRequestUnsupportedError', 'errors.subsidizedRequestUnsupported'],
+  ] as const)('Anthropic treats %s as terminal without spending credits or expiring the trial', async (error, status, name, message) => {
+    const http = vi.fn(async () => Response.json({ error }, { status }))
+    vi.stubGlobal('fetch', http)
+    const call = invoke('anthropic')
+    expect(await call.outcome).toMatchObject({ name, message: i18n.t(message) })
+    expect(http).toHaveBeenCalledOnce(); expect(call.onError).toHaveBeenCalledOnce()
+    expect(getTrialRemaining()).toBe(17); expect(getActiveUserId()).toBe('admission-test-user')
+    expect(call.onToolCall).not.toHaveBeenCalled(); expect(call.onDone).not.toHaveBeenCalled()
+  })
   it.each(providers)('%s reports the localized temporary refusal once without replaying any AI/tool call', async provider => {
     const http = vi.fn(async (_url: string, _init?: RequestInit) => Response.json({ error: 'admission_unavailable' }, { status: 503 }))
     vi.stubGlobal('fetch', http)

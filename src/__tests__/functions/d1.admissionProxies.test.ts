@@ -14,6 +14,7 @@ import { onRequestPost as trails } from '../../../functions/api/geo/trails'
 import { createSession, consumeEmailTrialMessage } from '../../../functions/api/_lib/emailTrial'
 import { checkAllowedVerifiedUser } from '../../../functions/api/_lib/checkAllowedUser'
 import { makeD1Harness, type D1Harness } from './d1Harness'
+import { fundSyntheticSubsidizedBudget } from './subsidizedBudgetFixture'
 
 const EMAIL = 'admission@example.test', CLIENT_ID = 'arty-client-id'
 const providers = [
@@ -96,7 +97,8 @@ function request(p: Provider, identity: Identity, byok = false) {
     ...(identity === 'google' ? { 'x-google-token': 'synthetic-google' } : { 'x-arty-trial-token': session }),
     ...(byok ? { [p.key]: p.key === 'authorization' ? 'Bearer synthetic-byok' : 'synthetic-byok' } : {}),
   }, body: JSON.stringify({ model: p.model, stream: false, max_tokens: 100,
-    messages: [{ role: 'user', content: 'Bonjour' }], contents: [{ role: 'user', parts: [{ text: 'Bonjour' }] }] }) })
+    messages: [{ role: 'user', content: 'Bonjour' }],
+    ...(p.name === 'anthropic' ? {} : { contents: [{ role: 'user', parts: [{ text: 'Bonjour' }] }] }) }) })
 }
 function invoke(p: Provider, identity: Identity, byok = false) {
   return p.call({ request: request(p, identity, byok), env: h.env,
@@ -189,6 +191,7 @@ describe.each(matrix)('$name / $identity admission', p => {
     } finally { release(); await Promise.allSettled(background) }
   })
   it('preserves an ordinary confirmed trial debit and does not use purchased credits', async () => {
+    if (p.name === 'anthropic') await fundSyntheticSubsidizedBudget(h.db)
     const response = await invoke(p, p.identity)
     expect(response.status).toBe(200)
     expect(response.headers.get('x-trial-remaining')).toBe(String(30 - initial - 1))

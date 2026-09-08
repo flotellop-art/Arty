@@ -1,4 +1,6 @@
 import { SYSTEM_PROMPT } from '../constants/systemPrompt'
+import { ANTHROPIC_CONTINUATION_PATH, ANTHROPIC_FUNDING_HEADER, ANTHROPIC_REQUIRE_FUNDING_HEADER,
+  parseAnthropicFunding, type AnthropicFunding } from '../../shared/anthropicFunding'
 import { walletReconciliationError } from './walletFailure'
 import { admissionUnavailableError } from './admissionFailure'
 import { TOOLS } from './toolDefinitions'
@@ -86,6 +88,9 @@ type ApiMessage = { role: string; content: string | ContentBlock[] | ToolResultB
 
 type SSEParseResult = {
   contentBlocks: ContentBlock[]
+  stopReason?: string
+  messageStopped: boolean
+  replaySafe: boolean
   inputTokens: number
   outputTokens: number
   cacheReadTokens: number
@@ -266,6 +271,7 @@ function formatApiError(status: number, body: string): string {
       // ce cas s'affichait comme une erreur générique, ce qui a envoyé le
       // diagnostic quatre fois dans le décor. Il porte désormais son nom.
       if (err === 'upstream_billing') return i18n.t('errors.apiUpstreamBilling')
+      if (status === 409 && err === 'upstream_outcome_unknown') return i18n.t('errors.apiOutcomeUnknown')
       return err
     }
 
@@ -315,8 +321,10 @@ async function fetchWithRetry(
   requestBody: string,
   apiKey: string | null,
   controller: AbortController,
+  attemptBudget: { remaining: number },
   assertRequestCurrent?: () => void,
   beforeDocumentRequest?: () => Promise<void>,
+  requiredFunding?: AnthropicFunding,
 ): Promise<Response> {
   const receipt = captureAiEntitlementReceipt(!apiKey || apiKey === 'server-provided', controller.signal, assertRequestCurrent)
   const maxRetries = 3
@@ -333,24 +341,47 @@ async function fetchWithRetry(
     extra: {
       'anthropic-version': '2023-06-01',
       'anthropic-beta': betaHeaders.join(','),
+      ...(requiredFunding ? { [ANTHROPIC_REQUIRE_FUNDING_HEADER]: requiredFunding } : {}),
     },
   })
 
   let response: Response | null = null
+  let requestFunding = requiredFunding
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    controller.signal.throwIfAborted(); assertRequestCurrent?.()
+    if (attemptBudget.remaining <= 0) throw new Error(i18n.t('errors.responseIncomplete'))
     await beforeDocumentRequest?.()
     assertRequestCurrent?.()
     controller.signal.throwIfAborted()
-    response = await fetch(apiUrl('/api/ai/proxy'), {
+    if (attemptBudget.remaining <= 0) throw new Error(i18n.t('errors.responseIncomplete'))
+    if (requestFunding) headers[ANTHROPIC_REQUIRE_FUNDING_HEADER] = requestFunding
+    attemptBudget.remaining--
+    response = await fetch(apiUrl(requestFunding ? ANTHROPIC_CONTINUATION_PATH : '/api/ai/proxy'), {
       method: 'POST',
       headers,
       body: requestBody,
       signal: controller.signal,
     })
     assertRequestCurrent?.()
+    controller.signal.throwIfAborted()
+    // Errors can consume the last trial message too. Bind every subsequent
+    // POST to its attested funding, not only successful pause_turn responses.
+    const receivedFunding = parseAnthropicFunding(response.headers.get(ANTHROPIC_FUNDING_HEADER))
+    if (requestFunding && response.ok && !receivedFunding) {
+      void response.body?.cancel().catch(() => undefined)
+      throw new Error(i18n.t('errors.continuationUnavailable'))
+    }
+    if (requestFunding && receivedFunding && receivedFunding !== requestFunding) {
+      void response.body?.cancel().catch(() => undefined)
+      throw Object.assign(new Error(i18n.t('errors.continuationFundingChanged')), { name: 'ContinuationFundingChangedError' })
+    }
+    receipt.updateTrial(response)
+    requestFunding ??= receivedFunding ?? undefined
 
     const isRetryable = response.status === 429 || response.status === 529 || response.status >= 500
-    if (response.ok || !isRetryable || attempt === maxRetries) break
+    // A missing receipt cannot justify another potentially paid attempt.
+    // Preserve its actual error (admission failure, legacy proxy, lost ACK).
+    if (response.ok || !isRetryable || attempt === maxRetries || attemptBudget.remaining === 0 || !receivedFunding) break
     if (response.status === 503) {
       const peek = await response.clone().text().catch(() => '')
       if (admissionUnavailableError(response.status, peek)) break
@@ -367,11 +398,11 @@ async function fetchWithRetry(
     }
 
     // Exponential backoff: 2s, 4s, 8s
+    void response.body?.cancel().catch(() => undefined)
     await new Promise((resolve) => setTimeout(resolve, Math.pow(2, attempt + 1) * 1000))
   }
 
-  // Met à jour le compteur trial local depuis le header x-trial-remaining.
-  receipt.updateTrial(response!)
+  controller.signal.throwIfAborted(); assertRequestCurrent?.()
 
   if (!response!.ok) {
     const body = await response!.text().catch(() => '')
@@ -407,18 +438,26 @@ const STREAM_INACTIVITY_TIMEOUT_MS = 90_000
 // déclencherait jamais onError et le spinner resterait éternel).
 async function readWithInactivityTimeout(
   reader: ReadableStreamDefaultReader<Uint8Array>,
-  timeoutMs: number
+  timeoutMs: number,
+  signal?: AbortSignal,
 ): Promise<ReadableStreamReadResult<Uint8Array>> {
   let timer: ReturnType<typeof setTimeout> | undefined
+  let onAbort: (() => void) | undefined
   try {
+    signal?.throwIfAborted()
     return await Promise.race([
       reader.read(),
       new Promise<never>((_, reject) => {
         timer = setTimeout(() => reject(new Error(i18n.t('errors.streamStalled'))), timeoutMs)
       }),
+      new Promise<never>((_, reject) => {
+        onAbort = () => reject(signal?.reason ?? new DOMException('Aborted', 'AbortError'))
+        signal?.addEventListener('abort', onAbort, { once: true })
+      }),
     ])
   } finally {
     clearTimeout(timer)
+    if (onAbort) signal?.removeEventListener('abort', onAbort)
   }
 }
 
@@ -427,10 +466,12 @@ async function readWithInactivityTimeout(
 export async function parseSSEStream(
   response: Response,
   onToken: (text: string) => void,
-  inactivityTimeoutMs: number = STREAM_INACTIVITY_TIMEOUT_MS
+  inactivityTimeoutMs: number = STREAM_INACTIVITY_TIMEOUT_MS,
+  signal?: AbortSignal,
+  assertRequestCurrent?: () => void,
 ): Promise<SSEParseResult> {
   const reader = response.body!.getReader()
-  const decoder = new TextDecoder()
+  const decoder = new TextDecoder('utf-8', { fatal: true })
 
   const contentBlocks: ContentBlock[] = []
   let currentToolInput = ''
@@ -439,6 +480,13 @@ export async function parseSSEStream(
   let currentTextCitations: AnthropicCitation[] = []
   let currentThinkingText = ''
   let currentThinkingSignature = ''
+  let currentBlockBase: Record<string, unknown> = {}
+  let currentBlockIndex: unknown
+  let nextBlockIndex = 0
+  let replaySafe = true
+  let sawMessageStart = false
+  let sawMessageDelta = false
+  let stopReason: string | undefined
   let inputTokens = 0
   let outputTokens = 0
   let cacheReadTokens = 0
@@ -456,14 +504,22 @@ export async function parseSSEStream(
 
   try {
     while (true) {
-      const { done, value } = await readWithInactivityTimeout(reader, inactivityTimeoutMs)
-      if (done) break
+      signal?.throwIfAborted(); assertRequestCurrent?.()
+      const { done, value } = await readWithInactivityTimeout(reader, inactivityTimeoutMs, signal)
+      signal?.throwIfAborted(); assertRequestCurrent?.()
+      if (done) {
+        try { decoder.decode() } catch { throw new Error(i18n.t('errors.responseIncomplete')) }
+        break
+      }
 
-      buffer += decoder.decode(value, { stream: true })
+      try { buffer += decoder.decode(value, { stream: true }) }
+      catch { throw new Error(i18n.t('errors.responseIncomplete')) }
       const lines = buffer.split('\n')
       buffer = lines.pop() || ''
 
-      for (const line of lines) {
+      for (const rawLine of lines) {
+        signal?.throwIfAborted(); assertRequestCurrent?.()
+        const line = rawLine.endsWith('\r') ? rawLine.slice(0, -1) : rawLine
         // LOW (audit étape 13) — reset eventType sur ligne vide. SSE spec :
         // chaque event est séparé par un blank line, et eventType devrait
         // se reset entre events. Sans ça, un data sans `event: ` aurait
@@ -486,11 +542,16 @@ export async function parseSSEStream(
         try {
           data = JSON.parse(jsonStr) as Record<string, unknown>
         } catch {
+          replaySafe = false
           continue
         }
+        if (!data || typeof data !== 'object' || Array.isArray(data)) { replaySafe = false; continue }
+        if (data.type !== eventType) replaySafe = false
 
         switch (eventType) {
           case 'message_start': {
+            if (sawMessageStart || currentBlockType || sawMessageDelta) replaySafe = false
+            sawMessageStart = true
             const message = data.message as { model?: string; usage?: { input_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number } } | undefined
             const usage = message?.usage
             if (usage) {
@@ -506,26 +567,37 @@ export async function parseSSEStream(
             break
           }
           case 'content_block_start': {
-            const block = data.content_block as { type?: string; id?: string; name?: string; data?: string } | undefined
+            if (!sawMessageStart || sawMessageDelta || currentBlockType || data.index !== nextBlockIndex) replaySafe = false
+            currentBlockIndex = data.index
+            nextBlockIndex++
+            const block = data.content_block as (Record<string, unknown> & { type?: string; id?: string; name?: string; data?: string }) | undefined
+            if (!block || typeof block !== 'object' || Array.isArray(block)) { replaySafe = false; break }
+            currentBlockBase = { ...block }
+            if (block.type === 'text' && block.text !== undefined && typeof block.text !== 'string') replaySafe = false
+            if (block.type === 'thinking' && ((block.thinking !== undefined && typeof block.thinking !== 'string')
+              || (block.signature !== undefined && typeof block.signature !== 'string'))) replaySafe = false
+            if ((block.type === 'tool_use' || block.type === 'server_tool_use') && block.input !== undefined
+              && (!block.input || typeof block.input !== 'object' || Array.isArray(block.input))) replaySafe = false
             if (block?.type === 'text') {
               currentBlockType = 'text'
-              currentTextContent = ''
-              currentTextCitations = []
+              currentTextContent = typeof block.text === 'string' ? block.text : ''
+              currentTextCitations = Array.isArray(block.citations) ? [...block.citations] : []
+              if (currentTextContent) onToken(currentTextContent)
             } else if (block?.type === 'tool_use') {
               currentBlockType = 'tool_use'
               currentToolInput = ''
-              contentBlocks.push({ type: 'tool_use', id: block.id || '', name: block.name || '', input: {} })
+              contentBlocks.push({ ...block, input: block.input ?? {} } as ToolUseBlock)
             } else if (block?.type === 'thinking') {
               // Extended thinking block — must be preserved in the conversation
               // history when the assistant makes tool calls (Anthropic API requirement).
               // We don't stream thinking content to the UI.
               currentBlockType = 'thinking'
-              currentThinkingText = ''
-              currentThinkingSignature = ''
+              currentThinkingText = typeof block.thinking === 'string' ? block.thinking : ''
+              currentThinkingSignature = typeof block.signature === 'string' ? block.signature : ''
             } else if (block?.type === 'redacted_thinking') {
               // Encrypted thinking returned by Anthropic — push as-is; must be
               // echoed back verbatim on the next turn.
-              contentBlocks.push({ type: 'redacted_thinking', data: block.data || '' })
+              contentBlocks.push({ ...block } as RedactedThinkingBlock)
               currentBlockType = 'redacted_thinking'
             } else if (block?.type === 'server_tool_use') {
               // server_tool_use (web_search, web_fetch côté Anthropic).
@@ -535,12 +607,7 @@ export async function parseSSEStream(
               // finalisera au content_block_stop.
               currentBlockType = 'server_tool_use'
               currentToolInput = ''
-              contentBlocks.push({
-                type: 'server_tool_use',
-                id: block.id || '',
-                name: block.name || '',
-                input: {},
-              } as ContentBlock)
+              contentBlocks.push({ ...block, input: block.input ?? {} } as ServerToolUseBlock)
             } else if (
               block?.type === 'web_search_tool_result' ||
               block?.type === 'web_fetch_tool_result' ||
@@ -551,10 +618,17 @@ export async function parseSSEStream(
               // quel pour qu'il soit renvoyé verbatim au tour suivant.
               currentBlockType = 'server_tool_result'
               contentBlocks.push(block as unknown as ContentBlock)
+            } else {
+              // Retain unknown content for diagnostics, but never authorize a
+              // replay after an extension whose streamed semantics are unknown.
+              replaySafe = false
+              currentBlockType = 'unknown'
+              contentBlocks.push(block as unknown as ContentBlock)
             }
             break
           }
           case 'content_block_delta': {
+            if (!currentBlockType || data.index !== currentBlockIndex || sawMessageDelta) replaySafe = false
             const delta = data.delta as {
               type?: string
               text?: string
@@ -563,23 +637,29 @@ export async function parseSSEStream(
               signature?: string
               citation?: AnthropicCitation
             } | undefined
-            if (delta?.type === 'text_delta' && delta.text) {
+            if (currentBlockType === 'text' && delta?.type === 'text_delta' && typeof delta.text === 'string') {
               onToken(delta.text)
               currentTextContent += delta.text
-            } else if (delta?.type === 'citations_delta' && delta.citation) {
+            } else if (currentBlockType === 'text' && delta?.type === 'citations_delta' && delta.citation) {
               // Les citations structurées doivent être renvoyées verbatim lors
               // d'une itération suivante et alimentent la provenance des liens.
               currentTextCitations.push(delta.citation)
-            } else if (delta?.type === 'input_json_delta' && delta.partial_json) {
-              currentToolInput += delta.partial_json
-            } else if (delta?.type === 'thinking_delta' && delta.thinking) {
+            } else if ((currentBlockType === 'tool_use' || currentBlockType === 'server_tool_use') && delta?.type === 'input_json_delta' && typeof delta.partial_json === 'string') {
+              // The provider streams a JSON object from an empty initial input.
+              // A nonempty initial object plus fragments has no lossless merge
+              // rule: retain the original block and never authorize its replay.
+              if (currentBlockBase.input && typeof currentBlockBase.input === 'object'
+                && Object.keys(currentBlockBase.input).length > 0) replaySafe = false
+              else currentToolInput += delta.partial_json
+            } else if (currentBlockType === 'thinking' && delta?.type === 'thinking_delta' && typeof delta.thinking === 'string') {
               currentThinkingText += delta.thinking
-            } else if (delta?.type === 'signature_delta' && delta.signature) {
+            } else if (currentBlockType === 'thinking' && delta?.type === 'signature_delta' && typeof delta.signature === 'string') {
               currentThinkingSignature += delta.signature
-            }
+            } else replaySafe = false
             break
           }
           case 'content_block_stop':
+            if (!currentBlockType || data.index !== currentBlockIndex || sawMessageDelta) replaySafe = false
             // Toujours pousser les blocs reçus, même vides — Anthropic conserve
             // tous les blocs de la réponse côté serveur. Si on en drop un, les
             // index décalent au tour suivant et l'API rejette avec
@@ -588,6 +668,7 @@ export async function parseSSEStream(
             // avant le resend dans la boucle tool-use.
             if (currentBlockType === 'text') {
               contentBlocks.push({
+                ...currentBlockBase,
                 type: 'text',
                 text: currentTextContent,
                 ...(currentTextCitations.length > 0 ? { citations: currentTextCitations } : {}),
@@ -598,7 +679,7 @@ export async function parseSSEStream(
                 try {
                   lastTool.input = JSON.parse(currentToolInput) as Record<string, unknown>
                 } catch {
-                  lastTool.input = {}
+                  replaySafe = false
                 }
               }
             } else if (currentBlockType === 'server_tool_use' && currentToolInput) {
@@ -608,20 +689,32 @@ export async function parseSSEStream(
                 try {
                   ;(last as { input: unknown }).input = JSON.parse(currentToolInput)
                 } catch {
-                  ;(last as { input: unknown }).input = {}
+                  replaySafe = false
                 }
               }
             } else if (currentBlockType === 'thinking') {
               contentBlocks.push({
+                ...currentBlockBase,
                 type: 'thinking',
                 thinking: currentThinkingText,
                 signature: currentThinkingSignature,
               })
             }
+            if (currentBlockType === 'tool_use' || currentBlockType === 'server_tool_use') {
+              const last = contentBlocks[contentBlocks.length - 1] as ToolUseBlock | ServerToolUseBlock
+              if (!last.id || !last.name || !last.input || typeof last.input !== 'object' || Array.isArray(last.input)) replaySafe = false
+            }
             currentBlockType = ''
             break
 
           case 'message_delta': {
+            if (!sawMessageStart || currentBlockType) replaySafe = false
+            sawMessageDelta = true
+            const reason = (data.delta as { stop_reason?: unknown } | undefined)?.stop_reason
+            if (typeof reason === 'string') {
+              if (stopReason !== undefined && stopReason !== reason) replaySafe = false
+              stopReason = reason
+            }
             const usage = (data as { usage?: { output_tokens?: number } }).usage
             if (usage) outputTokens = usage.output_tokens || 0
             break
@@ -633,6 +726,7 @@ export async function parseSSEStream(
             // fin ; la sortie se fait après le for (traiter d'éventuelles
             // lignes restantes du même chunk ne change rien).
             sawMessageStop = true
+            if (!sawMessageStart || !sawMessageDelta || currentBlockType || !stopReason) replaySafe = false
             break
           case 'error': {
             // Erreurs en milieu de stream (l'API a accepté la requête HTTP
@@ -645,7 +739,10 @@ export async function parseSSEStream(
             const errorBody = JSON.stringify({ error: err })
             throw new Error(formatApiError(529, errorBody))
           }
+          case 'ping': break
+          default: replaySafe = false
         }
+        if (sawMessageStop) break
       }
 
       // Message terminé côté Anthropic : ne pas attendre la fermeture TCP.
@@ -657,10 +754,14 @@ export async function parseSSEStream(
     // libérer), timeout d'inactivité (reader.read() encore pendant : cancel le
     // résout et évite un unhandled rejection), et erreur de parsing. Sur une
     // fin naturelle par `done`, c'est un no-op inoffensif.
-    try { await reader.cancel() } catch { /* stream déjà terminé ou aborté */ }
+    // A stalled transport may never acknowledge cancellation. Initiate it
+    // once, but do not let that promise keep Stop or a completed response stuck.
+    void reader.cancel().catch(() => undefined)
   }
 
-  return { contentBlocks, inputTokens, outputTokens, cacheReadTokens, cacheCreationTokens, ...(servedModel ? { servedModel } : {}) }
+  return { contentBlocks, inputTokens, outputTokens, cacheReadTokens, cacheCreationTokens,
+    stopReason, messageStopped: sawMessageStop, replaySafe: replaySafe && !currentBlockType,
+    ...(servedModel ? { servedModel } : {}) }
 }
 
 export function extractAnthropicSearchContext(
@@ -787,14 +888,17 @@ function toolResultSize(results: ToolResultBlock[]): number {
 
 async function executeToolCalls(
   contentBlocks: ContentBlock[],
-  onToolCall: ToolHandler
+  onToolCall: ToolHandler,
+  assertCurrent?: () => void,
 ): Promise<ToolResultBlock[]> {
   const toolResults: ToolResultBlock[] = []
 
   for (const block of contentBlocks) {
     if (block.type !== 'tool_use') continue
 
+    assertCurrent?.()
     const toolResult = await onToolCall(block.name, block.input)
+    assertCurrent?.()
 
     if (toolResult.fileData) {
       // P0.9 — garde taille : un document trop gros ferait exploser le coût
@@ -894,6 +998,8 @@ async function runWithTools(
   controller: AbortController
 ) {
   try {
+    const assertCurrent = () => { controller.signal.throwIfAborted(); options?.assertRequestCurrent?.() }
+    assertCurrent()
     options?.assertRequestCurrent?.()
     const compressed = (options?.documentReadOnly || options?.comparisonTextOnly) ? originalMessages : await compressIfNeeded(
       originalMessages.map((m) => ({ role: m.role, content: m.content })),
@@ -987,15 +1093,23 @@ async function runWithTools(
     const cachedTools = toolSet.map((t, i) =>
       i === toolSet.length - 1 ? { ...t, cache_control: { type: 'ephemeral' } } : t
     )
+    // Only the native tools currently emitted by Arty have qualified replay
+    // semantics. A custom tool (even named web_search), or a future version,
+    // does not grant native continuation merely by having a `type` property.
+    const nativeTools = new Set<string>(cachedTools.flatMap(tool => {
+      if (tool.type === 'web_search_20250305' && tool.name === 'web_search') return ['web_search']
+      if (tool.type === 'web_fetch_20260209' && tool.name === 'web_fetch') return ['web_fetch']
+      return []
+    }))
 
-    // H-AI-3 (audit étape 4) — Mistral est à 20 itérations max. 200 ici était
-    // trop permissif : un bug dans un tool (boucle d'appels) pouvait consommer
-    // des dizaines de $ silencieusement. 30 reste large pour des chaînes de
-    // tool calls complexes (read_file → analyze → search → write_doc).
-    let maxIterations = 30
+    // One limit for every HTTP attempt, including backoff retries and native
+    // pauses. Do not execute a client tool without capacity to send its result.
+    const attemptBudget = { remaining: 30 }
+    let continuationFunding: AnthropicFunding | undefined
     // P0.9 — cumul des chars de tool_results de CE message (texte + base64).
     let toolContextChars = 0
-    while (maxIterations-- > 0) {
+    while (attemptBudget.remaining > 0) {
+      assertCurrent()
       // Haiku max output = 64000 tokens (API limit). Cap unconditionally.
       const maxTokens = options?.documentReadOnly && Number.isInteger(options.maxOutputTokens) && options.maxOutputTokens! >= 1 && options.maxOutputTokens! <= 8192
         ? options.maxOutputTokens! : isHaiku ? 64000 : 65536
@@ -1028,9 +1142,11 @@ async function runWithTools(
         ...(effort && { output_config: { effort } }),
       })
 
-      const response = await fetchWithRetry(requestBody, apiKey, controller, options?.assertRequestCurrent, options?.beforeDocumentRequest)
-      const { contentBlocks, inputTokens, outputTokens, cacheReadTokens, cacheCreationTokens, servedModel } = await parseSSEStream(response, onToken)
-      options?.assertRequestCurrent?.()
+      const response = await fetchWithRetry(requestBody, apiKey, controller, attemptBudget, options?.assertRequestCurrent, options?.beforeDocumentRequest, continuationFunding)
+      continuationFunding ??= parseAnthropicFunding(response.headers.get(ANTHROPIC_FUNDING_HEADER)) ?? undefined
+      const { contentBlocks, inputTokens, outputTokens, cacheReadTokens, cacheCreationTokens, servedModel,
+        stopReason, messageStopped, replaySafe } = await parseSSEStream(response, onToken, undefined, controller.signal, options?.assertRequestCurrent)
+      assertCurrent()
       const searchContext = extractAnthropicSearchContext(contentBlocks, lastUserText)
       if (searchContext) setSearchContext(searchContext, options?.conversationId)
 
@@ -1090,7 +1206,30 @@ async function runWithTools(
       }
 
       const hasToolUse = contentBlocks.some((b) => b.type === 'tool_use')
+      if (stopReason === 'pause_turn') {
+        // A pause can contain only a deferred result or text, with no new call.
+        // Check every native call/result actually present against this request.
+        const nativeStateAllowed = nativeTools.size > 0 && contentBlocks.every(block => {
+          if (block.type === 'server_tool_use') return nativeTools.has(block.name)
+          if (block.type === 'web_search_tool_result') return nativeTools.has('web_search')
+          if (block.type === 'web_fetch_tool_result') return nativeTools.has('web_fetch')
+          if (block.type === 'code_execution_tool_result') return false
+          return true
+        })
+        if (!messageStopped || !replaySafe || hasToolUse || attemptBudget.remaining === 0 || !nativeStateAllowed) {
+          throw new Error(i18n.t('errors.responseIncomplete'))
+        }
+        if (!continuationFunding) throw new Error(i18n.t('errors.continuationUnavailable'))
+        assertContentBlocksValid(contentBlocks)
+        assertCurrent()
+        apiMessages.push({ role: 'assistant', content: contentBlocks })
+        continue
+      }
+      // New servers attest completion before any automatic continuation. Keep
+      // the legacy parser's extraction API, but never label truncated replay done.
+      if (continuationFunding && (!messageStopped || !replaySafe)) throw new Error(i18n.t('errors.responseIncomplete'))
       if (!hasToolUse || !options?.onToolCall || options.documentReadOnly || options.comparisonTextOnly) {
+        assertCurrent()
         onDone()
         return
       }
@@ -1099,6 +1238,7 @@ async function runWithTools(
       // s'assurer que chaque bloc est intègre (signature thinking présente,
       // data redacted_thinking non vide). Si non, on abort la boucle proprement.
       assertContentBlocksValid(contentBlocks)
+      if (!messageStopped || !replaySafe || attemptBudget.remaining === 0) throw new Error(i18n.t('errors.responseIncomplete'))
 
       // P0.9 — budget de contexte par message. Une fois le budget consommé,
       // on n'exécute PLUS les tools : chaque tool_use reçoit un résultat
@@ -1116,20 +1256,22 @@ async function runWithTools(
               'Budget de contexte de ce message atteint — n\'appelle plus d\'outils. Synthétise ta réponse avec les données déjà lues, et propose à l\'utilisateur de continuer dans un message suivant si besoin.',
           }))
       } else {
-        toolResults = await executeToolCalls(contentBlocks, options.onToolCall)
+        toolResults = await executeToolCalls(contentBlocks, options.onToolCall, assertCurrent)
         toolContextChars += toolResultSize(toolResults)
       }
       apiMessages.push({ role: 'assistant', content: contentBlocks })
       apiMessages.push({ role: 'user', content: toolResults })
     }
 
-    onDone()
+    throw new Error(i18n.t('errors.responseIncomplete'))
   } catch (err) {
     // AbortError = Stop utilisateur : stopStreaming a déjà finalisé et démonté
-    // le stream — ne rien rappeler. TOUT le reste doit atteindre onError :
+    // le stream — ne rien rappeler, même si la lecture se termine par une
+    // autre erreur après Stop. Hors annulation, TOUT le reste atteint onError :
     // un throw non-Error avalé ici laisserait le stream fantôme (spinner et
     // bouton Stop éternels, même symptôme que le hang réseau).
-    if (err instanceof Error && err.name === 'AbortError') return
+    // DOMException may belong to another realm (WebView/iframe/test window).
+    if (controller.signal.aborted || (err !== null && typeof err === 'object' && 'name' in err && err.name === 'AbortError')) return
     onError(err instanceof Error ? err : new Error(String(err)))
   }
 }

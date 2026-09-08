@@ -8,6 +8,24 @@ function validCount(value: unknown): value is number {
   return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 && value <= LIMIT
 }
 
+/** Read-only snapshot for a restrictive continuation, never an admission.
+ * Keep MAIN's exact identity and Google/OTP table separation. A failed, corrupt
+ * or late read is unknown, not proof of exhaustion or permission to charge. */
+export async function readTrialCounterRemaining(env: Env, email: string, table: 'trial_usage' | 'email_trial_usage'): Promise<number | null> {
+  if (!env.DB || (table !== 'trial_usage' && table !== 'email_trial_usage')) return null
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    const pending = env.DB.prepare(`SELECT used FROM ${table} WHERE email = ?1`).bind(email)
+      .first<{ used: unknown }>()
+      .then(row => row === null ? LIMIT : validCount(row.used) ? LIMIT - row.used : null)
+      .catch(() => null)
+    return await Promise.race([pending, new Promise<null>(resolve => {
+      timer = setTimeout(() => resolve(null), DEADLINE_MS)
+    })])
+  } catch { return null }
+  finally { if (timer !== undefined) clearTimeout(timer) }
+}
+
 /** Only the two fixed trial tables are accepted. SQL data is always bound.
  * No write replay, no repair of malformed counters, no grant on uncertainty.
  * The deadline covers the increment/readback, not all authentication/setup.

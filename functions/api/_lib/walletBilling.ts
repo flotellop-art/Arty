@@ -1,8 +1,10 @@
 import type { Env } from '../../env'
 import { estimateReserveMicro } from './creditPricing'
+import { admissionUnavailableResponse } from './admission'
 import {
   drainWalletReversalsForUser,
   getWalletBalance,
+  readWalletBalance,
   reserveCredits,
   settleCredits,
   voidReservation,
@@ -297,6 +299,8 @@ export async function beginWalletBilling(
     /** Modèle plus conservateur utilisé uniquement pour dimensionner le hold.
      * Le modèle réel reste inscrit dans la réservation et utilisé au settle. */
     reservePricingModel?: string
+    /** Veto only; cannot force a wallet skip or grant an otherwise refused hold. */
+    assertFundingMode?: (mode: 'wallet' | 'skip') => void
   },
 ): Promise<WalletBillingStart> {
   const {
@@ -326,11 +330,20 @@ export async function beginWalletBilling(
     }
   }
 
-  const bal: WalletBalance | null = await getWalletBalance(env, email)
+  // A constrained continuation must attest its funding category. An unavailable
+  // read is not proof of an absent wallet. Preserve the historical fallback
+  // only for unconstrained callers; no new AI hold has been created yet.
+  let bal: WalletBalance | null
+  if (params.assertFundingMode) {
+    const read = await readWalletBalance(env, email)
+    if (read.status === 'unavailable') return { mode: 'refuse', response: admissionUnavailableResponse() }
+    bal = read.status === 'ready' ? read.balance : null
+  } else bal = await getWalletBalance(env, email)
   if (bal?.reversalPending) return {
     mode: 'refuse',
     response: Response.json({ error: 'wallet_reconciliation_pending' }, { status: 409 }),
   }
+  params.assertFundingMode?.(bal && bal.availableMicro > 0 ? 'wallet' : 'skip')
   if (!bal || bal.availableMicro <= 0) return { mode: 'skip' }
 
   const maxOutputTokens = extractMaxOutputTokens(provider, body)

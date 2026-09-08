@@ -121,7 +121,15 @@ describe('real AI client → current funding cache → rendered badge / plan (sy
       }
       setTrialRemaining(17); await fetchWalletBalance()
       body.resolve(JSON.stringify({ error: kind === 'wallet' ? 'wallet_reconciliation_pending' : 'trial_expired' }))
-      await call.outcome
+      if (provider === 'anthropic' && change === 'abort') {
+        // Stop has already retired the stream; no terminal UI callback is due.
+        // Drain the released body and its promise continuations, not an onError
+        // promise that correctly never resolves after cancellation.
+        await body.promise
+        await new Promise(resolve => setTimeout(resolve, 0))
+        expect(call.onToken).not.toHaveBeenCalled(); expect(call.onDone).not.toHaveBeenCalled()
+        expect(call.onError).not.toHaveBeenCalled(); expect(call.onToolCall).not.toHaveBeenCalled()
+      } else await call.outcome
       expect(getTrialRemaining()).toBe(17)
       expect(getWalletSnapshot()).toMatchObject({ availableMicro: 900000, reversalPending: false })
       expect(http.mock.calls.filter(([url]) => url === paths[provider])).toHaveLength(1)

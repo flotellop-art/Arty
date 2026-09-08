@@ -456,17 +456,21 @@ export async function checkAllowedVerifiedUser(
   verifiedEmail: string,
   env: Env,
   waitUntil?: QuotaWaitUntil,
+  /** Optional veto after the authoritative plan read, before any trial debit. */
+  assertPlan?: (plan: PlanType) => void,
 ): Promise<Exclude<CheckResult, null>> {
   const email = verifiedEmail.trim().toLowerCase()
 
   // ALLOWED_EMAILS = beta testeurs VIP, bypass du check D1
   const allowed = parseAllowedEmails(env.ALLOWED_EMAILS)
   if (allowed.includes(email)) {
+    assertPlan?.('vip')
     return { email, planType: 'vip' }
   }
 
   const plan = await readUserPlan(env, email)
   if (plan === null) return admissionUnavailable()
+  assertPlan?.(plan)
   if (plan === 'subscription' || plan === 'pro' || plan === 'vip') {
     return { email, planType: plan }
   }

@@ -1,5 +1,6 @@
 // Security middleware for all /api/* routes
 // Runs before every API function on Cloudflare Pages
+import { ANTHROPIC_FUNDING_HEADER, ANTHROPIC_REQUIRE_FUNDING_HEADER } from '../../shared/anthropicFunding'
 
 // Production origins only — capacitor:// is required for native Android/iOS app
 // Exporté pour le test de couverture par PRODUCTION_HOSTS (emailTrial.ts) :
@@ -14,7 +15,7 @@ export const ALLOWED_ORIGINS = [
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>()
 const RATE_LIMIT = 60
 const RATE_WINDOW = 60_000
-const ALLOWED_HEADERS = 'Content-Type, Authorization, x-api-key, x-openai-key, x-google-token, x-arty-vision, x-arty-trial-token, x-arty-erasure-operation, x-arty-erasure-capability, x-arty-erasure-subject, anthropic-version, anthropic-beta'
+const ALLOWED_HEADERS = 'Content-Type, Authorization, x-api-key, x-openai-key, x-google-token, x-arty-vision, x-arty-trial-token, x-arty-erasure-operation, x-arty-erasure-capability, x-arty-erasure-subject, anthropic-version, anthropic-beta, ' + ANTHROPIC_REQUIRE_FUNDING_HEADER
 
 export const WORKSPACE_ADDON_POST_PATHS = new Set([
   '/api/workspace-addon/phase0/home',
@@ -124,7 +125,7 @@ export const onRequest: PagesFunction = async (context) => {
     // Expose les headers custom que le client lit côté navigateur (sinon
     // CORS les masque). Trial met à jour le compteur d'essai ; Gemini expose
     // le modèle effectif après killswitch/fallback 3.6 → 3.5.
-    headers.set('Access-Control-Expose-Headers', 'x-trial-remaining, x-arty-model-used')
+    headers.set('Access-Control-Expose-Headers', 'x-trial-remaining, x-arty-model-used, ' + ANTHROPIC_FUNDING_HEADER)
   }
 
   return new Response(response.body, {
