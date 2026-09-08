@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+vi.mock('../../services/paidFeatures', () => ({ hasPaidServerFeatures: () => true }))
 const mocks = vi.hoisted(() => ({ facts: vi.fn(), add: vi.fn(), update: vi.fn(), remove: vi.fn(), mutate: vi.fn() }))
 vi.mock('../../services/localMemoryService', () => ({ getAll: mocks.facts, addFact: mocks.add,
   updateFact: mocks.update, deleteFact: mocks.remove, MAX_FACTS: 80,

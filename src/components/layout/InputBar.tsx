@@ -27,6 +27,7 @@ import { captureCalendarContext } from '../../services/calendarClient'
 import { toast } from '../../services/toast'
 import { CalendarMiniForm, type CalendarMiniFormProps } from '../google/CalendarMiniForm'
 import { getValidAccessToken } from '../../services/googleAuth'
+import { subscribePaidFeatures } from '../../services/paidFeatures'
 import { enhancePrompt, canEnhancePrompt } from '../../services/promptEnhancer'
 import { isPromptEnhancementEnabled } from '../../services/promptEnhancerSettings'
 import { hasUrl } from '../../services/aiRouter'
@@ -1267,7 +1268,11 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
   const [isEnhancing, setIsEnhancing] = useState(false)
   const [enhanceError, setEnhanceError] = useState<string | null>(null)
   useEffect(() => {
-    setEnhanceEnabled(isPromptEnhancementEnabled() && canEnhancePrompt())
+    const refresh = () => setEnhanceEnabled(isPromptEnhancementEnabled() && canEnhancePrompt())
+    refresh()
+    const stop = subscribePaidFeatures(refresh)
+    window.addEventListener('arty-plan-status-changed', refresh)
+    return () => { stop(); window.removeEventListener('arty-plan-status-changed', refresh) }
   }, [])
 
   const handleEnhance = async () => {

@@ -4,9 +4,12 @@ import i18n from '../i18n'
  * automatic provider fallback loop. It is neither an expired trial nor logout.
  */
 export function admissionUnavailableError(status: number, body: string): Error | null {
-  if (status !== 503 && status !== 400 && status !== 409) return null
+  if (status !== 503 && status !== 400 && status !== 409 && status !== 403) return null
   try {
     const code = JSON.parse(body)?.error
+    if (status === 403 && code === 'paid_feature_required') return Object.assign(
+      new Error(i18n.t('errors.paidFeatureRequired')), { name: 'PaidFeatureRequiredError' },
+    )
     if (status === 409 && code === 'continuation_funding_changed') return Object.assign(
       new Error(i18n.t('errors.continuationFundingChanged')), { name: 'ContinuationFundingChangedError' },
     )

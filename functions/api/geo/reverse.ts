@@ -1,3 +1,4 @@
+import { hasPaidFeatures, paidFeatureResponse } from '../_lib/simpleTrialOffer'
 import type { Env } from '../../env'
 import { isAdmissionUnavailable, admissionUnavailableResponse } from '../_lib/admission'
 import { checkAllowedUserPeek } from '../_lib/checkAllowedUser'
@@ -23,6 +24,8 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   const allowed = await checkAllowedUserPeek(request, env)
   if (isAdmissionUnavailable(allowed)) return admissionUnavailableResponse()
   if (!allowed) return Response.json({ error: 'Not found' }, { status: 404 })
+
+  if (!hasPaidFeatures(allowed.planType)) return paidFeatureResponse()
 
   if (!env.GOOGLE_MAPS_API_KEY) {
     return Response.json({ error: 'Not found' }, { status: 404 })

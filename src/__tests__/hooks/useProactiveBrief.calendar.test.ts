@@ -6,13 +6,15 @@ import { streamMessage } from '../../services/anthropicClient'
 import { addTask } from '../../services/taskService'
 import type { BriefItem } from '../../services/proactiveBriefActions'
 import { hasActiveConversationWork } from '../../services/conversationWork'
+const paidState = vi.hoisted(() => ({ ready: true, listener: undefined as (() => void) | undefined }))
+vi.mock('../../services/paidFeatures', () => ({ hasPaidServerFeatures: () => paidState.ready, subscribePaidFeatures: (listener: () => void) => { paidState.listener = listener; return () => { paidState.listener = undefined } } }))
 vi.mock('../../services/apiBase', () => ({ apiUrl: (path: string) => path }))
 vi.mock('../../services/anthropicClient', () => ({ streamMessage: vi.fn(() => new AbortController()) }))
 vi.mock('../../services/proactiveBriefSettings', () => ({ isProactiveBriefEnabled: () => true, isBriefDue: () => true, markBriefRun: vi.fn(), shouldScheduleNudge: () => false, markNudgeScheduled: vi.fn(), getBriefPrefs: () => ({ length: 'normal' }) }))
 vi.mock('../../services/notificationService', () => ({ areNotificationsEnabled: () => false }))
 vi.mock('../../services/taskService', () => ({ getTasks: () => [], addTask: vi.fn() }))
 vi.mock('../../services/memoryService', () => ({ readAllMemory: async () => [], formatMemoryForPrompt: () => '' }))
-beforeEach(async () => { await resetCalendarFixture(); vi.clearAllMocks() })
+beforeEach(async () => { await resetCalendarFixture(); vi.clearAllMocks(); paidState.ready = true; paidState.listener = undefined })
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals() })
 async function trigger() {
   // Real timers/IDB: foreground is the same trigger as the delayed mount.
@@ -21,6 +23,16 @@ async function trigger() {
   return hook
 }
 describe('Proactive brief Calendar ownership', () => {
+  it('starts once when a paid receipt arrives after the initial trigger', async () => {
+    paidState.ready = false
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json({ events: [syntheticEvent] })))
+    const hook = await trigger()
+    expect(streamMessage).not.toHaveBeenCalled()
+    await act(async () => { paidState.ready = true; paidState.listener?.(); paidState.listener?.() })
+    await waitFor(() => expect(streamMessage).toHaveBeenCalledOnce())
+    hook.unmount(); expect(paidState.listener).toBeUndefined()
+  })
+
   it.each(['dismiss', 'unmount'] as const)('releases live background work on %s even if the provider never calls done/error on abort', async action => {
     vi.stubGlobal('fetch', vi.fn(async () => Response.json({ events: [syntheticEvent] })))
     const hook = await trigger()

@@ -51,7 +51,7 @@ describe('Eligibility is not a server entitlement grant', () => {
     expect(access('gemini-3.5-flash')).toBe('compare.access.plan')
   })
   it('active trial uses its own allowlist even when the plan cache says free', () => {
-    for (const m of TEXT_MODELS) expect(access(m.modelId, {}, false, 20)).toBe(m.trial ? null : 'compare.access.trial')
+    for (const m of TEXT_MODELS) expect(access(m.modelId, {}, false, 20)).toBe('compare.access.trial')
   })
   it('wallet-unlocked free is distinct from active trial', () => {
     expect(access('gpt-5.6-terra', { allowedFamilies: paid }, false, 0)).toBeNull()

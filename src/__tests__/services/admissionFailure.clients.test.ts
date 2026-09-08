@@ -60,6 +60,11 @@ describe('real text-client handling of an unconfirmed admission', () => {
     expect(getTrialRemaining()).toBe(17); expect(getActiveUserId()).toBe('admission-test-user')
     expect(call.onToolCall).not.toHaveBeenCalled(); expect(call.onDone).not.toHaveBeenCalled()
   })
+  it.each(providers)('%s refuses a paid feature without retry or changing trial state', async provider => {
+    const http = vi.fn(async () => Response.json({ error: 'paid_feature_required' }, { status: 403 })); vi.stubGlobal('fetch', http)
+    const call = invoke(provider); expect(await call.outcome).toMatchObject({ name: 'PaidFeatureRequiredError' })
+    expect(http).toHaveBeenCalledOnce(); expect(getTrialRemaining()).toBe(17); expect(call.onToolCall).not.toHaveBeenCalled()
+  })
   it.each(providers)('%s reports the localized temporary refusal once without replaying any AI/tool call', async provider => {
     const http = vi.fn(async (_url: string, _init?: RequestInit) => Response.json({ error: 'admission_unavailable' }, { status: 503 }))
     vi.stubGlobal('fetch', http)

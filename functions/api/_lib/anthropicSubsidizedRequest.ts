@@ -7,10 +7,8 @@ const ROOT_KEYS = new Set(['model', 'max_tokens', 'messages', 'system', 'tools',
   'stream', 'stop_sequences', 'temperature', 'top_p', 'top_k', 'metadata', 'cache_control',
   'service_tier'])
 const BETAS = new Set(['pdfs-2024-09-25', 'prompt-caching-2024-07-31'])
-const CLIENT_TOOL_KEYS = new Set(['type', 'name', 'description', 'input_schema', 'cache_control', 'strict'])
 const SEARCH_KEYS = new Set(['type', 'name', 'max_uses', 'allowed_domains', 'blocked_domains',
   'user_location', 'cache_control'])
-const RESERVED_TOOL_NAMES = new Set(['web_search', 'web_fetch', 'code_execution'])
 const BLOCK_TYPES = new Set(['text', 'image', 'document', 'tool_use', 'tool_result', 'thinking',
   'redacted_thinking', 'server_tool_use', 'web_search_tool_result', 'web_search_result', 'search_result',
   'web_fetch_tool_result', 'code_execution_tool_result', 'bash_code_execution_tool_result',
@@ -118,8 +116,7 @@ export function qualifyAnthropicSubsidizedRequest(
         if (!keysWithin(tool, SEARCH_KEYS) || tool.name !== 'web_search' || !Number.isSafeInteger(tool.max_uses)
           || (tool.max_uses as number) < 1 || (tool.max_uses as number) > 5) return null
         searches = tool.max_uses as number
-      } else if ((tool.type !== undefined && tool.type !== 'custom') || RESERVED_TOOL_NAMES.has(tool.name)
-        || !keysWithin(tool, CLIENT_TOOL_KEYS) || !object(tool.input_schema)) return null
+      } else return null // The free offer only exposes native web search.
     }
   }
   if (!validServerHistory(body.messages as ObjectValue[], searches)) return null

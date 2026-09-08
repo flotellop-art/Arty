@@ -13,6 +13,8 @@ Ce document fixe la cible produit ; il ne configure ni n'active une dépense.
 | Budget de lancement proposé et retenu comme base | 100 USD cumulés, sans renouvellement automatique |
 | Réponses | Environ 2 000 tokens produits au maximum par réponse |
 | Recherche web | Une recherche maximum par question ; recherche approfondie dans l'offre payante |
+| Mémoire | Ajout manuel chiffré sur l’appareil, sans extraction IA supplémentaire |
+| Fonctions auxiliaires | Réservées aux accès payants ; BYOK préservé uniquement quand la clé est réellement utilisée |
 | Mesure | Observer les premiers usages réels, sans constituer de groupe séparé |
 
 Le budget concerne les dépenses IA prises en charge par Arty pour cette offre,
@@ -89,3 +91,11 @@ L'offre complète reste à terminer : couverture des routes auxiliaires,
 comptabilisation par question et allocation entre canaux. La base distante,
 les secrets et la configuration de production restent inchangés. Aucun budget
 n'a été engagé et aucune activation n'est attestée par ce document.
+
+## Lot essai simple du 8 septembre 2026
+
+L’utilisateur a ensuite validé un essai Haiku + recherche web native + mémoire
+locale, avec le reste des services coûteux réservé aux accès payants.
+Voir `SIMPLE_FREE_TRIAL_2026-09-08.md` pour le périmètre réalisé et la recette.
+Les paragraphes précédents décrivent les étapes et constats datés ; ils ne
+constituent pas une preuve de déploiement. Le budget reste désactivé.

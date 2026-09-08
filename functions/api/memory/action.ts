@@ -1,3 +1,6 @@
+import { hasPaidFeatures, paidFeatureResponse } from '../_lib/simpleTrialOffer'
+import { checkAllowedVerifiedUserPeek } from '../_lib/checkAllowedUser'
+import { isAdmissionUnavailable, admissionUnavailableResponse } from '../_lib/admission'
 import type { Env } from '../../env'
 import { verifyGoogleUserStrict } from '../_lib/checkAllowedUser'
 
@@ -55,6 +58,9 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
       }
 
       case 'write': {
+        const access = await checkAllowedVerifiedUserPeek(email, env)
+        if (isAdmissionUnavailable(access)) return admissionUnavailableResponse()
+        if (!hasPaidFeatures(access.planType)) return paidFeatureResponse()
         const category = body.category as string
         const data = body.data
 

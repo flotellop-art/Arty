@@ -1,7 +1,7 @@
+import { resolveNonTrialChatAccess } from '../_lib/simpleTrialOffer'
 import type { Env } from '../../env'
 import { isAdmissionUnavailable, admissionUnavailableResponse } from '../_lib/admission'
 import {
-  checkAllowedVerifiedUser,
   isModelAllowedInTrial,
   isTrialExpired,
   proKeyRequiredResponse,
@@ -10,7 +10,6 @@ import {
   voidTrialMessage,
 } from '../_lib/checkAllowedUser'
 import {
-  consumeEmailTrialMessage,
   emailTrialKey,
   proxyIdentityFailureResponse,
   resolveProxyIdentityDetailed,
@@ -334,16 +333,14 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
   // décrément du compteur trial KV.
   if (!apiKey && env.OPENAI_API_KEY) {
     const accessOperation =
-      identity.kind === 'email-trial'
-        ? consumeEmailTrialMessage(env, identity.email, waitUntil)
-        : checkAllowedVerifiedUser(identity.email, env, waitUntil)
+      resolveNonTrialChatAccess(identity, env)
     const result = await awaitVisionDependency(
       accessOperation,
       visionDeadline,
       (pending) => {
         waitUntil(pending.then((lateResult) => {
           if (
-            !lateResult ||
+            !lateResult || lateResult instanceof Response ||
             isTrialExpired(lateResult) ||
             isAdmissionUnavailable(lateResult) ||
             lateResult.planType !== 'trial' ||
@@ -355,6 +352,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
         }).catch(() => undefined))
       },
     )
+    if (result instanceof Response) return cancelBufferedVision(result)
     if (isAdmissionUnavailable(result)) return cancelBufferedVision(admissionUnavailableResponse())
     if (
       usesVisionTransport &&

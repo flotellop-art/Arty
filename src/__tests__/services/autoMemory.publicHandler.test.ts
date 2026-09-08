@@ -1,3 +1,4 @@
+import * as paid from '../../services/paidFeatures'
 import { createRequire } from 'node:module'
 import { readFileSync } from 'node:fs'
 import type { DatabaseSync as SQLiteDatabase } from 'node:sqlite'
@@ -23,6 +24,7 @@ const conversation = (): Conversation => ({ id: 'public-memory-roundtrip', title
 
 beforeEach(async () => {
   await resetCalendarFixture()
+  vi.spyOn(paid, 'hasPaidServerFeatures').mockReturnValue(true)
   vi.spyOn(trial, 'getTrialRemaining').mockReturnValue(null)
   vi.spyOn(toast, 'toast').mockImplementation(() => {})
   raw = new DatabaseSync(':memory:')
@@ -36,7 +38,7 @@ beforeEach(async () => {
       async all() { return { success: true, results: raw.prepare(sql).all(...args).map(row => ({ ...row })) } },
     }
   } } as unknown as D1Database
-  env = { DB: db, GOOGLE_CLIENT_ID: 'synthetic-client', ANTHROPIC_API_KEY: 'synthetic-server-key' } as Env
+  env = { ALLOWED_EMAILS: 'a@example.invalid', DB: db, GOOGLE_CLIENT_ID: 'synthetic-client', ANTHROPIC_API_KEY: 'synthetic-server-key' } as Env
   providerCalls = 0; replies = []; attemptedUrls = []; replacementId = 'lm-not-sent'
   vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input)

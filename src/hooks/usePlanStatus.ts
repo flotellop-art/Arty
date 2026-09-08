@@ -2,6 +2,7 @@
 // Re-fetch à chaque appel API réussi (signal `arty-message-sent`) pour que les
 // compteurs free se mettent à jour en live dans le badge du ChatTopBar.
 
+import { publishPaidFeatures, clearPaidFeatures } from '../services/paidFeatures'
 import { useState, useEffect, useCallback, useRef } from 'react'
 import {
   getStoredTokens,
@@ -107,6 +108,7 @@ function cacheEffectiveFamilies(status: PlanStatus) {
 }
 
 function clearVerifiedPlanCache(): void {
+  clearPaidFeatures()
   latestBaseReceipt = null
   clearWalletCache()
   try { localStorage.removeItem('arty-plan-cache') } catch { /* noop */ }
@@ -115,6 +117,7 @@ function clearVerifiedPlanCache(): void {
 }
 
 function cacheFreePlan(): void {
+  clearPaidFeatures()
   try { localStorage.setItem('arty-plan-cache', 'free') } catch { /* noop */ }
   try {
     localStorage.setItem('arty-allowed-families', JSON.stringify(['claude-haiku']))
@@ -231,6 +234,7 @@ async function resolvePlanStatus(
     const effective = walletBalance === null ? base : withWalletAccess(base)
     basePlans.set(effective, { base, walletVerified: walletBalance !== null })
     latestBaseReceipt = { context, base }
+    publishPaidFeatures(context, data.plan)
     // F-14 (refonte routage, étape 3) — cache aussi les FAMILLES autorisées
     // pour le routage auto hors React (router/availability.ts) : un abonné
     // clé-serveur peut atteindre Gemini/Mistral selon son plan, plus

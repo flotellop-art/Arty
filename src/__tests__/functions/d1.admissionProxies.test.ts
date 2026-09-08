@@ -131,7 +131,7 @@ function faultDb(matches: (sql: string) => boolean, action: (statement: D1Prepar
   } })
 }
 
-describe.each(matrix)('$name / $identity admission', p => {
+describe.each(matrix.filter(p => p.name === 'anthropic'))('$name / $identity admission', p => {
   const table = p.identity === 'google' ? 'trial_usage' : 'email_trial_usage'
   const initial = p.identity === 'google' ? 7 : 13
   it('refuses missing D1 before any provider call or wallet fallback', async () => {
@@ -202,6 +202,17 @@ describe.each(matrix)('$name / $identity admission', p => {
   })
 })
 
+describe.each(matrix.filter(p => p.name !== 'anthropic'))('$name / $identity excluded from the free offer', p => {
+  it('refuses before trial writes or wallet/provider use', async () => {
+    const response = await invoke(p, p.identity)
+    expect(response.status).toBe(403)
+    expect(await response.json()).toMatchObject({ error: 'paid_feature_required' })
+    expect(providerCalls).toBe(0); await unchangedWallet()
+    expect(await h.db.prepare('SELECT used FROM trial_usage WHERE email=?1').bind(EMAIL).first()).toEqual({ used: 7 })
+    expect(await h.db.prepare('SELECT used FROM email_trial_usage WHERE email=?1').bind(EMAIL).first()).toEqual({ used: 13 })
+  })
+})
+
 describe.each(providers)('$name positive exceptions', p => {
   it.each(['byok', 'vip', 'subscription'] as const)('preserves %s without consuming a trial message', async kind => {
     if (kind === 'subscription') await h.db.prepare("UPDATE subscriptions SET plan_type = 'subscription' WHERE user_email = ?1").bind(EMAIL).run()
@@ -235,16 +246,13 @@ describe('image modality checks never debit a locked trial', () => {
 
 describe.each([
   { name: 'free Haiku', call: anthropic, table: 'free_daily_quota', body: { model: 'claude-haiku-4-5-20251001', messages: [{ role: 'user', content: 'Bonjour' }], stream: false } },
-  { name: 'voice', call: tts, table: 'free_daily_quota', body: { text: 'Bonjour' } },
   { name: 'memory extraction', call: extract, table: 'bg_quota', body: { transcript: 'Je préfère les réponses en français et je vis dans une petite ville.' } },
-  { name: 'search', call: search, table: 'free_daily_quota', body: { query: 'example research' } },
-  { name: 'URL fetch', call: urlFetch, table: 'free_daily_quota', body: { url: 'https://example.com/public' } },
-  { name: 'geocoding', call: geo, table: 'free_daily_quota', body: { latitude: 48.5, longitude: 2.5 } },
   { name: 'trails', call: trails, table: 'free_daily_quota', body: { action: 'geometry', routeId: 12345 } },
 ])('$name subsidized handler', p => {
   it.each(['error', 'late'] as const)('refuses a %s quota before any external request', async kind => {
     // Known Free and an empty, readable wallet — failure is specifically quota.
     await h.db.prepare('DELETE FROM subscriptions').run()
+    if (p.call === extract) await h.db.prepare("INSERT INTO subscriptions(user_email,status,plan_type) VALUES (?1,'active','subscription')").bind(EMAIL).run()
     await h.db.prepare('DELETE FROM wallet').run()
     let release!: () => void, entered!: () => void, writes = 0
     let exactQuery: Promise<unknown> | undefined
@@ -298,57 +306,19 @@ function visionRequest(identity: Identity, controller: AbortController, byok = f
         { type: 'text', text: 'Describe' }] }] }) })
 }
 
-describe.each(['google', 'otp'] as const)('%s vision cancellation versus trial deadline', identity => {
-  it.each(['vision-first', 'quota-first'] as const)('%s gives at most one compensation and releases the vision permit', async order => {
-    const table = identity === 'google' ? 'trial_usage' : 'email_trial_usage'
-    const initial = identity === 'google' ? 7 : 13
-    let release!: () => void, committed!: () => void, refunds = 0
-    const held = new Promise<void>(resolve => { release = resolve })
-    const reached = new Promise<void>(resolve => { committed = resolve })
-    const gated = faultDb(sql => sql.includes(`INSERT INTO ${table}`), async (statement, values) => {
-      const row = await statement.bind(...values).first()
-      committed(); await held; return row
-    })
-    h.env.DB = new Proxy(gated, { get(target, prop) {
-      if (prop !== 'prepare') return Reflect.get(target, prop)
-      return (sql: string) => {
-        const statement = target.prepare(sql)
-        if (!sql.includes(`UPDATE ${table}`)) return statement
-        return { bind: (...values: unknown[]) => ({ run: async () => { refunds++; return statement.bind(...values).run() } }) }
-      }
-    } })
-    const controller = new AbortController()
-    try {
-      const operation = openai({ request: visionRequest(identity, controller), env: h.env,
-        waitUntil: (p: Promise<unknown>) => { background.push(p) } } as never) as Promise<Response>
-      const expire = await Promise.race([deadline, operation.then(response => {
-        throw new Error(`Vision unexpectedly finished before its admission query: HTTP ${response.status}`)
-      })])
-      await reached
-      if (order === 'vision-first') controller.abort(new Error('user cancelled'))
-      else expire()
-      const response = await operation
-      expect(response.status).toBe(order === 'vision-first' ? 408 : 503)
-      await response.text()
-      controller.abort(new Error('late cancel'))
-      expire()
-      expect(providerCalls).toBe(0)
-      await unchangedWallet()
-      const other = identity === 'google' ? await checkAllowedVerifiedUser(EMAIL, { ...h.env, DB: h.db })
-        : await consumeEmailTrialMessage({ ...h.env, DB: h.db }, EMAIL)
-      expect(other).toMatchObject({ trialDebited: true })
-      release(); await Promise.all(background)
-      expect(refunds).toBe(1)
-      expect(await h.db.prepare(`SELECT used FROM ${table} WHERE email = ?1`).bind(EMAIL).first()).toEqual({ used: initial + 1 })
-      expect(providerCalls).toBe(0)
-      await unchangedWallet()
-      // A fresh BYOK vision can acquire the sole permit after refusal/cancel.
-      const next = await openai({ request: visionRequest('google', new AbortController(), true), env: h.env,
-        waitUntil: (p: Promise<unknown>) => { background.push(p) } } as never) as Response
-      expect(next.status).toBe(200)
-      await next.text(); await Promise.all(background)
-      expect(providerCalls).toBe(1)
-    } finally { release(); await Promise.allSettled(background) }
+describe.each(['google', 'otp'] as const)('%s vision free-offer refusal', identity => {
+  it('does not debit or refund and releases the vision permit', async () => {
+    const response = await openai({ request: visionRequest(identity, new AbortController()), env: h.env,
+      waitUntil: (p: Promise<unknown>) => { background.push(p) } } as never) as Response
+    expect(response.status).toBe(403)
+    expect(await response.json()).toMatchObject({ error: 'paid_feature_required' })
+    await Promise.all(background); expect(providerCalls).toBe(0); await unchangedWallet()
+    expect(await h.db.prepare('SELECT used FROM trial_usage WHERE email=?1').bind(EMAIL).first()).toEqual({ used: 7 })
+    expect(await h.db.prepare('SELECT used FROM email_trial_usage WHERE email=?1').bind(EMAIL).first()).toEqual({ used: 13 })
+    const next = await openai({ request: visionRequest('google', new AbortController(), true), env: h.env,
+      waitUntil: (p: Promise<unknown>) => { background.push(p) } } as never) as Response
+    expect(next.status).toBe(200); await next.text(); await Promise.all(background)
+    expect(providerCalls).toBe(1)
   })
 })
 

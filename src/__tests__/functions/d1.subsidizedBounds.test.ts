@@ -13,6 +13,7 @@ beforeAll(async () => { h = await makeD1Harness({ GOOGLE_CLIENT_ID: CLIENT_ID,
 afterAll(async () => { await h.dispose() })
 beforeEach(async () => {
   await h.reset(); calls = []; prompts = []
+  await h.db.prepare("INSERT INTO subscriptions(user_email,status,plan_type) VALUES (?1,'active','subscription')").bind(EMAIL).run()
   vi.spyOn(Math, 'random').mockReturnValue(1)
   vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input)
@@ -49,50 +50,33 @@ async function seedSearch(n: number) {
   await h.db.prepare('INSERT INTO free_daily_quota (email,day,family,count,updated_at) VALUES (?1,?2,?3,?4,0)')
     .bind(EMAIL, new Date().toISOString().slice(0, 10), 'web-search', n).run()
 }
-describe('actual Search fan-out admission', () => {
-  it('reserves 36 attempts for six sources and five verifications at the exact cap', async () => {
+describe('paid Search fan-out and free-offer refusal', () => {
+  it.each(['free','trial'])('refuses %s even with a full legacy search allowance', async plan => {
+    await h.db.prepare('UPDATE subscriptions SET plan_type=?1').bind(plan).run()
     await seedSearch(14)
     const res = await invoke(search, request('search/web', { query: 'test', sources, maxResults: 5, verifyUrls: true }))
-    expect(res.status).toBe(200)
-    expect(calls.filter(url => url.endsWith('/v1/search'))).toHaveLength(6)
-    expect(calls.filter(url => url.endsWith('/v1/fetch'))).toHaveLength(30)
-    expect(await used('free_daily_quota')).toBe(50)
+    expect(res.status).toBe(403); expect(calls).toEqual([]); expect(await used('free_daily_quota')).toBe(14)
   })
-  it('refuses all provider calls if only 35 attempts remain', async () => {
-    await seedSearch(15)
-    const res = await invoke(search, request('search/web', { query: 'test', sources, verifyUrls: true }))
-    expect(res.status).toBe(429); expect(calls).toEqual([])
-    expect(await used('free_daily_quota')).toBe(15)
-  })
-  it('admits only one concurrent 36-attempt request', async () => {
-    const results = await Promise.all([0, 1].map(() => invoke(search, request('search/web', { query: 'test', sources, verifyUrls: true }))))
-    expect(results.map(r => r.status).sort()).toEqual([200, 429])
-    expect(calls).toHaveLength(36); expect(await used('free_daily_quota')).toBe(36)
-  })
-  it.each([false, true])('charges redirects only when verification executes: %s', async verifyUrls => {
+  it.each([false,true])('paid search retains bounded source/redirect verification=%s', async verifyUrls => {
     const res = await invoke(search, request('search/web', { query: 'test', sources, redirectUrls: redirects, verifyUrls }))
-    expect(res.status).toBe(200)
-    expect(calls).toHaveLength(verifyUrls ? 41 : 6)
-    expect(await used('free_daily_quota')).toBe(verifyUrls ? 41 : 6)
+    expect(res.status).toBe(200); expect(calls).toHaveLength(verifyUrls ? 41 : 6)
+    expect(await used('free_daily_quota')).toBe(0)
   })
-  it('keeps standard verified search at six attempts', async () => {
+  it('keeps standard verified search at six provider attempts', async () => {
     const res = await invoke(search, request('search/web', { query: 'test', verifyUrls: true }))
-    expect(res.status).toBe(200); expect(calls).toHaveLength(6)
-    expect(await used('free_daily_quota')).toBe(6)
+    expect(res.status).toBe(200); expect(calls).toHaveLength(6); expect(await used('free_daily_quota')).toBe(0)
   })
-  it('does not apply this free quota to a confirmed subscription', async () => {
+  it('does not apply the legacy free quota to a subscription', async () => {
     await seedSearch(50)
-    await h.db.prepare("INSERT INTO subscriptions (user_email,status,plan_type) VALUES (?1,'active','subscription')").bind(EMAIL).run()
     const res = await invoke(search, request('search/web', { query: 'test', sources, verifyUrls: true }))
-    expect(res.status).toBe(200); expect(calls).toHaveLength(36)
-    expect(await used('free_daily_quota')).toBe(50)
+    expect(res.status).toBe(200); expect(calls).toHaveLength(36); expect(await used('free_daily_quota')).toBe(50)
   })
-  it('uses normalized maxResults and counts duplicate sources actually executed', async () => {
-    const res = await invoke(search, request('search/web', { query: 'test', sources: [sources[0], sources[0]], maxResults: 1.9, verifyUrls: true }))
-    expect(res.status).toBe(200); expect(calls).toHaveLength(4)
-    expect(await used('free_daily_quota')).toBe(4)
+  it('normalizes maxResults and bounds duplicate sources actually executed', async () => {
+    const res = await invoke(search, request('search/web', { query: 'test', sources: [sources[0],sources[0]], maxResults: 1.9, verifyUrls: true }))
+    expect(res.status).toBe(200); expect(calls).toHaveLength(4); expect(await used('free_daily_quota')).toBe(0)
   })
 })
+
 describe('actual memory extraction input admission', () => {
   it.each([{ body: null }, { body: [] }, { body: 5 }, { body: 'bad' }])('rejects a non-object before quota/provider: $body', async ({ body }) => {
     const res = await invoke(extract, request('ai/memory-extract', body))

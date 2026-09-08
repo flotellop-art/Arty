@@ -1,3 +1,4 @@
+import { hasPaidServerFeatures, subscribePaidFeatures } from '../services/paidFeatures'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { beginConversationWork } from '../services/conversationWork'
 import i18n from '../i18n'
@@ -88,6 +89,7 @@ export function useProactiveBrief({ isGoogleConnected, userName, onSend }: Param
       const tasks = getTasks().filter((t) => !t.done).slice(0, 10).map((t) => `- ${t.text}`)
       let memoryContext = ''
       try {
+        if (!hasPaidServerFeatures()) return
         const mem = await readAllMemory()
         memoryContext = formatMemoryForPrompt(mem, ' ').slice(0, 600).trim()
       } catch { /* mémoire indisponible — non bloquant */ }
@@ -136,6 +138,7 @@ export function useProactiveBrief({ isGoogleConnected, userName, onSend }: Param
         try { return await handler(input, { calendar: { scope: calendarScope, signal: calendarController.signal } }) } catch { return { result: `Erreur de lecture (${name}).` } }
       }
 
+      if (!hasPaidServerFeatures()) return
       let acc = ''
       await new Promise<void>((resolve) => {
         let controller: AbortController | undefined, settled = false
@@ -161,7 +164,7 @@ export function useProactiveBrief({ isGoogleConnected, userName, onSend }: Param
             // (le brief se déclenche au retour foreground, en pleine
             // conversation — le badge passait à Haiku 🇺🇸 sans message envoyé).
             background: true,
-            assertRequestCurrent: () => calendarScope!.assertCurrent(),
+            assertRequestCurrent: () => { calendarScope!.assertCurrent(); if (!hasPaidServerFeatures()) throw new Error('paid_feature_required') },
             beforeDocumentRequest: () => calendarScope!.validateReadOnly(),
           },
         )
@@ -210,6 +213,7 @@ export function useProactiveBrief({ isGoogleConnected, userName, onSend }: Param
     const trigger = () => { if (!cancelled) void runBrief() }
 
     const mountTimer = setTimeout(trigger, 1800)
+    const stopPaid = subscribePaidFeatures(() => { if (hasPaidServerFeatures()) trigger() })
 
     let removeNative: (() => void) | undefined
     void import('@capacitor/app')
@@ -229,6 +233,7 @@ export function useProactiveBrief({ isGoogleConnected, userName, onSend }: Param
     return () => {
       cancelled = true
       clearTimeout(mountTimer)
+      stopPaid()
       document.removeEventListener('visibilitychange', onVisible)
       removeNative?.()
       abortRef.current?.abort()

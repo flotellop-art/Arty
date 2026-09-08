@@ -893,6 +893,7 @@
     }
   },
   "errors": {
+    "paidFeatureRequired": "The trial includes Haiku chat and its web search. This feature requires paid access.",
     "apiKeyMissing": "API key missing — configure your key in settings",
     "apiKeyInvalid": "Invalid or expired API key. Check your configuration.",
     "apiAccessDenied": "API access denied.",
@@ -1220,6 +1221,7 @@
     }
   },
   "settings": {
+    "paidFeature": "Requires paid access.",
     "kicker": "Settings",
     "titleMain": "Your",
     "titleAccent": "preferences.",
@@ -1313,8 +1315,9 @@
       "noQuery": "No location query made since the app started."
     },
     "autoMemory": {
+      "paidOnly": "Requires paid access. During the trial, add facts in Local memory without an extra AI call.",
       "title": "Automatic memory",
-      "description": "Arty quietly remembers what matters to you (preferences, projects, context). Everything stays encrypted on your device — view and edit in “Local memory”.",
+      "description": "AI extracts facts from your conversations and saves them encrypted on this device. Review and edit them in Local memory.",
       "toggleAria": "Toggle automatic memory",
       "updated": "🧠 Memory updated — see Settings → Local memory"
     },
@@ -1563,12 +1566,12 @@
   "localMemory": {
     "settings": {
       "title": "Local memory",
-      "description": "Facts Arty remembers about you · 100% on your device"
+      "description": "Add, edit or delete facts on this device without an extra AI call."
     },
     "modal": {
       "title": "Local memory",
       "counter": "{{count}} / {{max}}",
-      "privacyNotice": "These facts are stored only on this device, encrypted (AES-256). They personalise Arty's responses without being saved server-side.",
+      "privacyNotice": "These facts are saved encrypted on this device. They may be included in the context sent to the model to personalize its replies. Adding them manually makes no extra AI call.",
       "searchPlaceholder": "Search…",
       "empty": "No facts memorised yet.",
       "emptySearch": "No results",

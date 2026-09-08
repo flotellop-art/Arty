@@ -10,9 +10,9 @@ const payload = () => ({ model: 'claude-haiku-4-5-20251001', max_tokens: 64000, 
   tools: [search], messages: [{ role: 'user', content: 'Synthetic search' }] })
 
 describe('qualified native-search provider envelope (not an operator budget)', () => {
-  it('preserves real client tools and freezes serialization before any later mutation', () => {
+  it('preserves native search and freezes serialization before any later mutation', () => {
     // The qualifier's contract starts AFTER the real final Haiku alignment.
-    const original = JSON.parse(alignBodyWithServedModel(JSON.stringify({ ...payload(), tools: TOOLS }), payload().model))
+    const original = JSON.parse(alignBodyWithServedModel(JSON.stringify({ ...payload(), tools: TOOLS.filter(t => t.name === 'web_search') }), payload().model))
     const snapshot = JSON.stringify(original)
     const result = qualify(original, headers)!
     expect(result).not.toBeNull()
@@ -47,7 +47,7 @@ describe('qualified native-search provider envelope (not an operator budget)', (
   it.each([undefined, 0, 6, 1.1, '5'])('requires an explicit bounded search count: %s', max_uses => {
     expect(qualify({ ...payload(), tools: [{ ...search, max_uses }] }, headers)).toBeNull()
   })
-  it.each(['web_search', 'web_fetch', 'code_execution'])('refuses ambiguous custom tool %s', name => {
+  it.each(['web_search', 'web_fetch', 'code_execution', 'update_memory', 'list_calendar'])('refuses ambiguous custom tool %s', name => {
     expect(qualify({ ...payload(), tools: [{ name, input_schema: {} }] }, headers)).toBeNull()
   })
   it('refuses duplicate tool names and unqualified header extensions', () => {
@@ -86,10 +86,10 @@ describe('qualified native-search provider envelope (not an operator budget)', (
     { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'c', cache_control: { type: 'ephemeral', ttl: '1h' },
       content: [{ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: 'c3ludGhldGlj' } },
         { type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'c3ludGhldGlj' } }] }] }]
-    const tools = [search, { name: 'local', input_schema: { properties: { cache_control: { type: 'string' } } } }]
+    const tools = [search]
     const result = qualify({ ...payload(), messages, tools }, headers)!
     expect(result).not.toBeNull(); expect(JSON.parse(result.body).messages).toEqual(messages)
-    expect(JSON.parse(result.body).tools).toEqual([{ ...search, max_uses: 1 }, tools[1]])
+    expect(JSON.parse(result.body).tools).toEqual([{ ...search, max_uses: 1 }])
   })
   it('recognizes a completed historical server action across different assistant messages', () => {
     const messages = [

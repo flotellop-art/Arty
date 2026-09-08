@@ -1,5 +1,7 @@
+import { hasPaidFeatures, paidFeatureResponse } from '../_lib/simpleTrialOffer'
+import { checkAllowedVerifiedUserPeek } from '../_lib/checkAllowedUser'
+import { isAdmissionUnavailable, admissionUnavailableResponse } from '../_lib/admission'
 import type { Env } from '../../env'
-import { admissionUnavailableResponse } from '../_lib/admission'
 import {
   strictGoogleIdentityFailureResponse,
   verifyGoogleIdentityStrictDetailed,
@@ -90,6 +92,9 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     return strictGoogleIdentityFailureResponse(auth, 'Authentication required')
   }
   const { email } = auth.identity
+  const access = await checkAllowedVerifiedUserPeek(email, env)
+  if (isAdmissionUnavailable(access)) return admissionUnavailableResponse()
+  if (!hasPaidFeatures(access.planType)) return paidFeatureResponse()
   if (!env.ANTHROPIC_API_KEY) {
     return Response.json({ error: 'extract_unavailable' }, { status: 503 })
   }

@@ -893,6 +893,7 @@
     }
   },
   "errors": {
+    "paidFeatureRequired": "L’essai comprend le chat Haiku et sa recherche web. Cette fonction nécessite un accès payant.",
     "apiKeyMissing": "Clé API manquante — configure ta clé dans les paramètres",
     "apiKeyInvalid": "Clé API invalide ou expirée. Vérifie ta configuration.",
     "apiAccessDenied": "Accès refusé à l'API.",
@@ -1220,6 +1221,7 @@
     }
   },
   "settings": {
+    "paidFeature": "Réservé aux accès payants.",
     "kicker": "Paramètres",
     "titleMain": "Tes",
     "titleAccent": "préférences.",
@@ -1313,8 +1315,9 @@
       "noQuery": "Aucune question de localisation posée depuis le démarrage de l'app."
     },
     "autoMemory": {
+      "paidOnly": "Réservée aux accès payants. Pendant l’essai, ajoute tes souvenirs dans « Mémoire locale », sans appel IA supplémentaire.",
       "title": "Mémoire automatique",
-      "description": "Arty retient discrètement ce qui compte pour toi (préférences, projets, contexte). Tout reste chiffré sur ton appareil — consulte et modifie dans « Mémoire locale ».",
+      "description": "Une IA extrait les souvenirs de tes échanges, puis les enregistre chiffrés sur cet appareil. Consulte et modifie ces faits dans « Mémoire locale ».",
       "toggleAria": "Activer ou désactiver la mémoire automatique",
       "updated": "🧠 Mémoire mise à jour — voir Paramètres → Mémoire locale"
     },
@@ -1563,12 +1566,12 @@
   "localMemory": {
     "settings": {
       "title": "Mémoire locale",
-      "description": "Faits qu'Arty retient sur toi · 100% sur ton appareil"
+      "description": "Ajoute, modifie ou efface tes souvenirs sur cet appareil, sans appel IA supplémentaire."
     },
     "modal": {
       "title": "Mémoire locale",
       "counter": "{{count}} / {{max}}",
-      "privacyNotice": "Ces faits sont stockés uniquement sur cet appareil, chiffrés (AES-256). Ils personnalisent les réponses d'Arty sans être sauvegardés côté serveur.",
+      "privacyNotice": "Ces faits sont enregistrés chiffrés sur cet appareil. Ils peuvent être inclus dans le contexte envoyé au modèle pour personnaliser ses réponses. Les ajouter manuellement ne déclenche aucun appel IA supplémentaire.",
       "searchPlaceholder": "Rechercher…",
       "empty": "Aucun fait mémorisé pour l'instant.",
       "emptySearch": "Aucun résultat",
@@ -1624,7 +1627,7 @@
     "scope": "Texte seul, sans historique, fichiers, navigation, vidéo, position ni actions. Chaque envoi lance {{count}} appels (des reprises peuvent en consommer davantage). Coût indicatif fournisseur : tokens estimés, hors raisonnement/cache, conversion fixe 0,92 EUR/USD ; ce n’est pas le montant débité par Arty.",
     "sameReportedModel": "Plusieurs panneaux signalent le même modèle après routage : ce ne sont pas des réponses de modèles distincts.",
     "timeout": "La comparaison a dépassé le délai de deux minutes. Vous pouvez réessayer.",
-    "access": {"unknownModel":"Ce modèle n’est pas dans le catalogue.","auth":"Connectez ou reconnectez votre compte pour comparer.","unverified":"Accès serveur non vérifié. Réessayez après chargement ou utilisez une clé personnelle.","byok":"Le plan Pro nécessite votre clé personnelle pour ce fournisseur.","trial":"Ce modèle n’est pas inclus dans l’essai. Choisissez un modèle accessible.","plan":"Cette sélection demande des crédits, un abonnement éligible ou une clé personnelle.","twoModels":"Choisissez au moins deux modèles distincts et accessibles. Deux modèles du même fournisseur conviennent."},
+    "access": {"unknownModel":"Ce modèle n’est pas dans le catalogue.","auth":"Connectez ou reconnectez votre compte pour comparer.","unverified":"Accès serveur non vérifié. Réessayez après chargement ou utilisez une clé personnelle.","byok":"Le plan Pro nécessite votre clé personnelle pour ce fournisseur.","trial":"Le comparateur nécessite un accès payant. L’essai utilise Haiku dans le chat.","plan":"Cette sélection demande des crédits, un abonnement éligible ou une clé personnelle.","twoModels":"Choisissez au moins deux modèles distincts et accessibles. Deux modèles du même fournisseur conviennent."},
     "title": "Comparateur",
     "panels": "{{count}} / {{max}} panneaux",
     "addPanel": "Ajouter",

@@ -313,7 +313,7 @@ async function runMistralStream(
         // backoff de streamOnce a déjà retenté ; ré-attaquer immédiatement
         // enfonçait le 429 — bug live du 11 juin, article Figaro en EU).
         const name = (err as Error).name
-        if (!wantForce || name === 'AbortError' || name === 'RateLimitError' || name === 'WalletReconciliationError' || name === 'TrialExpiredError' || name === 'AdmissionUnavailableError') throw err
+        if (!wantForce || name === 'AbortError' || name === 'RateLimitError' || name === 'WalletReconciliationError' || name === 'TrialExpiredError' || name === 'AdmissionUnavailableError' || name === 'PaidFeatureRequiredError') throw err
         once = await streamOnce(
           apiKey, apiMessages, openaiTools, onToken, controller, model, temperature, false, options?.assertRequestCurrent, options?.beforeDocumentRequest
         )

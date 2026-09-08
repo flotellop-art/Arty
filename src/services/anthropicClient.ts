@@ -3,6 +3,8 @@ import { ANTHROPIC_CONTINUATION_PATH, ANTHROPIC_FUNDING_HEADER, ANTHROPIC_REQUIR
   parseAnthropicFunding, type AnthropicFunding } from '../../shared/anthropicFunding'
 import { walletReconciliationError } from './walletFailure'
 import { admissionUnavailableError } from './admissionFailure'
+import { hasPaidServerFeatures } from './paidFeatures'
+import { creditsCoverPremium } from './walletClient'
 import { TOOLS } from './toolDefinitions'
 import { compressIfNeeded } from './conversationCompressor'
 import { getAnthropicKey } from './activeApiKey'
@@ -1089,7 +1091,9 @@ async function runWithTools(
     const systemBlocks = [{ type: 'text', text: systemText, cache_control: { type: 'ephemeral' } }]
     // Add prompt-caching hint to last tool definition. L'ensemble d'outils
     // peut être restreint via options.tools (brief proactif = lecture seule).
-    const toolSet = (options?.documentReadOnly || options?.comparisonTextOnly) ? [] : filterAnthropicToolsForRoute(options?.tools ?? TOOLS, rd)
+    const fullTools = (apiKey !== 'server-provided' && !!apiKey) || hasPaidServerFeatures() || creditsCoverPremium()
+    const availableTools = fullTools ? (options?.tools ?? TOOLS) : (options?.tools ?? TOOLS).filter(t => t.type === 'web_search_20250305' && t.name === 'web_search')
+    const toolSet = (options?.documentReadOnly || options?.comparisonTextOnly) ? [] : filterAnthropicToolsForRoute(availableTools, rd)
     const cachedTools = toolSet.map((t, i) =>
       i === toolSet.length - 1 ? { ...t, cache_control: { type: 'ephemeral' } } : t
     )

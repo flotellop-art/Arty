@@ -4,6 +4,7 @@ const { nativeRequest } = vi.hoisted(() => ({
   nativeRequest: vi.fn(),
 }))
 
+vi.mock('../../services/paidFeatures', () => ({ hasPaidServerFeatures: () => true }))
 vi.mock('@capacitor/core', () => ({
   Capacitor: {
     isNativePlatform: () => true,

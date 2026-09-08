@@ -1,7 +1,7 @@
+import { hasPaidServerFeatures } from './paidFeatures'
 import {
   getAnthropicKey,
   getMistralKey,
-  hasAnthropicKey,
   hasMistralKey,
 } from './activeApiKey'
 import { getValidAccessToken } from './googleAuth'
@@ -48,12 +48,18 @@ export async function enhancePrompt(
 
 /** Returns true if the enhancer has at least one usable AI key. */
 export function canEnhancePrompt(): boolean {
-  return hasAnthropicKey() || hasMistralKey()
+  return canFundEnhancer(getAnthropicKey()) || canFundEnhancer(getMistralKey())
+}
+
+function canFundEnhancer(key: string | null): boolean {
+  return (!!key && key !== 'server-provided') || hasPaidServerFeatures()
 }
 
 async function enhanceViaHaiku(text: string): Promise<string> {
   const apiKey = getAnthropicKey()
+  if (!canFundEnhancer(apiKey)) throw new Error(i18n.t('errors.paidFeatureRequired'))
   const googleToken = await getValidAccessToken()
+  if (!canFundEnhancer(apiKey)) throw new Error(i18n.t('errors.paidFeatureRequired'))
 
   const headers: Record<string, string> = {
     'content-type': 'application/json',
@@ -93,7 +99,9 @@ async function enhanceViaHaiku(text: string): Promise<string> {
 
 async function enhanceViaMistral(text: string): Promise<string> {
   const apiKey = getMistralKey()
+  if (!canFundEnhancer(apiKey)) throw new Error(i18n.t('errors.paidFeatureRequired'))
   const googleToken = await getValidAccessToken()
+  if (!canFundEnhancer(apiKey)) throw new Error(i18n.t('errors.paidFeatureRequired'))
 
   const headers: Record<string, string> = {
     'content-type': 'application/json',

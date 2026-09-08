@@ -1,4 +1,5 @@
-import { useState, useCallback, useEffect, useMemo, useRef } from 'react'
+import { hasPaidServerFeatures, subscribePaidFeatures } from '../services/paidFeatures'
+import { useState, useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from 'react'
 import { useTranslation } from 'react-i18next'
 import { buildToolConfirmMessage } from '../services/toolConfirmation'
 import { useGoogleAuth } from './useGoogleAuth'
@@ -38,6 +39,7 @@ export function useAppSetup(conversation: ConversationHook) {
   const drive = useDrive()
   const computerActions = useComputer()
   const memoryHook = useMemory()
+  const paidFeatures = useSyncExternalStore(subscribePaidFeatures, hasPaidServerFeatures)
   const noCasaPhase0 = isPublicGoogleOAuthProfileEnabled()
   // Comptes mail IMAP natifs (décision du 9 août 2026, « natif d'abord ») :
   // le préambule mail du system prompt est CONDITIONNEL. Sans compte connecté,
@@ -134,9 +136,9 @@ export function useAppSetup(conversation: ConversationHook) {
       if (!noCasaPhase0) {
         drive.fetchFiles()
       }
-      memoryHook.loadMemory()
+      if (paidFeatures) memoryHook.loadMemory()
     }
-  }, [googleAuth.isConnected, noCasaPhase0])
+  }, [googleAuth.isConnected, noCasaPhase0, paidFeatures])
 
   // Update system prompt with Google context
   useEffect(() => {
@@ -151,7 +153,7 @@ export function useAppSetup(conversation: ConversationHook) {
     // avec le user message → mémoire filtrée (économie ~95% des tokens sur
     // requêtes type "salut", "merci", "comment ça va").
     const buildPrompt = (userMessage?: string) => {
-      const memorySummary = googleAuth.isConnected ? memoryHook.getPromptContext(userMessage) : undefined
+      const memorySummary = hasPaidServerFeatures() && googleAuth.isConnected ? memoryHook.getPromptContext(userMessage) : undefined
       // Drive may be cached for the UI, but its metadata is never silently
       // copied into every model request.
       const prompt = buildLocalMemoryPrompt() + buildContextualPrompt({ memorySummary, customInstructions: getCustomInstructions() }) + getStylePrompt(responseStyle)
@@ -180,7 +182,7 @@ export function useAppSetup(conversation: ConversationHook) {
     }
     window.addEventListener('arty-rebuild-prompt', onRebuild)
     return () => { stopMemory(); stopInstructions(); window.removeEventListener('arty-rebuild-prompt', onRebuild) }
-  }, [googleAuth.isConnected, memoryHook.getPromptContext, mailboxBoundaryPrompt, publicGooglePrompt, setSystemPrompt, responseStyle])
+  }, [paidFeatures, googleAuth.isConnected, memoryHook.getPromptContext, mailboxBoundaryPrompt, publicGooglePrompt, setSystemPrompt, responseStyle])
 
   // Handle action buttons clicked in reports
   // ⚠️ ALLOWLIST POSITIVE (audit 14 juin) — pendant de buildToolConfirmMessage

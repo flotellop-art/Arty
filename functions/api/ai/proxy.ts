@@ -249,10 +249,10 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
     // `email`, `isWhitelisted`, `hasServerKey` dans la réponse → oracle pour
     // énumérer la whitelist (test d'emails arbitraires → différence de body).
     // Maintenant : message générique sans révéler l'état serveur.
-    return Response.json(
+    return refuseBeforeSend(Response.json(
       { error: "Clé API requise — abonnement Pro requis ou fournir une clé BYOK." },
       { status: 401 }
-    )
+    ))
   }
 
   let modelName = typeof parsedBody.model === 'string' && parsedBody.model.length > 0 ? parsedBody.model : 'claude'
