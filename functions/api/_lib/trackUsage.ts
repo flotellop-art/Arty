@@ -113,6 +113,7 @@ export function teeForParsing(
   parser: (chunk: string) => void,
   finalize: () => MeasuredUsage,
   onActivity?: () => void,
+  onComplete?: (transportComplete: boolean) => void,
 ): { clientBody: ReadableStream<Uint8Array>; parsedUsage: Promise<MeasuredUsage> } {
   const [clientSide, parseSide] = upstream.tee()
 
@@ -141,6 +142,8 @@ export function teeForParsing(
       reader.releaseLock()
     }
     const usage = finalize()
+    // Optional independent financial proof sees the exact same bytes and EOF.
+    if (onComplete) { try { onComplete(completedNormally) } catch { /* retain hold */ } }
     return completedNormally ? usage : { ...usage, measured: false }
   })()
 

@@ -1,5 +1,80 @@
 # Chat Anthropic — protection du financement et des continuations
 
+## Mise en œuvre locale du rapprochement — 8 septembre 2026
+
+Le lot suivant est réalisé sur la base `34fe4e6`, sans activation distante :
+
+- Plafonds du corps réellement envoyé : 2 000 tokens de sortie et une recherche
+  par POST subventionné. Historique conservé ; abonnement, VIP, portefeuille et
+  BYOK ne passent pas par cette normalisation.
+- Preuve de coût dédiée, distincte des analytics et du prix de vente des crédits,
+  alimentée par les mêmes octets que le parseur existant. Un reçu exige une réponse
+  complète, le modèle qualifié, les compteurs cumulatifs et les frais de recherche
+  explicites ; la création de cache est ventilée entre cinq minutes et une heure.
+- Migration `0014_subsidized_settlement.sql` : un reçu unique par tentative.
+  Le rapprochement restitue uniquement la réserve inutilisée en transaction ;
+  le nombre de tentatives ne diminue pas. Le ticket engagé ne peut pas être renvoyé.
+  Flux tronqué, preuve incomplète, panne ou conflit : aucun remboursement supposé.
+- Préparation opérateur `operations/free-trial-budget-100usd.disabled.sql` :
+  100 USD cumulés, politique désactivée et plafond secondaire de 3 000 tentatives.
+  Le fichier est hors migrations et n'est exécuté par aucun appel ou déploiement.
+  Un INSERT strict interdit d'écraser une politique ou de remettre les compteurs à zéro.
+
+La réserve monétaire représente désormais, lorsque la migration est appliquée,
+**coûts rapprochés + réserves en cours ou non rapprochées**. La borne par requête
+de recherche demeure 4,02 USD ; on ne la remplace pas par le coût moyen estimé.
+Une réponse à 8 000 tokens entrants, 1 000 sortants et zéro recherche facturée
+consomme 0,013 USD, après reçu complet. La différence devient à nouveau disponible.
+Une réserve d'issue inconnue reste conservée et peut nécessiter une intervention.
+Un dépassement de limites attesté par un reçu complet conserve la réserve et
+tente de désactiver la politique concernée ; une panne D1 ne permet pas de
+prétendre que cette désactivation a réussi.
+
+Le contrat de parsing suit les [événements cumulatifs Anthropic](https://platform.claude.com/docs/en/build-with-claude/streaming),
+la [ventilation du cache](https://platform.claude.com/docs/en/build-with-claude/prompt-caching)
+et les [types officiels Usage](https://github.com/anthropics/anthropic-sdk-typescript/blob/main/src/resources/messages/messages.ts),
+consultés le 8 septembre 2026. Les décompositions de sortie ne sont pas refacturées
+en plus du total inclusif. Un format financier futur non qualifié ne libère rien.
+
+Ce lot ne démontre pas encore une offre globale prête à ouvrir : les routes
+auxiliaires, la comptabilisation par question à travers les continuations et
+l'unicité de l'allocation entre canaux restent à traiter. Le budget demeure
+désactivé. Les sections suivantes conservent l'historique du candidat précédent ;
+leurs montants de 4,37 USD et l'absence de rapprochement décrivent l'ancien code.
+
+### Réception du lot de rapprochement
+
+Le 8 septembre, campagne finale locale sur le code de ce lot : **225 tests
+réussis, zéro échec, zéro ignoré**, sept fichiers. Rapport local :
+`artifacts/trial-settlement-final.json`. Commande : `npx vitest run` sur
+`anthropicSubsidizedUsage`, `d1.subsidizedSettlement`, `anthropicSubsidizedRequest`,
+`d1.subsidizedBudget`, `d1.anthropicSubsidizedGap`, `trackUsage` et
+`anthropicContinuation.d1`, avec `--maxWorkers=1` et rapport JSON.
+`npm run typecheck` et `git diff --check` réussissent également.
+
+Les deux contre-revues financières et produit ont clôturé leurs objections :
+deltas multiples, champs optionnels officiels, rupture du transport après
+réception de données et propagation d'un dépassement au garde budgétaire.
+Les campagnes intermédiaires ont servi au diagnostic des fixtures et ne sont
+pas présentées comme une réception finale. Aucun délai applicatif ou seuil
+de test n'a été augmenté pour obtenir ce résultat.
+
+Ces tests utilisent des fournisseurs simulés et une vraie D1 locale isolée.
+Ils ne prouvent ni une activation distante, ni une facture réelle, ni la CI
+globale ou une recette PWA/APK de ce nouveau lot. Prochaine mission utile :
+couvrir les appels auxiliaires de l'essai et définir le budget d'une question
+à travers ses continuations, avant tout branchement du plafond global.
+
+## Décision produit — 8 septembre 2026
+
+La [politique cible de l'essai](FREE_TRIAL_POLICY.md) est désormais consignée :
+Haiku 4.5, 30 messages par personne, base budgétaire théorique de 100 USD
+cumulés, réponses et recherches limitées. Cette décision précise la cible
+de préparation ; elle ne vaut pas configuration ou activation distante.
+Les écarts entre cette cible et le candidat actuel sont listés dans ce document.
+Les mentions historiques d'absence de politique ci-dessous décrivent les
+étapes antérieures ; le budget technique reste non configuré par ce lot.
+
 ## Candidat isolé — 8 septembre 2026
 
 Base publiée `9d01e34`, branche `codex/anthropic-funding-release-20260908`.

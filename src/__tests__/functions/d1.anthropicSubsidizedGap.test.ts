@@ -298,8 +298,9 @@ describe('qualified chat funding and outcome boundaries, actual local D1', () =>
     expect(response.status).toBe(200); expect(await response.text()).toBe(content)
     await Promise.all(background)
     expect(calls).toHaveLength(1); expect(calls[0].redirect).toBe('manual')
-    expect(JSON.parse(calls[0].body as string)).toEqual({ ...body(), service_tier: 'standard_only' })
-    expect(await totals()).toEqual({ reserved_micro_usd: 4370000, reserved_attempts: 1 })
+    expect(JSON.parse(calls[0].body as string)).toEqual({ ...body(), max_tokens: 2000, service_tier: 'standard_only',
+      tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 1 }] })
+    expect(await totals()).toEqual({ reserved_micro_usd: 4020000, reserved_attempts: 1 })
     expect((await h.db.prepare('SELECT state FROM subsidized_attempt_v1').all()).results).toEqual([{ state: 'engaged' }])
   })
   it.each(['off', 'missing', 'revision'])('refuses %s policy with no POST and compensates a confirmed trial debit', async policy => {
@@ -377,7 +378,7 @@ describe('qualified chat funding and outcome boundaries, actual local D1', () =>
     const refusal = await invoke(request('free', history))
     expect(await refusal.json()).toEqual({ error: 'subsidized_budget_exhausted' }); expect(calls).toHaveLength(2)
     expect(calls.every(c => JSON.stringify(JSON.parse(c.body as string).messages) === JSON.stringify(history.messages))).toBe(true)
-    expect(await totals()).toEqual({ reserved_micro_usd: 8740000, reserved_attempts: 2 })
+    expect(await totals()).toEqual({ reserved_micro_usd: 8040000, reserved_attempts: 2 })
   }, 15000)
   it.each([302, 400, 503, 'network'] as const)('retains the engaged reserve and trial debit after provider outcome %s', async outcome => {
     await seedTrial(); await fund()
@@ -388,7 +389,7 @@ describe('qualified chat funding and outcome boundaries, actual local D1', () =>
     const response = await invoke(request('trial')); await response.text(); await Promise.all(background)
     expect(response.status).toBe(outcome === 'network' ? 502 : outcome === 302 ? 409 : outcome)
     expect(response.headers.get('location')).toBeNull(); expect(calls).toHaveLength(1)
-    expect(await totals()).toEqual({ reserved_micro_usd: 4370000, reserved_attempts: 1 })
+    expect(await totals()).toEqual({ reserved_micro_usd: 4020000, reserved_attempts: 1 })
     expect(await h.db.prepare('SELECT used FROM trial_usage WHERE email=?').bind(EMAIL).first()).toEqual({ used: 8 })
   })
   it.each(['reserve-ack', 'engage-ack', 'revoked', 'cancelled'])('never sends or replays a write after %s', async fault => {
@@ -417,7 +418,7 @@ describe('qualified chat funding and outcome boundaries, actual local D1', () =>
     const req = new Request(request('trial'), { signal: controller.signal })
     const response = await invoke(req); await response.text(); await Promise.all(background)
     expect(response.status).toBe(503); expect(calls).toHaveLength(0)
-    expect(await totals()).toEqual({ reserved_micro_usd: 4370000, reserved_attempts: 1 })
+    expect(await totals()).toEqual({ reserved_micro_usd: 4020000, reserved_attempts: 1 })
     expect((await h.db.prepare('SELECT state FROM subsidized_attempt_v1').all()).results)
       .toEqual([{ state: fault === 'engage-ack' ? 'engaged' : 'reserved' }])
     expect(await h.db.prepare('SELECT used FROM trial_usage WHERE email=?').bind(EMAIL).first()).toEqual({ used: 7 })

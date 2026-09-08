@@ -84,6 +84,7 @@ function validToolChoice(value: unknown): boolean {
 export type QualifiedSubsidizedRequest = Readonly<{
   body: string
   envelope: SubsidizedEnvelope
+  costContract: Readonly<{ model: string; maxOutputTokens: number; maxSearches: number }>
 }>
 
 /** Call only AFTER plan/wallet selection and final served-model alignment.
@@ -122,15 +123,23 @@ export function qualifyAnthropicSubsidizedRequest(
     }
   }
   if (!validServerHistory(body.messages as ObjectValue[], searches)) return null
+  // Offer limits apply only to the final subsidized branch, per HTTP attempt.
+  // Keep validation above and preserve the caller's history and tool schemas.
+  const maxOutputTokens = Math.min(body.max_tokens as number, 2000)
+  searches = Math.min(searches, 1)
+  const tools = (body.tools as ObjectValue[] | undefined)?.map(tool =>
+    tool.type === 'web_search_20250305' ? { ...tool, max_uses: searches } : tool)
   // Native search can re-infer after errors, even after max_uses is reached.
   // Its DOCUMENTED sampling cap is 10/request, not max_uses + 1. Charge every
   // input token at the worst supported rate (1h write = 2 microUSD/token).
   // max_tokens bounds total generated output/request at 5 microUSD/token.
   const iterations = searches ? 10 : 1
-  const ceilingMicroUsd = iterations * 200000 * 2 + (body.max_tokens as number) * 5 + searches * 10000
+  const ceilingMicroUsd = iterations * 200000 * 2 + maxOutputTokens * 5 + searches * 10000
   return Object.freeze({
-    body: JSON.stringify({ ...body, model: MODEL, service_tier: 'standard_only' }),
+    body: JSON.stringify({ ...body, model: MODEL, max_tokens: maxOutputTokens,
+      ...(tools ? { tools } : {}), service_tier: 'standard_only' }),
+    costContract: Object.freeze({ model: MODEL, maxOutputTokens, maxSearches: searches }),
     envelope: Object.freeze({ policyRevision: 1, ceilingMicroUsd,
-      envelopeId: `anthropic:haiku45:200k:${iterations}loops:${body.max_tokens}out:${searches}search:20260908:v1` }),
+      envelopeId: `anthropic:haiku45:200k:${iterations}loops:${maxOutputTokens}out:${searches}search:20260908:v2` }),
   })
 }

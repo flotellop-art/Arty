@@ -6,7 +6,9 @@ import { readTrialCounterRemaining } from '../_lib/trialAdmission'
 import { isAdmissionUnavailable, admissionUnavailableResponse } from '../_lib/admission'
 import { readAnthropicRequestBody } from '../_lib/anthropicRequestBody'
 import { qualifyAnthropicSubsidizedRequest } from '../_lib/anthropicSubsidizedRequest'
-import { dispatchSubsidizedAttempt, reserveSubsidizedAttempt } from '../_lib/subsidizedBudget'
+import { dispatchSubsidizedAttempt, reserveSubsidizedAttempt, settleSubsidizedAttempt,
+  type SubsidizedTicket } from '../_lib/subsidizedBudget'
+import { createAnthropicSubsidizedUsageParser, type SubsidizedCostProof } from '../_lib/anthropicSubsidizedUsage'
 import { BILLING_LEAK_PATTERN as SHARED_BILLING_LEAK_PATTERN } from '../_lib/upstreamBilling'
 import {
   checkAllowedVerifiedUser,
@@ -388,12 +390,14 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
       })
     }
     let response: Response
+    let subsidizedTicket: SubsidizedTicket | undefined
     if (qualified) {
       const reservation = await reserveSubsidizedAttempt(env.DB, qualified.envelope)
       if (reservation.status === 'budget_exhausted') return refuseBeforeSend(Response.json(
         { error: 'subsidized_budget_exhausted' }, { status: 503, headers: { 'cache-control': 'no-store' } },
       ))
       if (reservation.status !== 'reserved') return refuseBeforeSend(admissionUnavailableResponse())
+      subsidizedTicket = reservation.ticket
       const dispatch = await dispatchSubsidizedAttempt(env.DB, reservation.ticket, send, request.signal)
       if (dispatch.status === 'unavailable') return refuseBeforeSend(admissionUnavailableResponse())
       if (dispatch.status !== 'sent') return Response.json({ error: 'Proxy error' }, { status: 502 })
@@ -428,21 +432,29 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
     // Ne track que les appels server-key réussis (BYOK = user paie lui-même).
     if (!isByok && response.ok && response.body) {
       const parser = createAnthropicParser(responseUsageFormat(response.headers.get('content-type')))
+      const qualifiedFormat = /^(application\/json|text\/event-stream)(;|$)/i.test(response.headers.get('content-type') || '')
+      const costParser = qualified && subsidizedTicket && qualifiedFormat
+        ? createAnthropicSubsidizedUsageParser(responseUsageFormat(response.headers.get('content-type')), qualified.costContract)
+        : undefined
+      let costProof: SubsidizedCostProof | null = null
       const { clientBody, parsedUsage } = teeForParsing(
         response.body,
-        parser.feed,
+        chunk => { parser.feed(chunk); costParser?.feed(chunk) },
         parser.finalize,
-        makeReservationHeartbeat(env, walletResId)
+        makeReservationHeartbeat(env, walletResId),
+        complete => { costProof = costParser?.finalize(complete) ?? null },
       )
       // UN seul tee, deux consommateurs sur le MÊME usage réel : analytics
       // (recordUsage, coût provider) + débit wallet (settle, prix markupé). Le
       // settle n'a lieu que sur le chemin wallet (walletResId défini).
       const rid = walletResId
+      const sid = subsidizedTicket
       waitUntil(
         parsedUsage.then((usage) =>
           Promise.allSettled([
             recordUsage(env, email, modelName, usage),
             ...(rid ? [settleWalletBilling(env, { resId: rid, email, model: modelName }, usage)] : []),
+            ...(sid && costProof ? [settleSubsidizedAttempt(env.DB, sid, costProof)] : []),
           ])
         )
       )

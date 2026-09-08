@@ -16,12 +16,13 @@ describe('qualified native-search provider envelope (not an operator budget)', (
     const snapshot = JSON.stringify(original)
     const result = qualify(original, headers)!
     expect(result).not.toBeNull()
-    expect(result.envelope.ceilingMicroUsd).toBe(4370000)
+    expect(result.envelope.ceilingMicroUsd).toBe(4020000)
     expect(Object.isFrozen(result)).toBe(true); expect(Object.isFrozen(result.envelope)).toBe(true)
-    expect(JSON.parse(result.body)).toEqual({ ...original, service_tier: 'standard_only' })
+    expect(JSON.parse(result.body)).toEqual({ ...original, max_tokens: 2000, service_tier: 'standard_only',
+      tools: original.tools.map((t: Record<string, unknown>) => t.name === 'web_search' ? { ...t, max_uses: 1 } : t) })
     expect(JSON.stringify(original)).toBe(snapshot)
     original.max_tokens = 1
-    expect(JSON.parse(result.body).max_tokens).toBe(64000)
+    expect(JSON.parse(result.body).max_tokens).toBe(2000)
   })
   it('uses one inference without native tools, not a search envelope or a byte/token guess', () => {
     const result = qualify({ ...payload(), tools: [], max_tokens: 123 }, headers)!
@@ -66,7 +67,7 @@ describe('qualified native-search provider envelope (not an operator budget)', (
     ] }, { role: 'user', content: 'Continue' }]
     const result = qualify({ ...payload(), messages: history }, headers)!
     expect(result).not.toBeNull(); expect(JSON.parse(result.body).messages).toEqual(history)
-    expect(result.envelope.ceilingMicroUsd).toBe(4370000)
+    expect(result.envelope.ceilingMicroUsd).toBe(4020000)
   })
   it('prices deferred native search in this new request, preserving the pending block', () => {
     const messages = [{ role: 'assistant', content: [
@@ -75,7 +76,7 @@ describe('qualified native-search provider envelope (not an operator budget)', (
     ] }, { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'client', content: 'ok' }] }]
     const result = qualify({ ...payload(), messages }, headers)!
     expect(result).not.toBeNull(); expect(JSON.parse(result.body).messages).toEqual(messages)
-    expect(result.envelope.ceilingMicroUsd).toBe(4370000)
+    expect(result.envelope.ceilingMicroUsd).toBe(4020000)
     messages[0].content[0].name = 'code_execution'
     expect(qualify({ ...payload(), messages }, headers)).toBeNull()
   })
@@ -88,7 +89,7 @@ describe('qualified native-search provider envelope (not an operator budget)', (
     const tools = [search, { name: 'local', input_schema: { properties: { cache_control: { type: 'string' } } } }]
     const result = qualify({ ...payload(), messages, tools }, headers)!
     expect(result).not.toBeNull(); expect(JSON.parse(result.body).messages).toEqual(messages)
-    expect(JSON.parse(result.body).tools).toEqual(tools)
+    expect(JSON.parse(result.body).tools).toEqual([{ ...search, max_uses: 1 }, tools[1]])
   })
   it('recognizes a completed historical server action across different assistant messages', () => {
     const messages = [
