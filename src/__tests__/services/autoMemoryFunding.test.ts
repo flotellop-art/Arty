@@ -1,3 +1,4 @@
+import * as paid from '../../services/paidFeatures'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { google, installCalendarAccount, relinkCalendarGoogle, resetCalendarFixture } from '../helpers/calendarFixture'
 import { deferred } from '../helpers/workspaceLocks'
@@ -14,7 +15,8 @@ const conversation = (): Conversation => ({ id:'memory-funding',title:'Synthetic
   messages:[1,2,3].map(n=>({ id:`m${n}`,role:'user',content:'Préférence synthétique récurrente. '.repeat(4),timestamp:n })) })
 const result = (replace: unknown[] = []) => ({ add:[],replace })
 beforeEach(async()=>{
-  await resetCalendarFixture(); vi.spyOn(trial,'getTrialRemaining').mockReturnValue(null)
+  await resetCalendarFixture()
+  vi.spyOn(paid, 'hasPaidServerFeatures').mockReturnValue(true); vi.spyOn(trial,'getTrialRemaining').mockReturnValue(null)
   // Exercise the real encrypted persistence, not a plaintext replacement.
   vi.spyOn(toast,'toast').mockImplementation(()=>{})
   vi.stubGlobal('fetch',vi.fn(async()=>Response.json(result())))

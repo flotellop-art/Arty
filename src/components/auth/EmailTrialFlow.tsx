@@ -13,7 +13,7 @@ import { TurnstileWidget } from './TurnstileWidget'
  * puis `setTrialToken`. Le jeton est opaque/révocable côté serveur.
  */
 interface EmailTrialFlowProps {
-  onSuccess: (email: string, token: string) => Promise<void>
+  onSuccess: (email: string, token: string, remaining: number | null) => Promise<void>
   onBack: () => void
 }
 
@@ -95,9 +95,10 @@ export function EmailTrialFlow({ onSuccess, onBack }: EmailTrialFlowProps) {
     setError('')
     setBusy(true)
     try {
-      const { token, email: verifiedEmail } = await verifyOtp(email, code.trim())
+      const { token, email: verifiedEmail, trial_messages_remaining: remaining } = await verifyOtp(email, code.trim())
       // Succès → le parent crée la session puis nous démonte.
-      await onSuccess(verifiedEmail, token)
+      await onSuccess(verifiedEmail, token, typeof remaining === 'number' && Number.isInteger(remaining)
+        && remaining >= 0 && remaining <= 30 ? remaining : null)
     } catch (err) {
       setError(errText(err instanceof EmailTrialError ? err.code : 'network'))
       setBusy(false)
@@ -115,6 +116,9 @@ export function EmailTrialFlow({ onSuccess, onBack }: EmailTrialFlowProps) {
         })}
       </p>
 
+      <p className="font-sans text-xs text-theme-muted mt-3 text-center leading-relaxed">
+        {t('onboardingChoice.trialBenefitNote')}
+      </p>
       {siteKey && (
         <div className="mt-4">
           <TurnstileWidget

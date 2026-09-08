@@ -16,17 +16,17 @@ describe('parité TRIAL_ALLOWED_MODELS ↔ isModelAllowedInTrial', () => {
   // serveur (proxy.ts → Haiku daté ; mistral-proxy.ts → medium-latest).
   it.each([
     'claude-haiku-4-5-20251001',
+  ])('id réel %s → autorisé en essai', (id) => {
+    expect(isModelAllowedInTrial(id)).toBe(true)
+  })
+
+  it.each([
     'mistral-medium-latest',
     'gemini-2.5-flash',
     'gemini-3.5-flash',
     'gemini-3.6-flash',
     'gemini-3.5-flash-lite',
     'gpt-5-mini',
-  ])('id réel %s → autorisé en essai', (id) => {
-    expect(isModelAllowedInTrial(id)).toBe(true)
-  })
-
-  it.each([
     'claude-sonnet-5',
     'claude-opus-4-8',
     'gpt-5.5',

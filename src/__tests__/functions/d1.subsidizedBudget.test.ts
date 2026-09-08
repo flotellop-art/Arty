@@ -76,7 +76,7 @@ describe('cumulative subsidized budget, real isolated D1', () => {
     expect(out.filter(r => r.status === 'reserved')).toHaveLength(1)
     expect(out.filter(r => r.status === 'budget_exhausted')).toHaveLength(19)
     await totals(1, 1)
-  })
+  }, 15000) // Twenty real workerd admissions take ~6.5s locally; no runtime deadline change.
   it('admits one of twenty concurrent tickets sharing the last attempt, with differing amounts', async () => {
     await db.prepare('UPDATE subsidized_budget_v1 SET limit_attempts = 1').run()
     const out = await Promise.all(Array.from({ length: 20 }, (_, i) => reserve(db, { ...envelope, ceilingMicroUsd: i + 1 })))
@@ -85,7 +85,7 @@ describe('cumulative subsidized budget, real isolated D1', () => {
     expect(out.filter(r => r.status === 'budget_exhausted')).toHaveLength(19)
     const winner = winners[0]; if (winner.status !== 'reserved') throw new Error('Missing winner')
     await totals(winner.ticket.ceilingMicroUsd, 1)
-  })
+  }, 15000)
   it('does not reset by date, caller metadata, Google/OTP channel or revision', async () => {
     vi.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-09-07T23:59:59Z'))
     await admitted({ ...envelope, google: 'a', hostname: 'tryarty.com' } as SubsidizedEnvelope)

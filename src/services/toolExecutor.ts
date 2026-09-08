@@ -1,3 +1,4 @@
+import { hasPaidServerFeatures } from './paidFeatures'
 import type { useComputer } from '../hooks/useComputer'
 import type { useDrive } from '../hooks/useDrive'
 import type { ToolResult, ToolHandler, ToolExecutionContext } from './tools/types'
@@ -40,6 +41,7 @@ export function createToolExecutor(
   }
 
   return async (name: string, input: Record<string, unknown>, context?: ToolExecutionContext): Promise<ToolResult> => {
+    if (name === 'update_memory' && !hasPaidServerFeatures()) return { result: 'La mémoire automatique nécessite un accès payant. Pour enregistrer un souvenir sur cet appareil, utilise Réglages > Mémoire locale.' }
     if (isPublicGoogleOAuthProfileEnabled() && isBlockedPublicGoogleTool(name)) {
       return {
         result: 'Ce profil Google public ne donne pas à Arty un accès global à Drive ou Contacts.',

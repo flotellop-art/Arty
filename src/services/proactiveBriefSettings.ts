@@ -1,5 +1,5 @@
 import * as scoped from './scopedStorage'
-import { getTrialRemaining } from './trialClient'
+import { hasPaidServerFeatures } from './paidFeatures'
 
 const ENABLED_KEY = 'proactive-brief-enabled'
 const LAST_RUN_KEY = 'proactive-brief-last-run'
@@ -11,31 +11,13 @@ const NUDGE_DAY_KEY = 'proactive-brief-nudge-day'
 // brief par fenêtre, même sur dix ouvertures d'affilée.
 export const BRIEF_MIN_INTERVAL_MS = 3 * 60 * 60 * 1000
 
-/**
- * Plan payant CONFIRMÉ ? Le cache `arty-plan-cache` est rempli par usePlanStatus
- * depuis /api/subscription/status (l'essai y est mappé en 'free'). Essai =
- * `getTrialRemaining()` non-null. Tant que le plan n'est pas chargé (cache nul)
- * → traité comme NON payant : on n'active pas le brief auto sans certitude.
- */
-function isConfirmedPaidPlan(): boolean {
-  if (getTrialRemaining() !== null) return false
-  let plan: string | null = null
-  try { plan = localStorage.getItem('arty-plan-cache') } catch { /* noop */ }
-  return plan === 'subscription' || plan === 'pro' || plan === 'vip'
-}
-
-/**
- * Brief proactif actif ?
- * - Le choix explicite du toggle Paramètres est PRIORITAIRE (opt-in / opt-out).
- * - Sinon, défaut DÉPENDANT DU PLAN : ON pour les payants confirmés, OFF pour
- *   essai/free (et plan encore inconnu). Le brief auto envoie une requête IA au
- *   login ; l'activer par défaut grillait 1 message/jour du quota d'essai (bug
- *   remonté). Les users essai/free peuvent l'activer eux-mêmes via le toggle.
- */
+/** Background brief requires a verified paid plan. Preserve the user's
+ * preference across a downgrade, but never let an old ON setting spend trial. */
 export function isProactiveBriefEnabled(): boolean {
+  if (!hasPaidServerFeatures()) return false
   const stored = scoped.getItem(ENABLED_KEY)
   if (stored !== null) return stored === 'true'
-  return isConfirmedPaidPlan()
+  return true
 }
 
 export function setProactiveBriefEnabled(enabled: boolean): void {

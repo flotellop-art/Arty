@@ -10,6 +10,7 @@
 //      MessageList/MessageItem ne re-rendent jamais badge ni correction.
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
+vi.mock('../../services/paidFeatures', () => ({ hasPaidServerFeatures: () => true }))
 vi.mock('../../services/apiBase', () => ({
   apiUrl: (p: string) => p,
 }))

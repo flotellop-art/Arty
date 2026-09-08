@@ -8,6 +8,7 @@
 // pour facturer/cap par user, (4) permettre de switcher de provider
 // sans toucher au client.
 
+import { hasPaidFeatures, paidFeatureResponse } from '../_lib/simpleTrialOffer'
 import type { Env } from '../../env'
 import { isAdmissionUnavailable, admissionUnavailableResponse } from '../_lib/admission'
 import { checkAllowedUserPeek, isTrialExpired } from '../_lib/checkAllowedUser'
@@ -72,6 +73,8 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   if (!user || isTrialExpired(user)) {
     return Response.json({ error: 'Authentication required' }, { status: 401 })
   }
+
+  if (!hasPaidFeatures(user.planType)) return paidFeatureResponse()
 
   const {
     query,

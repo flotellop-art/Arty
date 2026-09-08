@@ -1,8 +1,8 @@
+import { resolveNonTrialChatAccess } from '../_lib/simpleTrialOffer'
 import type { Env } from '../../env'
 import { isAdmissionUnavailable, admissionUnavailableResponse } from '../_lib/admission'
 import { classifyUpstreamBilling } from '../_lib/upstreamBilling'
 import {
-  checkAllowedVerifiedUser,
   isModelAllowedInTrial,
   isTrialExpired,
   proKeyRequiredResponse,
@@ -11,7 +11,6 @@ import {
   voidTrialMessage,
 } from '../_lib/checkAllowedUser'
 import {
-  consumeEmailTrialMessage,
   emailTrialKey,
   proxyIdentityFailureResponse,
   resolveProxyIdentityDetailed,
@@ -111,9 +110,8 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
   // ALLOWED_EMAILS et le décrément automatique du compteur trial KV.
   if (!apiKey && env.GEMINI_API_KEY) {
     const result =
-      identity.kind === 'email-trial'
-        ? await consumeEmailTrialMessage(env, identity.email, waitUntil)
-        : await checkAllowedVerifiedUser(identity.email, env, waitUntil)
+      await resolveNonTrialChatAccess(identity, env)
+    if (result instanceof Response) return result
     if (isAdmissionUnavailable(result)) return admissionUnavailableResponse()
     if (
       result &&

@@ -6,17 +6,15 @@ import {
   strictGoogleIdentityFailureResponse,
   verifyGoogleIdentityStrictDetailed,
 } from '../_lib/checkAllowedUser'
-import { consumeTtsFreeQuota, TTS_FREE_DAILY_LIMIT } from '../_lib/freeQuota'
+import { paidFeatureResponse } from '../_lib/simpleTrialOffer'
 import { recordUsage } from '../_lib/quota'
 
 // Proxy TTS (text-to-speech) pour le brief vocal matinal. Calqué sur
 // whisper-proxy.ts. La clé OpenAI reste côté serveur (RÈGLE 1) ; un token
 // Google valide est obligatoire (anti-relais anonyme, CRIT-4).
 //
-// Décision produit : la voix est GRATUITE pour tous, mais plafonnée pour les
-// comptes free/essai (TTS_FREE_DAILY_LIMIT/jour) pour borner le coût de la clé
-// OpenAI serveur. Les plans payants (subscription/pro/vip) ont la voix
-// illimitée. BYOK (header x-openai-key) = pas de plafond (l'utilisateur paie).
+// Server speech requires subscription/Pro/VIP. Real OpenAI BYOK remains
+// available; trial uses Haiku chat and native search only.
 //
 // Le frontend (src/components/home/MorningBrief.tsx) POST { text, voice } et
 // reçoit du binaire audio/mpeg (MP3) à jouer.
@@ -63,27 +61,14 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
   const usingServerKey = !apiKey
 
   if (!apiKey && env.OPENAI_API_KEY) {
-    // Voix gratuite pour tous via la clé serveur. Free/essai : plafond
-    // quotidien. Payants : illimité.
+    // Server-funded speech is a paid-plan benefit.
     const allowedList = parseAllowedEmails(env.ALLOWED_EMAILS)
     const resolution = allowedList.includes(email) ? { status: 'ready' as const, plan: 'vip' as const } : await resolveUserPlanDetailed(env, email)
     if (resolution.status === 'unavailable') return admissionUnavailableResponse()
     const plan = resolution.plan
     const isPaidPlan = plan === 'subscription' || plan === 'pro' || plan === 'vip'
 
-    if (!isPaidPlan) {
-      const quota = await consumeTtsFreeQuota(env, email)
-      if (quota.unavailable) return admissionUnavailableResponse()
-      if (!quota.allowed) {
-        return Response.json(
-          {
-            error: `Limite de tentatives de voix gratuite atteinte (${TTS_FREE_DAILY_LIMIT}/jour). Réessaie demain.`,
-            limit: TTS_FREE_DAILY_LIMIT,
-          },
-          { status: 429 }
-        )
-      }
-    }
+    if (!isPaidPlan) return paidFeatureResponse()
     apiKey = env.OPENAI_API_KEY
   }
 

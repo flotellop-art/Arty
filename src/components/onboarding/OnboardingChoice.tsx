@@ -73,7 +73,7 @@ interface OnboardingChoiceProps {
   onGoToLogin: () => void
   /** Essai par email (OTP) — sans Google. Parent appelle auth.login('email', …)
    *  puis setTrialToken(token). */
-  onEmailTrialLogin: (email: string, token: string) => Promise<void>
+  onEmailTrialLogin: (email: string, token: string, remaining: number | null) => Promise<void>
 }
 
 type Mode = 'choice' | 'byok' | 'emailtrial'
@@ -103,7 +103,7 @@ export function OnboardingChoice({
         const { accessToken, refreshToken, expiresIn } = await exchangeNativeGoogleCode(serverAuthCode)
         // Décide du splash post-login (vip|trial|none) AVANT de finaliser
         // l'auth — le composant va unmount dès que auth.isAuthenticated flip.
-        await initTrial(accessToken)
+        await initTrial(accessToken, email)
         await onNativeGoogleLogin(
           email,
           name || email.split('@')[0] || '',
@@ -151,6 +151,9 @@ export function OnboardingChoice({
               })}
             </p>
 
+            <p className="font-sans text-xs text-theme-muted mt-3 text-center leading-relaxed">
+              {t('onboardingChoice.trialBenefitNote')}
+            </p>
             {/* P2.2 — preuve de valeur concrète (statique, JSX pur, aucun appel
                 réseau). Cas par « collage » → réponse, donc HONNÊTES avant la
                 connexion Google (aucune donnée connectée n'est simulée avant

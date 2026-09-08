@@ -13,6 +13,7 @@
 // Indépendant du provider qui a généré la réponse (Mistral, Claude, Gemini,
 // OpenAI) — le fact-checker prend (question, réponse) en entrée brute.
 
+import { hasPaidServerFeatures } from './paidFeatures'
 import { apiUrl } from './apiBase'
 import { Capacitor } from '@capacitor/core'
 import { postJsonNativeWithFallback } from './aiHttp'
@@ -722,8 +723,9 @@ async function requestRecoverySearch(
   sources: string[],
   redirectUrls: string[],
 ): Promise<SearchContext | null> {
+  if (!hasPaidServerFeatures()) return null
   const googleToken = await getValidAccessToken()
-  if (!googleToken) return null
+  if (!googleToken || !hasPaidServerFeatures()) return null
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -865,6 +867,7 @@ export type FactCheckMode = 'off' | 'auto' | 'haiku' | 'sonnet'
 const SETTING_KEY = 'fact-check-mode'
 
 export function getFactCheckMode(): FactCheckMode {
+  if (!hasPaidServerFeatures()) return 'off'
   const v = scoped.getItem(SETTING_KEY)
   if (v === 'off' || v === 'sonnet' || v === 'haiku' || v === 'auto') return v
   // Défaut : 'auto' pour les payants (Haiku rapide / Sonnet sur sujets
@@ -1050,7 +1053,7 @@ export async function factCheckResponse(
   mode: FactCheckMode = getFactCheckMode(),
   searchContext: SearchContext | null = null
 ): Promise<FactCheckOutcome> {
-  if (mode === 'off') return { result: null, reason: 'désactivé' }
+  if (!hasPaidServerFeatures() || mode === 'off') return { result: null, reason: 'désactivé' }
   if (!response || response.length < 80) return { result: null, reason: 'réponse trop courte' }
   if (isFactCheckQuotaExhausted(mode)) return { result: null, reason: FACT_CHECK_QUOTA_REASON }
 
@@ -1138,6 +1141,7 @@ async function requestFactCheck(
   timeoutMs: number,
   signal: AbortSignal,
 ): Promise<Response> {
+  if (!hasPaidServerFeatures()) throw new Error('paid_feature_required')
   const url = apiUrl(FACT_CHECK_ENDPOINT)
   if (!Capacitor.isNativePlatform()) {
     return fetch(url, {
@@ -1525,7 +1529,7 @@ export async function runFactCheckOnLatest(
   // Les liens sans provenance sont neutralisés même lorsque le second appel
   // de fact-check est coupé. En mode EU, cette étape reste entièrement locale
   // et aucune recherche de récupération supplémentaire n'est lancée.
-  if (conv.euOnly) {
+  if (conv.euOnly || !hasPaidServerFeatures()) {
     if (contentWasPrepared) {
       patchMessage(conversationId, assistantMsg.id, (m) => ({ ...m, content: prepared.content }))
       refreshConversations()

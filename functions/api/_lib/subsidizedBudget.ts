@@ -1,4 +1,6 @@
-/** Dormant primitive: no production caller, policy provisioning or migration.
+import { ANTHROPIC_SUBSIDIZED_TARIFF, type SubsidizedCostProof } from './anthropicSubsidizedUsage'
+
+/** No automatic policy provisioning or activation.
  * USD micro-units are an externally VERIFIED upper bound, never wallet prices.
  * One ticket covers exactly ONE provider HTTP attempt. The caller must bind a
  * verified envelope to the actual request; this module cannot price a payload.
@@ -133,4 +135,64 @@ export async function dispatchSubsidizedAttempt<T>(
   }
   try { return { status: 'sent', value: await send() } }
   catch { return { status: 'provider_unknown' } }
+}
+
+/** A complete provider receipt releases ONLY the unused monetary hold. One
+ * atomic batch, with the same scratch discipline as admission. Attempts stay
+ * consumed and engaged tickets can never be dispatched again. Missing schema,
+ * conflicting proof or lost ACK never authorizes a retry of the provider.
+ */
+export async function settleSubsidizedAttempt(
+  db: D1Database | undefined, ticket: SubsidizedTicket, proof: SubsidizedCostProof,
+): Promise<'settled' | 'unavailable' | 'over_ceiling'> {
+  if (!db || !validEnvelope(ticket) || !UUID.test(ticket.id)
+    || !proof || proof.tariff !== ANTHROPIC_SUBSIDIZED_TARIFF
+    || typeof proof.requestBoundsExceeded !== 'boolean'
+    || typeof proof.responseId !== 'string' || !/^msg_[a-zA-Z0-9_-]{1,120}$/.test(proof.responseId)) return 'unavailable'
+  const units = [proof.costMicroUsd, proof.inputTokens, proof.outputTokens, proof.cacheReadTokens,
+    proof.cacheWrite5mTokens, proof.cacheWrite1hTokens, proof.searches]
+  if (!units.every(nonNegative)) return 'unavailable'
+  const expected = (BigInt(proof.inputTokens) * 20n + BigInt(proof.outputTokens) * 100n
+    + BigInt(proof.cacheReadTokens) * 2n + BigInt(proof.cacheWrite5mTokens) * 25n
+    + BigInt(proof.cacheWrite1hTokens) * 40n + BigInt(proof.searches) * 200000n + 19n) / 20n
+  if (expected !== BigInt(proof.costMicroUsd)) return 'unavailable'
+  const exactAttempt = `a.id = ? AND a.scope = ? AND a.state = 'engaged'
+    AND a.policy_revision = ? AND a.ceiling_micro_usd = ? AND a.envelope_id = ?`
+  const bindAttempt = [ticket.id, SCOPE, ticket.policyRevision, ticket.ceilingMicroUsd, ticket.envelopeId]
+  if (proof.requestBoundsExceeded || proof.costMicroUsd > ticket.ceilingMicroUsd) {
+    // An observed broken ceiling is not a successful settlement or a clamp.
+    // Disable further admissions of this revision; preserve the original hold.
+    try {
+      await db.prepare(`UPDATE subsidized_budget_v1 SET enabled = 0 WHERE scope = ? AND revision = ?
+        AND EXISTS (SELECT 1 FROM subsidized_attempt_v1 a WHERE ${exactAttempt})`)
+        .bind(SCOPE, ticket.policyRevision, ...bindAttempt).run()
+    } catch { /* Keep the hold even if the operator intervention fails. */ }
+    console.error('[subsidized-budget] provider usage exceeds qualified contract', ticket.id)
+    return 'over_ceiling'
+  }
+  const now = Date.now()
+  if (!nonNegative(now)) return 'unavailable'
+  const proofJson = JSON.stringify([ticket.policyRevision, ticket.envelopeId, ticket.ceilingMicroUsd,
+    proof.tariff, proof.responseId, proof.requestBoundsExceeded, ...units])
+  const release = ticket.ceilingMicroUsd - proof.costMicroUsd
+  try {
+    const result = await db.batch([
+      db.prepare('UPDATE subsidized_budget_v1 SET pending_admission_id = NULL WHERE scope = ?').bind(SCOPE),
+      db.prepare(`UPDATE subsidized_budget_v1 AS p SET
+        reserved_micro_usd = reserved_micro_usd - ?, pending_admission_id = ?
+        WHERE ${VALID_POLICY} AND p.revision = ? AND p.reserved_micro_usd >= ? AND p.reserved_attempts >= 1
+        AND EXISTS (SELECT 1 FROM subsidized_attempt_v1 a WHERE ${exactAttempt})
+        AND NOT EXISTS (SELECT 1 FROM subsidized_settlement_v1 WHERE attempt_id = ?)`)
+        .bind(release, ticket.id, ticket.policyRevision, ticket.ceilingMicroUsd, ...bindAttempt, ticket.id),
+      db.prepare(`INSERT INTO subsidized_settlement_v1 (attempt_id, proof_json, cost_micro_usd, settled_at)
+        SELECT ?, ?, ?, ? FROM subsidized_budget_v1 WHERE scope = ? AND pending_admission_id = ?`)
+        .bind(ticket.id, proofJson, proof.costMicroUsd, now, SCOPE, ticket.id),
+      db.prepare('SELECT proof_json, cost_micro_usd FROM subsidized_settlement_v1 WHERE attempt_id = ?').bind(ticket.id),
+      db.prepare('UPDATE subsidized_budget_v1 SET pending_admission_id = NULL WHERE scope = ?').bind(SCOPE),
+    ])
+    if (result.length !== 5 || result.some(r => r.success !== true)) return 'unavailable'
+    const rows = result[3].results as { proof_json: string; cost_micro_usd: number }[]
+    return rows.length === 1 && rows[0].proof_json === proofJson && rows[0].cost_micro_usd === proof.costMicroUsd
+      ? 'settled' : 'unavailable'
+  } catch { return 'unavailable' }
 }

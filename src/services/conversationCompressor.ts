@@ -1,3 +1,4 @@
+import { hasPaidServerFeatures } from './paidFeatures'
 import { apiUrl } from './apiBase'
 import { buildAiHeaders, fetchWithTimeout } from './aiHttp'
 
@@ -144,6 +145,8 @@ export async function compressIfNeeded(
   // pendant la fenêtre de compression n'était honoré qu'après (audit Opus #4).
   signal?: AbortSignal
 ): Promise<ApiMessage[]> {
+  const funded = () => (!!apiKey && apiKey !== 'server-provided') || hasPaidServerFeatures()
+  if (!funded()) return messages
   // Estime sur les messages RÉELS (texte des tool_results inclus) — le flatten
   // précédent en '[contenu multimédia]' sous-estimait massivement les convs
   // riches en lectures Drive et empêchait toute compression.
@@ -195,6 +198,7 @@ export async function compressIfNeeded(
       auth: 'x-api-key',
       extra: { 'anthropic-version': '2023-06-01' },
     })
+    if (!funded()) return messages
     const response = await fetchWithTimeout(apiUrl('/api/ai/proxy'), {
       method: 'POST',
       headers,

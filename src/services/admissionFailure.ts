@@ -4,9 +4,26 @@ import i18n from '../i18n'
  * automatic provider fallback loop. It is neither an expired trial nor logout.
  */
 export function admissionUnavailableError(status: number, body: string): Error | null {
-  if (status !== 503) return null
+  if (status !== 503 && status !== 400 && status !== 409 && status !== 403) return null
   try {
-    if (JSON.parse(body)?.error !== 'admission_unavailable') return null
+    const code = JSON.parse(body)?.error
+    if (status === 403 && code === 'paid_feature_required') return Object.assign(
+      new Error(i18n.t('errors.paidFeatureRequired')), { name: 'PaidFeatureRequiredError' },
+    )
+    if (status === 409 && code === 'continuation_funding_changed') return Object.assign(
+      new Error(i18n.t('errors.continuationFundingChanged')), { name: 'ContinuationFundingChangedError' },
+    )
+    if (status === 400 && code === 'continuation_funding_required') return Object.assign(
+      new Error(i18n.t('errors.continuationUnavailable')), { name: 'ContinuationUnavailableError' },
+    )
+    if (status === 400 && code === 'subsidized_request_unsupported') return Object.assign(
+      new Error(i18n.t('errors.subsidizedRequestUnsupported')), { name: 'SubsidizedRequestUnsupportedError' },
+    )
+    if (status !== 503) return null
+    if (code === 'subsidized_budget_exhausted') return Object.assign(
+      new Error(i18n.t('errors.subsidizedBudgetExhausted')), { name: 'SubsidizedBudgetExhaustedError' },
+    )
+    if (code !== 'admission_unavailable') return null
     return Object.assign(new Error(i18n.t('errors.admissionUnavailable')), { name: 'AdmissionUnavailableError' })
   } catch { return null }
 }

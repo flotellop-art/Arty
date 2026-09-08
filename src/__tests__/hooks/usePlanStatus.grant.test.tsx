@@ -21,7 +21,7 @@ const families = ['claude-haiku', 'claude-sonnet', 'claude-opus', 'mistral-mediu
 const dto = (plan: string) => ({ auth: 'ok', status: plan === 'free' ? 'inactive' : 'active', plan,
   allowed_families: plan === 'free' ? ['claude-haiku'] : families,
   locked_families: plan === 'free' ? families.slice(1) : [], daily_remaining: null, daily_limits: null })
-const wallet = (n = 0) => Response.json({ hasWallet: n > 0, availableMicro: n, balanceMicro: n, reservedMicro: 0, reversalPending: false })
+const wallet = (n = 0) => Response.json({ trialState: 'outside-trial', hasWallet: n > 0, availableMicro: n, balanceMicro: n, reservedMicro: 0, reversalPending: false })
 function deferred<T>() { let resolve!: (value: T) => void; const promise = new Promise<T>(r => { resolve = r }); return { promise, resolve } }
 let serial = 0
 async function relink(token = 'G2') {

@@ -1,4 +1,6 @@
-import { memo, useCallback, useEffect, useRef, useState } from 'react'
+import { canEnhancePrompt } from '../../services/promptEnhancer'
+import { hasPaidServerFeatures, subscribePaidFeatures } from '../../services/paidFeatures'
+import { memo, useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useDialogFocusTrap } from '../../hooks/useDialogFocusTrap'
 import {
@@ -83,6 +85,7 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose, onOpen
   const [enhanceModel, setEnhanceModelState] = useState<EnhancerModel>('haiku')
   const [briefEnabled, setBriefEnabled] = useState(false)
   const [autoMemOn, setAutoMemOn] = useState(true)
+  const paidFeatures = useSyncExternalStore(subscribePaidFeatures, hasPaidServerFeatures)
   const [factCheckMode, setFactCheckModeState] = useState<FactCheckMode>(getFactCheckMode)
   const [showMemoryHistory, setShowMemoryHistory] = useState(false)
   const [showArchiveVerifier, setShowArchiveVerifier] = useState(false)
@@ -200,12 +203,14 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose, onOpen
   }
 
   const handleEnhanceToggle = () => {
+    if (!canEnhancePrompt()) return
     const next = !enhanceEnabled
     setPromptEnhancementEnabled(next)
     setEnhanceEnabled(next)
   }
 
   const handleBriefToggle = async () => {
+    if (!hasPaidServerFeatures()) return
     const next = !briefEnabled
     setProactiveBriefEnabled(next)
     setBriefEnabled(next)
@@ -317,20 +322,21 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose, onOpen
               <div>
                 <p className="font-display text-base text-theme-ink">🗞️ {t('settings.proactiveBrief.title')}</p>
                 <p className="font-display italic text-xs text-theme-muted mt-0.5">
-                  {t('settings.proactiveBrief.description')}
+                  {t(paidFeatures ? 'settings.proactiveBrief.description' : 'settings.paidFeature')}
                 </p>
               </div>
               <button
+                disabled={!paidFeatures}
                 onClick={handleBriefToggle}
                 aria-label={t('settings.proactiveBrief.toggleAria')}
                 className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors shrink-0 ${
-                  briefEnabled ? 'bg-theme-accent' : 'bg-theme-ink/20'
+                  paidFeatures && briefEnabled ? 'bg-theme-accent' : 'bg-theme-ink/20'
                 }`}
-                aria-pressed={briefEnabled}
+                aria-pressed={paidFeatures && briefEnabled}
               >
                 <span
                   className={`inline-block h-4 w-4 transform rounded-full bg-theme-bg transition-transform ${
-                    briefEnabled ? 'translate-x-6' : 'translate-x-1'
+                    paidFeatures && briefEnabled ? 'translate-x-6' : 'translate-x-1'
                   }`}
                 />
               </button>
@@ -421,20 +427,21 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose, onOpen
                 </p>
               </div>
               <button
+                disabled={!canEnhancePrompt()}
                 onClick={handleEnhanceToggle}
                 className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors shrink-0 ${
-                  enhanceEnabled ? 'bg-theme-accent' : 'bg-theme-ink/20'
+                  canEnhancePrompt() && enhanceEnabled ? 'bg-theme-accent' : 'bg-theme-ink/20'
                 }`}
-                aria-pressed={enhanceEnabled}
+                aria-pressed={canEnhancePrompt() && enhanceEnabled}
               >
                 <span
                   className={`inline-block h-4 w-4 transform rounded-full bg-theme-bg transition-transform ${
-                    enhanceEnabled ? 'translate-x-6' : 'translate-x-1'
+                    canEnhancePrompt() && enhanceEnabled ? 'translate-x-6' : 'translate-x-1'
                   }`}
                 />
               </button>
             </div>
-            {enhanceEnabled && (
+            {canEnhancePrompt() && enhanceEnabled && (
               <div className="mt-3 flex items-center justify-between gap-4">
                 <label className="font-display italic text-xs text-theme-muted">{t('settings.enhance.modelLabel')}</label>
                 <select
@@ -455,11 +462,12 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose, onOpen
               <div>
                 <p className="font-display text-base text-theme-ink">🔎 Fact-checker</p>
                 <p className="font-display italic text-xs text-theme-muted mt-0.5">
-                  {t('settings.factChecker.description')}
+                  {t(paidFeatures ? 'settings.factChecker.description' : 'settings.paidFeature')}
                 </p>
               </div>
               <select
-                value={factCheckMode}
+                disabled={!paidFeatures}
+                value={paidFeatures ? factCheckMode : 'off'}
                 onChange={(e) => handleFactCheckModeChange(e.target.value as FactCheckMode)}
                 className="text-xs bg-theme-surface border border-theme-border rounded px-2 py-1 text-theme-ink focus:outline-none focus:border-theme-accent shrink-0"
               >
@@ -469,7 +477,7 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose, onOpen
                 <option value="sonnet">{t('settings.factChecker.sonnet')}</option>
               </select>
             </div>
-            {factCheckMode !== 'off' && (
+            {paidFeatures && factCheckMode !== 'off' && (
               <p className="font-display italic text-[11px] text-theme-muted mt-2">
                 {factCheckMode === 'auto'
                   ? t('settings.factChecker.costAuto')
@@ -600,24 +608,26 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose, onOpen
               <div>
                 <p className="font-display text-base text-theme-ink">🧠 {t('settings.autoMemory.title')}</p>
                 <p className="font-display italic text-xs text-theme-muted mt-0.5">
-                  {t('settings.autoMemory.description')}
+                  {t(paidFeatures ? 'settings.autoMemory.description' : 'settings.autoMemory.paidOnly')}
                 </p>
               </div>
               <button
                 onClick={() => {
+                  if (!hasPaidServerFeatures()) return
                   const next = !autoMemOn
                   setAutoMemoryEnabled(next)
                   setAutoMemOn(next)
                 }}
+                disabled={!paidFeatures}
                 aria-label={t('settings.autoMemory.toggleAria')}
                 className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors shrink-0 ${
-                  autoMemOn ? 'bg-theme-accent' : 'bg-theme-ink/20'
+                  paidFeatures && autoMemOn ? 'bg-theme-accent' : 'bg-theme-ink/20'
                 }`}
-                aria-pressed={autoMemOn}
+                aria-pressed={paidFeatures && autoMemOn}
               >
                 <span
                   className={`inline-block h-4 w-4 transform rounded-full bg-theme-bg transition-transform ${
-                    autoMemOn ? 'translate-x-6' : 'translate-x-1'
+                    paidFeatures && autoMemOn ? 'translate-x-6' : 'translate-x-1'
                   }`}
                 />
               </button>

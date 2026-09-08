@@ -1,5 +1,6 @@
 import type { Env } from '../../../env'
 import { maybeCleanup } from '../../_lib/atomicQuota'
+import { readTrialCounterRemaining } from '../../_lib/trialAdmission'
 import {
   checkVerifyOtpRateLimit,
   createSession,
@@ -70,5 +71,10 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     []
   )
 
-  return Response.json({ token, email: normalized })
+  // A quota read failure is NOT an authentication failure. null means unknown
+  // to the current client, never a fabricated fresh 30. Old APKs ignore this
+  // optional field; the shared server admission still enforces their calls.
+  const remaining = await readTrialCounterRemaining(env, normalized, 'email_trial_usage')
+  return Response.json({ token, email: normalized, trial_messages_remaining: remaining },
+    { headers: { 'cache-control': 'no-store' } })
 }

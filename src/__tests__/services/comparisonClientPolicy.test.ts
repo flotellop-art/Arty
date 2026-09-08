@@ -39,7 +39,9 @@ beforeEach(() => { vi.clearAllMocks(); vi.mocked(getValidAccessToken).mockReset(
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals() })
 describe('Real clients, simulated HTTP: text-only and attribution', () => {
   it('Claude rechecks document consent after backoff and blocks a stale retry before a second HTTP call', async () => {
-    const fetch = vi.fn(async () => new Response('{}', { status: 503 })); vi.stubGlobal('fetch', fetch)
+    const fetch = vi.fn(async () => Response.json({ error: 'AI service error' }, {
+      status: 503, headers: { 'x-arty-funding': 'v1:free' },
+    })); vi.stubGlobal('fetch', fetch)
     const gate = vi.fn(async () => { if (fetch.mock.calls.length) throw new Error('Document scope revoked') })
     const error = await new Promise<Error>(resolve => streamMessage([{ role: 'user', content: 'Document' }], () => {}, () => {}, resolve,
       { documentReadOnly: true, comparisonTextOnly: true, maxOutputTokens: 8192, beforeDocumentRequest: gate }))

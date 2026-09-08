@@ -2,9 +2,9 @@
  * Trial client — facade pour le plan d'essai gratuit (30 messages).
  *
  * Fournit :
- *   - `initTrial(accessToken)` : appelé une fois après le sign-in Google.
+ *   - `initTrial(accessToken, googleEmail)` : appelé après le sign-in Google.
  *     Touche `POST /api/trial/init` côté backend, qui crée la ligne
- *     subscriptions D1 + le compteur KV pour les nouveaux users, ou
+ *     subscriptions D1 pour les nouveaux users, ou
  *     retourne le plan existant si déjà connu (idempotent).
  *   - `getOnboardingSplash()` / `clearOnboardingSplash()` : pour que App.tsx
  *     décide d'afficher le splash VIP ou l'intro Trial juste après le login.
@@ -14,29 +14,41 @@
  *
  * Le compteur est stocké par utilisateur dès que la session Arty existe.
  * Pendant le court intervalle AVANT setActiveSession (login Google), une clé
- * globale sert de zone temporaire puis est adoptée par useAuth. Cela évite
+ * RAM attribuée au propriétaire exact sert de zone temporaire pour useAuth. Cela évite
  * qu'un solde d'essai d'un compte influence le wallet/routage d'un autre.
  */
 
 import { apiUrl } from './apiBase'
 import * as scoped from './scopedStorage'
-import { getActiveUserId } from './userSession'
+import { getActiveUserId, generateUserId } from './userSession'
 import { consumeAcquisition, getAcquisition } from './acquisition'
 
 const SPLASH_KEY = 'arty-trial-onboarding-splash'
 const SPLASH_SHOWN_KEY = 'arty-trial-onboarding-splash-shown'
 const REMAINING_KEY = 'arty-trial-remaining'
 const SCOPED_REMAINING_KEY = 'trial-remaining'
-// Optional display cache only, keyed by the existing local owner. A failed
-// disk write must not resurrect an older readable positive counter.
+interface PendingTrial { owner: string; remaining: number | null; splash: SplashState }
+let pendingInMemory: PendingTrial | null = null
+let splashInMemory: { owner: string; splash: SplashState } | null = null
+// Only failed optional display writes, keyed by the existing local owner.
+// RAM-only; never contains email, tokens, entitlement or persistent transport.
 const failedCacheWrites = new Map<string, string | null>()
+let initAttempt = 0
 
-function cacheRemaining(owner: string, value: string | null): void {
-  try {
-    if (value === null) scoped.removeItem(SCOPED_REMAINING_KEY)
-    else scoped.setItem(SCOPED_REMAINING_KEY, value)
-    failedCacheWrites.delete(owner)
-  } catch { failedCacheWrites.set(owner, value) }
+function validRemaining(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= 30
+}
+
+function stagePending(value: PendingTrial): void {
+  // Ephemeral metadata: no disk transport to replay after a crash or failed
+  // removal. A reload loses an optional welcome, never an entitlement.
+  pendingInMemory = value
+}
+
+function setSplashForOwner(owner: string, splash: SplashState): void {
+  splashInMemory = { owner, splash }
+  try { if (localStorage.getItem(SPLASH_SHOWN_KEY) === '1') splashInMemory.splash = null } catch {}
+  try { localStorage.removeItem(SPLASH_KEY) } catch {} // ignore legacy ownerless welcome
 }
 
 function setRemainingValue(value: string): void {
@@ -51,30 +63,43 @@ function removeRemainingValue(): void {
   else localStorage.removeItem(REMAINING_KEY)
 }
 
+function cacheRemaining(owner: string, value: string | null): void {
+  try {
+    if (value === null) scoped.removeItem(SCOPED_REMAINING_KEY)
+    else scoped.setItem(SCOPED_REMAINING_KEY, value)
+    failedCacheWrites.delete(owner)
+  } catch {
+    // A failed optional cache mutation cannot resurrect an older readable30.
+    // Only failures override disk reads; normal cross-tab snapshots still work.
+    failedCacheWrites.set(owner, value)
+  }
+}
+
 /**
  * `initTrial` s'exécute avant la création de session Google. Une fois la
  * session active, déplace le compteur temporaire vers le stockage du compte.
  */
 export function adoptPendingTrialRemaining(): void {
-  const owner = getActiveUserId()
-  if (!owner) return
-  const pending = localStorage.getItem(REMAINING_KEY)
-  if (pending === null) return
-  scoped.setItem(SCOPED_REMAINING_KEY, pending)
-  // Preserve the existing pre-login transport and its failure behavior.
-  // A successful adoption supersedes any optional failed-write RAM override.
-  failedCacheWrites.delete(owner)
-  localStorage.removeItem(REMAINING_KEY)
   try {
+    const owner = getActiveUserId()
+    if (!owner) return
+    const pending = pendingInMemory
+    clearPendingTrialRemaining()
+    // Never migrate old, ownerless counters or an interrupted neighbour login.
+    if (!pending || pending.owner !== owner) return
+    setSplashForOwner(owner, pending.splash)
+    cacheRemaining(owner, pending.remaining === null ? null : String(pending.remaining))
     window.dispatchEvent(new CustomEvent('arty-trial-remaining-changed', {
-      detail: { remaining: Number.parseInt(pending, 10) },
+      detail: { remaining: pending.remaining },
     }))
   } catch {}
 }
 
 /** Purge seulement la zone temporaire pré-session, jamais le compteur scopé. */
 export function clearPendingTrialRemaining(): void {
-  localStorage.removeItem(REMAINING_KEY)
+  pendingInMemory = null
+  initAttempt++ // An interrupted login's late response cannot republish metadata.
+  try { localStorage.removeItem(REMAINING_KEY) } catch {}
 }
 
 export type TrialPlan = 'trial' | 'vip' | 'subscription' | 'pro' | 'free'
@@ -96,9 +121,17 @@ export type SplashState = 'vip' | 'trial' | null
  * bloquer le sign-in. L'app fonctionne en mode dégradé (pas de bannière
  * ni de splash) jusqu'au prochain succès.
  */
-export async function initTrial(accessToken: string): Promise<TrialInitResponse | null> {
-  if (!accessToken) return null
+export async function initTrial(accessToken: string, googleEmail: string): Promise<TrialInitResponse | null> {
+  if (!accessToken || !googleEmail) return null
+  clearPendingTrialRemaining()
+  const attempt = initAttempt
+  let owner: string | null = null
+  const stage = (remaining: number | null, splash: SplashState) => {
+    if (owner && attempt === initAttempt) stagePending({ owner, remaining, splash })
+  }
   try {
+    // Exact local Google owner, NOT the server's Gmail benefit key.
+    owner = await generateUserId('google', googleEmail)
     // Attribution first-party pubs (voir services/acquisition.ts) : attachée
     // au corps si présente, consommée UNIQUEMENT après un aller-retour serveur
     // réussi. Best-effort intégral — ne doit jamais gêner le sign-in.
@@ -111,34 +144,21 @@ export async function initTrial(accessToken: string): Promise<TrialInitResponse 
       },
       body: JSON.stringify(acquisition ? { acquisition } : {}),
     })
-    if (!res.ok) return null
+    if (!res.ok) { stage(null, null); return null }
     if (acquisition) consumeAcquisition()
     const data = (await res.json()) as TrialInitResponse
 
-    // Le splash post-login (VIP welcome, trial intro) ne doit s'afficher
-    // qu'une seule fois par device — `SPLASH_SHOWN_KEY` est posé quand
-    // l'utilisateur dismiss le splash (`clearOnboardingSplash`). Sans ce
-    // garde-fou, un user trial qui se déconnecte/reconnecte reverrait
-    // l'intro à chaque sign-in.
-    const splashAlreadyShown = localStorage.getItem(SPLASH_SHOWN_KEY) === '1'
-
     if (data.plan === 'vip') {
-      if (!splashAlreadyShown) localStorage.setItem(SPLASH_KEY, 'vip')
-      // VIPs n'ont pas de compteur — on nettoie au cas où.
-      localStorage.removeItem(REMAINING_KEY)
+      stage(null, 'vip')
     } else if (data.plan === 'trial') {
-      if (!splashAlreadyShown) localStorage.setItem(SPLASH_KEY, 'trial')
-      if (typeof data.trial_messages_remaining === 'number') {
-        localStorage.setItem(REMAINING_KEY, String(data.trial_messages_remaining))
-      }
+      const remaining = validRemaining(data.trial_messages_remaining) ? data.trial_messages_remaining : null
+      stage(remaining, remaining === 30 ? 'trial' : null)
     } else {
-      // Plan déjà actif (subscription/pro) ou free → pas de splash, pas de
-      // compteur trial.
-      localStorage.removeItem(SPLASH_KEY)
-      localStorage.removeItem(REMAINING_KEY)
+      stage(null, null)
     }
     return data
   } catch {
+    stage(null, null)
     return null
   }
 }
@@ -149,21 +169,31 @@ export async function initTrial(accessToken: string): Promise<TrialInitResponse 
  * trial (une seule fois par device) + le compteur initial. L'email-trial ne
  * passe jamais par /api/trial/init (réservé aux tokens Google).
  */
-export function initEmailTrialSplash(remaining = 30): void {
-  const splashAlreadyShown = localStorage.getItem(SPLASH_SHOWN_KEY) === '1'
-  if (!splashAlreadyShown) localStorage.setItem(SPLASH_KEY, 'trial')
-  setRemainingValue(String(Math.max(0, remaining)))
+export function initEmailTrialSplash(remaining: number | null = null, expectedOwner?: string): void {
+  try {
+    const owner = getActiveUserId()
+    if (!owner || (expectedOwner !== undefined && owner !== expectedOwner)) return
+    setSplashForOwner(owner, remaining === 30 ? 'trial' : null)
+    if (validRemaining(remaining)) setRemainingValue(String(remaining))
+    else removeRemainingValue() // old server or unavailable count is unknown
+    window.dispatchEvent(new CustomEvent('arty-trial-remaining-changed', { detail: { remaining } }))
+  } catch {} // quota metadata is not a prerequisite for a valid OTP login
 }
 
-export function getOnboardingSplash(): SplashState {
-  const v = localStorage.getItem(SPLASH_KEY)
-  if (v === 'vip' || v === 'trial') return v
+export function getOnboardingSplash(expectedOwner?: string | null): SplashState {
+  try {
+    const owner = getActiveUserId()
+    if (owner && (expectedOwner === undefined || expectedOwner === owner) && splashInMemory?.owner === owner) {
+      return splashInMemory.splash
+    }
+  } catch {}
   return null
 }
 
 export function clearOnboardingSplash(): void {
-  localStorage.removeItem(SPLASH_KEY)
-  localStorage.setItem(SPLASH_SHOWN_KEY, '1')
+  splashInMemory = null
+  try { localStorage.removeItem(SPLASH_KEY) } catch {}
+  try { localStorage.setItem(SPLASH_SHOWN_KEY, '1') } catch {}
 }
 
 export function getTrialRemaining(): number | null {
@@ -193,9 +223,10 @@ export function setTrialRemaining(n: number): void {
 }
 
 export function clearTrialRemaining(): void {
+  splashInMemory = null
   removeRemainingValue()
   // Peut subsister si un login pré-session a été interrompu.
-  localStorage.removeItem(REMAINING_KEY)
+  clearPendingTrialRemaining()
   try {
     window.dispatchEvent(new CustomEvent('arty-trial-remaining-changed', { detail: { remaining: null } }))
   } catch {}

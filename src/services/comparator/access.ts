@@ -15,7 +15,7 @@ export function panelAccess(config: PanelConfig, context: {
   if (plan.loading || plan.statusUnavailable) return 'compare.access.unverified'
   if (plan.plan === 'pro') return 'compare.access.byok'
   if (plan.plan === 'free') {
-    if (context.trialRemaining !== null && context.trialRemaining > 0) return model.trial ? null : 'compare.access.trial'
+    if (context.trialRemaining !== null && context.trialRemaining > 0) return 'compare.access.trial'
     // Wallet unlock is reflected by usePlanStatus only after trial exhaustion.
     if (context.trialRemaining === 0 && plan.allowedFamilies.length <= 1) return 'compare.access.plan'
   }

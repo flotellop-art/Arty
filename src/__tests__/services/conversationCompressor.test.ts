@@ -1,3 +1,5 @@
+import { publishPaidFeatures } from '../../services/paidFeatures'
+import type { BillingContext } from '../../services/billingContext'
 import { afterEach, beforeEach, describe, it, expect, vi, type Mock } from 'vitest'
 
 // apiBase importe @capacitor/core ; on le neutralise pour un import propre.
@@ -145,6 +147,7 @@ function mockProxyOk(): Mock {
 
 describe('compressIfNeeded — auth headers (BUG 25 + anti-relais)', () => {
   beforeEach(() => {
+    publishPaidFeatures({ isCurrent: () => true } as BillingContext, 'subscription')
     mockGoogle.mockReset(); mockTrial.mockReset()
     mockGoogle.mockResolvedValue('gtok'); mockTrial.mockReturnValue(null)
   })

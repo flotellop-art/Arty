@@ -1,3 +1,5 @@
+import { publishPaidFeatures, clearPaidFeatures } from '../../services/paidFeatures'
+import type { BillingContext } from '../../services/billingContext'
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 
 // Le toggle explicite vit dans scopedStorage (clé scopée par session). On le
@@ -25,6 +27,7 @@ function setPlanCache(plan: string | null) {
 
 describe('isProactiveBriefEnabled — défaut dépendant du plan + opt-in', () => {
   beforeEach(() => {
+    clearPaidFeatures()
     enabledStored = null
     trialRemaining = null
     localStorage.clear()
@@ -52,19 +55,21 @@ describe('isProactiveBriefEnabled — défaut dépendant du plan + opt-in', () =
 
   it('défaut ON pour un plan payant confirmé', () => {
     for (const p of ['subscription', 'pro', 'vip']) {
+      publishPaidFeatures({ isCurrent: () => true } as BillingContext, p)
       setPlanCache(p)
       expect(isProactiveBriefEnabled()).toBe(true)
     }
   })
 
   // « option activable » : un user essai/free peut l'activer explicitement.
-  it('le toggle ON prime même en essai (opt-in)', () => {
+  it('le toggle ON sauvegardé ne donne pas accès en essai', () => {
     enabledStored = 'true'
     trialRemaining = 25
-    expect(isProactiveBriefEnabled()).toBe(true)
+    expect(isProactiveBriefEnabled()).toBe(false)
   })
 
   it('le toggle OFF prime même pour un payant (opt-out)', () => {
+    publishPaidFeatures({ isCurrent: () => true } as BillingContext, 'subscription')
     enabledStored = 'false'
     setPlanCache('subscription')
     expect(isProactiveBriefEnabled()).toBe(false)

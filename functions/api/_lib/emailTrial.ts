@@ -14,10 +14,12 @@ import {
 //
 // Modèle de menace (audit red-team Opus, RÈGLE 7) :
 //   - CRIT-1 collision d'identité : l'email vérifié-OTP NE DOIT JAMAIS partager
-//     la clé primaire d'un compte Google (memory / subscriptions / trial_usage).
+//     la clé primaire d'un compte Google (memory / subscriptions).
 //     → espace de clés PHYSIQUEMENT disjoint : table `email_trial_usage` dédiée,
 //       et identité downstream préfixée `trial-email:<email>` (jamais l'email
-//       brut dans les tables partagées comme quota_model). Plan figé `trial`,
+//       brut dans les tables partagées comme quota_model). Seul le plafond
+//       gratuit additionne les consommations historiques des deux canaux.
+//       Aucun transfert de données ou de droits. Plan figé `trial`,
 //       JAMAIS de resolveUserPlan ni de bypass ALLOWED_EMAILS.
 //   - CRIT-2 hash OTP : HMAC(secret, email‖code), jamais SHA-256(code) nu
 //     (un dump D1 d'un hash nu = rainbow table de 10^6 préimages crackée en ms).
@@ -84,9 +86,10 @@ export function isDisposableDomain(normalizedEmail: string): boolean {
  *   - minuscules (cohérent avec le lowercasing email partout dans le code)
  *   - strip de l'alias `+tag` (largement supporté par les providers)
  *   - Gmail/Googlemail : strip aussi des points du local-part + alias domain
- * Direction de sécurité : agressif. Pire cas = deux adresses `+` distinctes
- * légitimes partagent un essai (impact mineur) ; bénéfice = pas d'essais infinis
- * via `me+1@`, `me+2@`, `m.e@gmail`.
+ * LEGACY : cette clé sert aussi aux OTP et sessions, pas seulement au quota.
+ * Hors Gmail, le strip+ peut confondre des destinataires distincts. Ne pas
+ * l'étendre aux comptes Google/données/droits ; sa correction nécessite une
+ * transition d'identité séparée, sans recréer un essai pour les anciens users.
  */
 export function normalizeEmail(raw: string): string {
   const email = raw.trim().toLowerCase()
@@ -513,7 +516,8 @@ export async function revokeSession(env: Env, token: string): Promise<void> {
 
 /**
  * Décrémente le compteur d'essai email dans la table DÉDIÉE `email_trial_usage`
- * (jamais `trial_usage` qui appartient aux comptes Google). Plan TOUJOURS figé
+ * (jamais d’écriture dans `trial_usage`). Le plafond additionne les deux
+ * historiques selon leur groupe de restriction. Plan TOUJOURS figé
  * `trial` — aucun resolveUserPlan, aucun bypass ALLOWED_EMAILS. C'est le cœur
  * du fix CRIT-1 : un OTP ne peut JAMAIS hériter d'un plan premium ni de données
  * d'un compte Google du même email.

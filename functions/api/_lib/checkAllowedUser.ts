@@ -315,18 +315,9 @@ export function isTrialExpired(r: CheckResult): r is TrialExpired {
   return r !== null && typeof r === 'object' && 'error' in r && r.error === 'trial_expired'
 }
 
-/**
- * Modèles autorisés en essai gratuit (plan 'trial'). Liste affichée à
- * l'utilisateur ; l'enforcement réel utilise `isModelAllowedInTrial()`
- * pour tolérer les variantes de versionning des fournisseurs (ex :
- * `claude-haiku-4-5-20251001` matche `claude-haiku`, `mistral-medium-latest`
- * matche `mistral-medium`). Mistral Small déprécié mai 2026.
- */
+/** Public trial allowlist, shared with the client model catalogue. */
 export const TRIAL_ALLOWED_MODELS = [
   'claude-haiku-4-5',
-  'gpt-5-mini',
-  'gemini-flash',
-  'mistral-medium',
 ] as const
 
 const TRIAL_INITIAL_MESSAGES = 30
@@ -354,27 +345,11 @@ export async function ensureTrialTable(env: Env): Promise<void> {
   }
 }
 
-/**
- * Vérifie si un nom de modèle est autorisé pour un user en plan trial.
- * Matche par famille (claude→haiku, gpt→mini, gemini→flash, mistral→medium)
- * pour tolérer les suffixes de versions API. Les proxys IA étant scopés par
- * fournisseur, le préfixe `claude-` / `gpt-` / `gemini-` / `mistral-` est
- * implicite ; on regarde juste la sous-famille.
- *
- * F-16 (audit visibilité modèle, corrigé C-E) : cette fonction exigeait
- * encore `small` pour Mistral alors que TRIAL_ALLOWED_MODELS déclare
- * `mistral-medium` depuis la dépréciation de Small (mai 2026) ET que le swap
- * trial de mistral-proxy cible mistral-medium-latest — la cible de la
- * substitution échouait elle-même le test. Aligné sur `medium` : aucun
- * changement de coût (medium était déjà servi via le swap), le swap devient
- * simplement inutile pour le défaut Mistral.
- */
+/** The simple free offer only includes Haiku. The final subsidized proxy
+ * separately pins the exact dated model and cost contract. */
 export function isModelAllowedInTrial(model: string): boolean {
   const m = model.toLowerCase()
   if (m.startsWith('claude')) return m.includes('haiku')
-  if (m.startsWith('gpt')) return m.includes('mini')
-  if (m.startsWith('gemini')) return m.includes('flash')
-  if (m.startsWith('mistral')) return m.includes('medium')
   return false
 }
 
@@ -456,17 +431,21 @@ export async function checkAllowedVerifiedUser(
   verifiedEmail: string,
   env: Env,
   waitUntil?: QuotaWaitUntil,
+  /** Optional veto after the authoritative plan read, before any trial debit. */
+  assertPlan?: (plan: PlanType) => void,
 ): Promise<Exclude<CheckResult, null>> {
   const email = verifiedEmail.trim().toLowerCase()
 
   // ALLOWED_EMAILS = beta testeurs VIP, bypass du check D1
   const allowed = parseAllowedEmails(env.ALLOWED_EMAILS)
   if (allowed.includes(email)) {
+    assertPlan?.('vip')
     return { email, planType: 'vip' }
   }
 
   const plan = await readUserPlan(env, email)
   if (plan === null) return admissionUnavailable()
+  assertPlan?.(plan)
   if (plan === 'subscription' || plan === 'pro' || plan === 'vip') {
     return { email, planType: plan }
   }

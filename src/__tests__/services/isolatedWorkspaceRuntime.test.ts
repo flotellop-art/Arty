@@ -88,7 +88,8 @@ describe('candidate isolated runtime, deliberately disabled in production', () =
     expect(finalizer).toHaveBeenCalledOnce()
     const owner = users.getActiveUserId()!
     expect(localStorage.getItem(`arty-${owner}-api-keys`)).not.toBeNull()
-    expect(localStorage.getItem(`arty-${owner}-trial-remaining`)).toBe('30')
+    // Legacy ownerless display metadata is no longer adopted by any login.
+    expect(localStorage.getItem(`arty-${owner}-trial-remaining`)).toBeNull()
     expect(localStorage.getItem('arty-trial-remaining')).toBeNull()
     expect(Object.keys(localStorage).filter(k => /^arty-.*-(crypto-(salt|check|version)|conversations.*)$/.test(k))).toEqual([])
     expect(fetch).not.toHaveBeenCalled()

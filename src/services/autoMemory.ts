@@ -16,15 +16,15 @@
  * Garde-fous produit (audit RÈGLE 7) :
  * - euOnly → JAMAIS d'extraction (la conversation ne doit pas partir vers
  *   Claude US — cohérent avec le fact-checker).
- * - Trial débutant (> 25 messages restants) → skip (coût d'acquisition).
+ * - Essai/Free ou plan non vérifié : aucune extraction IA supplémentaire.
  * - Toggle Settings, ON par défaut (la mémoire silencieuse est le facteur de
  *   rétention n°1) + toast discret à chaque mise à jour (confiance).
  */
 
+import { hasPaidServerFeatures } from './paidFeatures'
 import * as scoped from './scopedStorage'
 import { apiUrl } from './apiBase'
 import { captureGoogleGrant, onGoogleGrantInvalidated } from './googleAuth'
-import { getTrialRemaining } from './trialClient'
 import {
   getAll as getAllFacts,
   bootstrapLocalMemory,
@@ -184,13 +184,11 @@ export async function maybeExtractMemory(conv: Conversation | null | undefined):
   let finishWork: (() => void) | undefined
   let dispose = () => {}
   try {
+    if (!hasPaidServerFeatures()) return
     if (!conv || inFlight) return
     if (isDocumentConversation(conv)) return
     if (!isAutoMemoryEnabled()) return
     if (hasEuData(conv)) return
-    // Trial débutant : pas d'extraction avant l'engagement (~5 messages).
-    const trial = getTrialRemaining()
-    if (trial !== null && trial > 25) return
 
     const userMessages = conv.messages.filter((m) => m.role === 'user').map((m) => m.content)
     const done = getProgress()[conv.id] ?? 0
@@ -210,7 +208,7 @@ export async function maybeExtractMemory(conv: Conversation | null | undefined):
     const abort = () => lifetime.abort()
     const assertCurrent = () => {
       scope.assertCurrent()
-      if (!grant.isCurrent() || lifetime.signal.aborted || documentWorkspaceSignal.aborted
+      if (!hasPaidServerFeatures() || !grant.isCurrent() || lifetime.signal.aborted || documentWorkspaceSignal.aborted
         || !isAutoMemoryEnabled() || hasEuData(conv) || isDocumentConversation(conv)) throw new Error('memory_cancelled')
     }
     const stopGrant = onGoogleGrantInvalidated(() => { if (!grant.isCurrent()) abort() })

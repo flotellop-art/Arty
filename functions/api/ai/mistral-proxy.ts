@@ -1,7 +1,7 @@
+import { resolveNonTrialChatAccess } from '../_lib/simpleTrialOffer'
 import type { Env } from '../../env'
 import { isAdmissionUnavailable, admissionUnavailableResponse } from '../_lib/admission'
 import {
-  checkAllowedVerifiedUser,
   isModelAllowedInTrial,
   isTrialExpired,
   proKeyRequiredResponse,
@@ -9,7 +9,6 @@ import {
   trialModelRestrictedResponse,
 } from '../_lib/checkAllowedUser'
 import {
-  consumeEmailTrialMessage,
   emailTrialKey,
   proxyIdentityFailureResponse,
   resolveProxyIdentityDetailed,
@@ -58,9 +57,8 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
   // décrément du compteur trial KV.
   if (!apiKey && env.MISTRAL_API_KEY) {
     const result =
-      identity.kind === 'email-trial'
-        ? await consumeEmailTrialMessage(env, identity.email, waitUntil)
-        : await checkAllowedVerifiedUser(identity.email, env, waitUntil)
+      await resolveNonTrialChatAccess(identity, env)
+    if (result instanceof Response) return result
     if (isAdmissionUnavailable(result)) return admissionUnavailableResponse()
     if (isTrialExpired(result)) {
       // Essai email épuisé : pas de wallet (espace de clés disjoint, CRIT-1) → 403 direct.

@@ -3,6 +3,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { onRequestPost } from '../../../functions/api/ai/proxy'
 import { createSession } from '../../../functions/api/_lib/emailTrial'
 import { makeD1Harness, type D1Harness } from './d1Harness'
+import { fundSyntheticSubsidizedBudget } from './subsidizedBudgetFixture'
 
 const EMAIL = 'anthropic-preflight@example.test', CLIENT = 'synthetic-client'
 const MODEL = 'claude-haiku-4-5-20251001'
@@ -83,8 +84,10 @@ describe('Anthropic preflight before every funding mutation — real local D1', 
     expect(sent).toHaveLength(0)
     expect(await counters()).toEqual([{ used: 7 }, { used: 13 }])
   })
-  it.each(paths)('%s preserves attachments, cache, custom/native tools, signatures, headers and funding', async path => {
+  it.each(paths)('%s preserves paid tools or refuses unsupported free tools without spending', async path => {
     await seed(path)
+    const subsidized = path === 'google' || path === 'otp' || path === 'free'
+    if (subsidized) await fundSyntheticSubsidizedBudget(h.db)
     const body = { model: MODEL, max_tokens: 64000, stream: false,
       system: [{ type: 'text', text: 'Bonjour 日本語', cache_control: { type: 'ephemeral' } }],
       tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 5 },
@@ -94,10 +97,19 @@ describe('Anthropic preflight before every funding mutation — real local D1', 
           { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: 'JVBERi0xLjQK' } },
           { type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'iVBORw0KGgo=' } }] }] }] }
     const response = await invoke(request(path, JSON.stringify(body)))
+    if (subsidized) {
+      expect(response.status).toBe(400)
+      expect(await response.json()).toMatchObject({ error: 'subsidized_request_unsupported' })
+      await Promise.all(background)
+      expect(sent).toHaveLength(0)
+      expect(await counters()).toEqual([{ used: 7 }, { used: 13 }])
+      expect((await h.db.prepare('SELECT id FROM subsidized_attempt_v1').all()).results).toEqual([])
+      return
+    }
     expect(response.status).toBe(200)
     await response.text(); await Promise.all(background)
     expect(sent).toHaveLength(1)
-    expect(sent[0].body).toEqual(body)
+    expect(sent[0].body).toEqual(subsidized ? { ...body, service_tier: 'standard_only' } : body)
     expect(sent[0].headers.get('x-api-key')).toBe(path.includes('byok') ? 'synthetic-byok' : 'synthetic-owner')
     expect(sent[0].headers.get('anthropic-beta')).toBe('pdfs-2024-09-25,prompt-caching-2024-07-31')
     expect(sent[0].headers.get('anthropic-version')).toBe('2023-06-01')
@@ -117,6 +129,7 @@ describe('Anthropic preflight before every funding mutation — real local D1', 
   })
   it.each(['google', 'otp', 'subscription', 'vip', 'wallet', 'byok'] as const)('%s preserves actual served-model transformations', async path => {
     await seed(path)
+    if (path === 'google' || path === 'otp') await fundSyntheticSubsidizedBudget(h.db)
     const body = { model: 'claude-sonnet-4-6', max_tokens: 65000, stream: false,
       thinking: { type: 'adaptive' }, output_config: { effort: 'high' },
       tools: [{ type: 'web_fetch_20260209', name: 'web_fetch' },
@@ -126,8 +139,8 @@ describe('Anthropic preflight before every funding mutation — real local D1', 
     expect(response.status).toBe(200)
     await response.text(); await Promise.all(background)
     if (path === 'google' || path === 'otp') {
-      expect(sent[0].body).toEqual({ model: MODEL, max_tokens: 64000, stream: false,
-        tools: [body.tools[1]], messages: body.messages })
+      expect(sent[0].body).toEqual({ model: MODEL, max_tokens: 2000, stream: false,
+        tools: [{ ...body.tools[1], max_uses: 1 }], messages: body.messages, service_tier: 'standard_only' })
     } else expect(sent[0].body).toEqual(body)
   })
   it('refuses oversized declared input before trial consumption', async () => {
@@ -140,12 +153,31 @@ describe('Anthropic preflight before every funding mutation — real local D1', 
     expect((await invoke(new Request('https://tryarty.com/api/ai/proxy', { method: 'POST', body: 'null' }))).status).toBe(401)
     expect(sent).toHaveLength(0)
   })
-  it.each(['free', 'wallet'] as const)('%s does not leak the wallet default into Free', async path => {
-    await seed(path)
+  it('keeps the existing default for a wallet request with no max_tokens', async () => {
+    await seed('wallet')
     const body = { model: MODEL, messages: [{ role: 'user', content: 'Bonjour' }], stream: false }
-    const response = await invoke(request(path, JSON.stringify(body)))
+    const response = await invoke(request('wallet', JSON.stringify(body)))
     expect(response.status).toBe(200)
     await response.text(); await Promise.all(background)
-    expect(sent[0].body).toEqual(path === 'wallet' ? { ...body, max_tokens: 8192 } : body)
+    expect(sent[0].body).toEqual({ ...body, max_tokens: 8192 })
+  })
+  it('preserves the explicit Free output bound instead of leaking the wallet default', async () => {
+    await seed('free'); await fundSyntheticSubsidizedBudget(h.db)
+    const body = { model: MODEL, max_tokens: 64000, messages: [{ role: 'user', content: 'Bonjour' }], stream: false }
+    const response = await invoke(request('free', JSON.stringify(body)))
+    expect(response.status).toBe(200)
+    await response.text(); await Promise.all(background)
+    expect(sent[0].body).toEqual({ ...body, max_tokens: 2000, service_tier: 'standard_only' })
+  })
+  it.each(['free', 'google', 'otp'] as const)('%s refuses missing max_tokens before provider/subsidy and compensates only its trial debit', async path => {
+    await seed(path); await fundSyntheticSubsidizedBudget(h.db)
+    const body = { model: MODEL, messages: [{ role: 'user', content: 'Bonjour' }], stream: false }
+    const response = await invoke(request(path, JSON.stringify(body)))
+    expect(response.status).toBe(400)
+    expect(await response.json()).toEqual({ error: 'subsidized_request_unsupported' })
+    await Promise.all(background)
+    expect(sent).toHaveLength(0)
+    expect(await counters()).toEqual([{ used: 7 }, { used: 13 }])
+    expect((await h.db.prepare('SELECT id FROM subsidized_attempt_v1').all()).results).toEqual([])
   })
 })

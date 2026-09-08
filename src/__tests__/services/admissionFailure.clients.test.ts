@@ -40,6 +40,31 @@ beforeEach(async () => {
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals() })
 
 describe('real text-client handling of an unconfirmed admission', () => {
+  it.each(['fr', 'en'])('localizes the terminal transport refusal in %s without retry', async language => {
+    await i18n.changeLanguage(language)
+    const http = vi.fn(async () => Response.json({ error: 'upstream_outcome_unknown' }, { status: 409 }))
+    vi.stubGlobal('fetch', http)
+    const call = invoke('anthropic')
+    expect((await call.outcome).message).toBe(i18n.t('errors.apiOutcomeUnknown'))
+    expect(http).toHaveBeenCalledOnce(); expect(getTrialRemaining()).toBe(17)
+  })
+  it.each([
+    ['subsidized_budget_exhausted', 503, 'SubsidizedBudgetExhaustedError', 'errors.subsidizedBudgetExhausted'],
+    ['subsidized_request_unsupported', 400, 'SubsidizedRequestUnsupportedError', 'errors.subsidizedRequestUnsupported'],
+  ] as const)('Anthropic treats %s as terminal without spending credits or expiring the trial', async (error, status, name, message) => {
+    const http = vi.fn(async () => Response.json({ error }, { status }))
+    vi.stubGlobal('fetch', http)
+    const call = invoke('anthropic')
+    expect(await call.outcome).toMatchObject({ name, message: i18n.t(message) })
+    expect(http).toHaveBeenCalledOnce(); expect(call.onError).toHaveBeenCalledOnce()
+    expect(getTrialRemaining()).toBe(17); expect(getActiveUserId()).toBe('admission-test-user')
+    expect(call.onToolCall).not.toHaveBeenCalled(); expect(call.onDone).not.toHaveBeenCalled()
+  })
+  it.each(providers)('%s refuses a paid feature without retry or changing trial state', async provider => {
+    const http = vi.fn(async () => Response.json({ error: 'paid_feature_required' }, { status: 403 })); vi.stubGlobal('fetch', http)
+    const call = invoke(provider); expect(await call.outcome).toMatchObject({ name: 'PaidFeatureRequiredError' })
+    expect(http).toHaveBeenCalledOnce(); expect(getTrialRemaining()).toBe(17); expect(call.onToolCall).not.toHaveBeenCalled()
+  })
   it.each(providers)('%s reports the localized temporary refusal once without replaying any AI/tool call', async provider => {
     const http = vi.fn(async (_url: string, _init?: RequestInit) => Response.json({ error: 'admission_unavailable' }, { status: 503 }))
     vi.stubGlobal('fetch', http)
@@ -56,7 +81,7 @@ describe('real text-client handling of an unconfirmed admission', () => {
     }
   })
 
-  it('preserves the existing Anthropic retry schedule for a genuine transient 503', async () => {
+  it('preserves the Anthropic retry schedule for an attested transient 503', async () => {
     const delays: number[] = [], realSetTimeout = globalThis.setTimeout
     vi.spyOn(globalThis, 'setTimeout').mockImplementation(((callback: (...args: unknown[]) => void, delay?: number, ...args: unknown[]) => {
       if ([2000, 4000, 8000].includes(delay ?? 0)) {
@@ -65,11 +90,18 @@ describe('real text-client handling of an unconfirmed admission', () => {
       }
       return realSetTimeout(callback, delay, ...args)
     }) as typeof setTimeout)
-    const http = vi.fn(async () => Response.json({ error: 'wallet_temporarily_unavailable' }, { status: 503 }))
+    const requests: { path: string; funding: string | null }[] = []
+    const http = vi.fn(async (url: string, init?: RequestInit) => {
+      requests.push({ path: new URL(url, 'https://tryarty.com').pathname,
+        funding: new Headers(init?.headers).get('x-arty-require-funding') })
+      return Response.json({ error: 'AI service error' }, { status: 503, headers: { 'x-arty-funding': 'v1:free' } })
+    })
     vi.stubGlobal('fetch', http)
     const call = invoke('anthropic')
     expect((await call.outcome).name).not.toBe('AdmissionUnavailableError')
     expect(http).toHaveBeenCalledTimes(4); expect(delays).toEqual([2000, 4000, 8000])
+    expect(requests).toEqual([{ path: '/api/ai/proxy', funding: null },
+      ...Array.from({ length: 3 }, () => ({ path: '/api/ai/anthropic-continue-v1', funding: 'v1:free' }))])
     expect(call.onError).toHaveBeenCalledOnce(); expect(call.onDone).not.toHaveBeenCalled()
   })
 

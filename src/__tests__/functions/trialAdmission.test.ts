@@ -9,7 +9,12 @@ function fixture() {
   const query = new Promise<{ count: unknown } | null>((yes, no) => { resolve = yes; reject = no })
   const first = vi.fn(() => query)
   const read = vi.fn(async () => ({ used: 30 }))
-  const env = { DB: { prepare: (sql: string) => ({ bind: () => ({ first: sql.startsWith('INSERT') ? first : read }) }) } } as unknown as Env
+  const env = { DB: { prepare: () => ({ bind: () => ({}) }), batch: async () => {
+    const row = await first()
+    return [...Array.from({ length: 4 }, () => ({ success: true, results: [] })),
+      { success: true, results: row === null ? [] : [row] },
+      { success: true, results: [{ total: row === null ? (await read()).used : row.count, invalid: 0 }] }]
+  } } } as unknown as Env
   const refund = vi.fn(async () => undefined)
   const background: Promise<unknown>[] = []
   const waitUntil = (p: Promise<unknown>) => { background.push(p) }

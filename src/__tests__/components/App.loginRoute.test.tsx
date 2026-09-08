@@ -6,6 +6,10 @@ import type { Conversation } from '../../types'
 // bodies are isolated: this is a routing regression, not an auth/network test.
 const fixture = vi.hoisted(() => ({
   authenticated: true,
+  owner: 'synthetic',
+  welcomeOwner: null as string | null,
+  welcome: null as 'vip' | 'trial' | null,
+  renderedWelcomes: [] as string[],
   login: vi.fn(),
   callback: vi.fn<(_: string) => Promise<void>>(),
   accessGate: null as Promise<void> | null,
@@ -14,7 +18,7 @@ const fixture = vi.hoisted(() => ({
 vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => key }) }))
 vi.mock('../../hooks/useAuth', () => ({ useAuth: () => ({
   isAuthenticated: fixture.authenticated,
-  currentUser: fixture.authenticated ? { userId: 'synthetic', authMethod: 'email' } : null,
+  currentUser: fixture.authenticated ? { userId: fixture.owner, authMethod: 'email' } : null,
   knownSessions: [], login: fixture.login,
 }) }))
 vi.mock('../../hooks/useConversation', () => ({ useConversation: () => fixture.conversation }))
@@ -27,7 +31,9 @@ vi.mock('../../hooks/useAppSetup', () => ({ useAppSetup: () => ({
 vi.mock('../../hooks/useProactiveBrief', () => ({ useProactiveBrief: () => ({}) }))
 vi.mock('../../services/userProfile', () => ({ getUserProfile: () => ({ name: 'Synthetic' }) }))
 vi.mock('../../services/costTracker', () => ({ checkBudgetAlert: () => null, formatCost: () => '' }))
-vi.mock('../../services/trialClient', () => ({ getTrialRemaining: () => null, getOnboardingSplash: () => null }))
+vi.mock('../../services/trialClient', () => ({ getTrialRemaining: () => null,
+  getOnboardingSplash: (owner?: string | null) => owner === fixture.welcomeOwner ? fixture.welcome : null,
+}))
 vi.mock('../../services/themeService', () => ({ startThemeWatcher: () => () => {} }))
 vi.mock('../../services/proactiveBriefSettings', () => ({ isProactiveBriefEnabled: () => false }))
 vi.mock('../../services/morningBriefService', () => ({ shouldShowMorningBrief: () => false }))
@@ -37,7 +43,10 @@ vi.mock('../../services/shareTargetService', () => ({
 vi.mock('@capacitor/app', () => ({ App: { addListener: async () => ({ remove: () => {} }) } }))
 vi.mock('../../components/home/HomeScreen', () => ({ HomeScreen: ({ connectionsAgenda, onConnections }: { connectionsAgenda?: boolean; onConnections: () => void }) => <><h1>Home screen</h1>{connectionsAgenda && <button onClick={onConnections}>Calendar return</button>}</> }))
 vi.mock('../../components/auth/LoginScreen', () => ({ LoginScreen: () => <h1>Login screen</h1> }))
-vi.mock('../../components/onboarding/OnboardingChoice', () => ({ isOnboardingChoiceDone: () => true }))
+vi.mock('../../components/onboarding/OnboardingChoice', () => ({ isOnboardingChoiceDone: () => true,
+  VipSplash: () => { fixture.renderedWelcomes.push(`vip:${fixture.owner}`); return <h1>VIP welcome</h1> },
+  TrialIntro: () => { fixture.renderedWelcomes.push(`trial:${fixture.owner}`); return <h1>Trial welcome</h1> },
+}))
 vi.mock('../../components/layout/Sidebar', () => ({ Sidebar: ({ onOpenConnections }: { onOpenConnections: () => void }) => <aside><button onClick={onOpenConnections}>Open connections</button></aside> }))
 vi.mock('../../hooks/useConnectionsStatus', () => ({ useConnectionsStatus: () => ({
   state: 'ready', platform: 'android', refresh: vi.fn(), act: (action: () => void) => action(),
@@ -64,6 +73,7 @@ import App from '../../App'
 
 beforeEach(() => {
   fixture.authenticated = true
+  fixture.owner = 'synthetic'; fixture.welcomeOwner = null; fixture.welcome = null; fixture.renderedWelcomes = []
   fixture.accessGate = null
   fixture.conversation.activeConversation = undefined
   fixture.conversation.error = null
@@ -77,6 +87,22 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals() })
 
 describe('App login entry routing', () => {
+  it('refreshes welcome after login publication or bootstrap metadata, without a neighbour frame', async () => {
+    fixture.authenticated = false
+    window.history.replaceState({}, '', '/login')
+    const app = render(<App />)
+    fixture.welcomeOwner = 'owner-a'; fixture.welcome = 'trial'
+    // Native login can publish auth without an explicit setSplash callback.
+    fixture.owner = 'owner-a'; fixture.authenticated = true; app.rerender(<App />)
+    expect(await screen.findByText('Trial welcome')).toBeInTheDocument()
+    fixture.owner = 'owner-b'; app.rerender(<App />)
+    expect(await screen.findByText('Home screen')).toBeInTheDocument()
+    expect(fixture.renderedWelcomes).not.toContain('trial:owner-b')
+    fixture.welcomeOwner = 'owner-b'; fixture.welcome = 'vip'
+    act(() => window.dispatchEvent(new Event('arty-trial-remaining-changed')))
+    expect(await screen.findByText('VIP welcome')).toBeInTheDocument()
+    expect(fixture.renderedWelcomes).toContain('vip:owner-b')
+  })
   it('keeps chat history across real BrowserRouter navigation and disposes the previous screen while access is suspended', async () => {
     const saved: Conversation = { id: 'synthetic-chat', title: 'Synthetic', createdAt: 1, updatedAt: 1,
       messages: [{ id: 'message', role: 'user', timestamp: 1, content: 'History must survive navigation' }] }

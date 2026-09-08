@@ -1,19 +1,32 @@
 import type { Env } from '../../env'
+import { ANTHROPIC_FUNDING_HEADER, ANTHROPIC_REQUIRE_FUNDING_HEADER,
+  AnthropicFundingChanged, fundingChangedResponse, parseAnthropicFunding,
+  type AnthropicFunding } from '../../../shared/anthropicFunding'
+import { readTrialCounterRemaining } from '../_lib/trialAdmission'
 import { isAdmissionUnavailable, admissionUnavailableResponse } from '../_lib/admission'
 import { readAnthropicRequestBody } from '../_lib/anthropicRequestBody'
+import { qualifyAnthropicSubsidizedRequest } from '../_lib/anthropicSubsidizedRequest'
+import { dispatchSubsidizedAttempt, reserveSubsidizedAttempt, settleSubsidizedAttempt,
+  type SubsidizedTicket } from '../_lib/subsidizedBudget'
+import { createAnthropicSubsidizedUsageParser, type SubsidizedCostProof } from '../_lib/anthropicSubsidizedUsage'
 import { BILLING_LEAK_PATTERN as SHARED_BILLING_LEAK_PATTERN } from '../_lib/upstreamBilling'
 import {
   checkAllowedVerifiedUser,
+  checkAllowedVerifiedUserPeek,
+  type CheckResult,
+  type PlanType,
   isModelAllowedInTrial,
   isTrialExpired,
   proKeyRequiredResponse,
   trialExpiredResponse,
+  voidTrialMessage,
 } from '../_lib/checkAllowedUser'
 import {
   consumeEmailTrialMessage,
   emailTrialKey,
   proxyIdentityFailureResponse,
   resolveProxyIdentityDetailed,
+  voidEmailTrialMessage,
 } from '../_lib/emailTrial'
 import { checkPremiumCap, premiumCapReachedResponse } from '../_lib/checkPremiumCap'
 import { consumeDailyQuota, recordUsage } from '../_lib/quota'
@@ -144,8 +157,32 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
   // ni de décrément de trial).
   let apiKey = request.headers.get('x-api-key')
   const isByok = !!apiKey
+  const rawRequiredFunding = request.headers.get(ANTHROPIC_REQUIRE_FUNDING_HEADER)
+  const requiredFunding = parseAnthropicFunding(rawRequiredFunding)
+  if (rawRequiredFunding !== null && !requiredFunding) return Response.json(
+    { error: 'continuation_funding_required' }, { status: 400, headers: { 'cache-control': 'no-store' } },
+  )
+  if (requiredFunding && (isByok ? requiredFunding !== 'v1:byok' : requiredFunding === 'v1:byok')) return fundingChangedResponse()
+  if (requiredFunding && !isByok && identity.kind === 'email-trial' && requiredFunding !== 'v1:trial-email') return fundingChangedResponse()
+  const assertPlan = (plan: PlanType) => {
+    if (!requiredFunding) return
+    const expected = plan === 'trial' ? 'v1:trial-google' : `v1:${plan}`
+    if (requiredFunding !== expected) throw new AnthropicFundingChanged()
+  }
   let userPlan: 'subscription' | 'pro' | 'vip' | 'free' | 'trial' = 'free'
   let trialRemaining: number | undefined
+  // Only a confirmed debit transfers compensation ownership to this request.
+  // An admission timeout is compensated by consumeTrialCounter, never here.
+  let trialDebited = false
+  const refuseBeforeSend = async (response: Response): Promise<Response> => {
+    if (trialDebited) {
+      trialDebited = false // take once, before any await; never replay an uncertain refund
+      const refund = identity.kind === 'email-trial' ? voidEmailTrialMessage(env, identity.email) : voidTrialMessage(env, identity.email)
+      try { waitUntil(refund) } catch { await refund } // same promise, never invoke twice
+    }
+    // Do not invent a new remaining count from an old concurrent snapshot.
+    return response
+  }
   // Essai épuisé routé vers le wallet (crédits) : on mémorise l'origine pour
   // rendre un 403 trial_expired (et non le tier gratuit Haiku) si pas de crédits.
   let wasTrialExhausted = false
@@ -154,12 +191,31 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
   // (subscription/pro/vip/trial via checkAllowedUser, qui gère aussi le
   // bypass VIP via ALLOWED_EMAILS et le décrément du compteur trial KV).
   if (!apiKey) {
-    const result =
-      identity.kind === 'email-trial'
+    let result: CheckResult
+    try {
+      if (requiredFunding === 'v1:wallet' && identity.kind === 'google') {
+        // An exhausted historical trial may already be paying from its wallet.
+        // This read-only branch can never consume a revived trial or grant Free.
+        const peek = await checkAllowedVerifiedUserPeek(identity.email, env)
+        if (isAdmissionUnavailable(peek)) return admissionUnavailableResponse()
+        if (peek.planType === 'trial') {
+          const remaining = await readTrialCounterRemaining(env, identity.email, 'trial_usage')
+          if (remaining === null) return admissionUnavailableResponse()
+          if (remaining !== 0) return fundingChangedResponse()
+          result = { error: 'trial_expired', email: identity.email }
+        } else if (peek.planType === 'free') result = peek
+        else return fundingChangedResponse()
+      } else result = identity.kind === 'email-trial'
         ? await consumeEmailTrialMessage(env, identity.email, waitUntil)
-        : await checkAllowedVerifiedUser(identity.email, env, waitUntil)
+        : await checkAllowedVerifiedUser(identity.email, env, waitUntil, requiredFunding ? assertPlan : undefined)
+    } catch (error) {
+      if (error instanceof AnthropicFundingChanged) return fundingChangedResponse()
+      throw error
+    }
     if (isAdmissionUnavailable(result)) return admissionUnavailableResponse()
+    if (result && !isTrialExpired(result) && result.trialDebited === true) trialDebited = true
     if (isTrialExpired(result)) {
+      if (requiredFunding && requiredFunding !== 'v1:wallet') return fundingChangedResponse()
       // Essai email épuisé : pas de wallet/crédits (espace de clés disjoint,
       // CRIT-1 — un jeton email-trial n'a jamais de solde) → 403 trial_expired direct.
       if (identity.kind === 'email-trial') return trialExpiredResponse()
@@ -193,10 +249,10 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
     // `email`, `isWhitelisted`, `hasServerKey` dans la réponse → oracle pour
     // énumérer la whitelist (test d'emails arbitraires → différence de body).
     // Maintenant : message générique sans révéler l'état serveur.
-    return Response.json(
+    return refuseBeforeSend(Response.json(
       { error: "Clé API requise — abonnement Pro requis ou fournir une clé BYOK." },
       { status: 401 }
-    )
+    ))
   }
 
   let modelName = typeof parsedBody.model === 'string' && parsedBody.model.length > 0 ? parsedBody.model : 'claude'
@@ -228,12 +284,19 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
     // branch; previously its separately parsed candidate was discarded there.
     const walletBody = { ...parsedBody }
     enforceWalletOutputLimit('anthropic', walletBody)
-    const start = await beginWalletBilling(env, waitUntil, {
+    let start: Awaited<ReturnType<typeof beginWalletBilling>>
+    try { start = await beginWalletBilling(env, waitUntil, {
       email,
       model: modelName,
       provider: 'anthropic',
       body: walletBody,
-    })
+      assertFundingMode: requiredFunding ? mode => {
+        if (requiredFunding !== (mode === 'wallet' ? 'v1:wallet' : 'v1:free')) throw new AnthropicFundingChanged()
+      } : undefined,
+    }) } catch (error) {
+      if (error instanceof AnthropicFundingChanged) return fundingChangedResponse()
+      throw error
+    }
     if (start.mode === 'refuse') return start.response
     if (start.mode === 'wallet') {
       walletResId = start.resId
@@ -303,17 +366,61 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
     headers['anthropic-beta'] = beta
   }
 
+  // The FINAL financing matters: a server key alone does not mean subsidy.
+  // Paid/VIP/BYOK and an actual wallet hold never depend on this policy/table.
+  const subsidized = !isByok && !walletResId && (userPlan === 'free' || userPlan === 'trial')
+  const funding: AnthropicFunding = isByok ? 'v1:byok' : walletResId ? 'v1:wallet'
+    : userPlan === 'trial' ? identity.kind === 'email-trial' ? 'v1:trial-email' : 'v1:trial-google'
+      : userPlan === 'subscription' ? 'v1:subscription' : userPlan === 'vip' ? 'v1:vip' : 'v1:free'
+  if (requiredFunding && requiredFunding !== funding) return refuseBeforeSend(fundingChangedResponse())
+  const qualified = subsidized ? qualifyAnthropicSubsidizedRequest(parsedBody, headers) : null
+  if (subsidized && !qualified) return refuseBeforeSend(Response.json(
+    { error: 'subsidized_request_unsupported' }, { status: 400, headers: { 'cache-control': 'no-store' } },
+  ))
+  const providerBody = qualified?.body ?? JSON.stringify(parsedBody)
+
   try {
-    const response = await fetch(ANTHROPIC_URL, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(parsedBody),
-    })
+    const send = () => {
+      trialDebited = false // dispatch begins: outcome can no longer be assumed unserved
+      return fetch(ANTHROPIC_URL, {
+        method: 'POST', headers, body: providerBody,
+        // Same no-replay transport invariant as the separate PR499 candidate.
+        redirect: 'manual',
+        ...(qualified ? { signal: request.signal } : {}),
+      })
+    }
+    let response: Response
+    let subsidizedTicket: SubsidizedTicket | undefined
+    if (qualified) {
+      const reservation = await reserveSubsidizedAttempt(env.DB, qualified.envelope)
+      if (reservation.status === 'budget_exhausted') return refuseBeforeSend(Response.json(
+        { error: 'subsidized_budget_exhausted' }, { status: 503, headers: { 'cache-control': 'no-store' } },
+      ))
+      if (reservation.status !== 'reserved') return refuseBeforeSend(admissionUnavailableResponse())
+      subsidizedTicket = reservation.ticket
+      const dispatch = await dispatchSubsidizedAttempt(env.DB, reservation.ticket, send, request.signal)
+      if (dispatch.status === 'unavailable') return refuseBeforeSend(admissionUnavailableResponse())
+      if (dispatch.status !== 'sent') return Response.json({ error: 'Proxy error' }, { status: 502 })
+      response = dispatch.value
+    } else response = await send()
+
+    if (response.status >= 300 && response.status < 400) {
+      void response.body?.cancel().catch(() => undefined)
+      if (walletResId) {
+        waitUntil(settleWalletBilling(env, { resId: walletResId, email, model: modelName },
+          createAnthropicParser().finalize()))
+      }
+      return Response.json({ error: 'upstream_outcome_unknown' }, {
+        status: 409, headers: { 'cache-control': 'no-store',
+          ...(trialRemaining !== undefined ? { 'x-trial-remaining': String(trialRemaining) } : {}) },
+      })
+    }
 
     const responseHeaders = (extra: Record<string, string> = {}) => {
       const out: Record<string, string> = {
         'content-type': response.headers.get('content-type') || 'text/event-stream',
         'cache-control': 'no-cache',
+        [ANTHROPIC_FUNDING_HEADER]: funding,
         ...extra,
       }
       if (trialRemaining !== undefined) {
@@ -325,21 +432,29 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
     // Ne track que les appels server-key réussis (BYOK = user paie lui-même).
     if (!isByok && response.ok && response.body) {
       const parser = createAnthropicParser(responseUsageFormat(response.headers.get('content-type')))
+      const qualifiedFormat = /^(application\/json|text\/event-stream)(;|$)/i.test(response.headers.get('content-type') || '')
+      const costParser = qualified && subsidizedTicket && qualifiedFormat
+        ? createAnthropicSubsidizedUsageParser(responseUsageFormat(response.headers.get('content-type')), qualified.costContract)
+        : undefined
+      let costProof: SubsidizedCostProof | null = null
       const { clientBody, parsedUsage } = teeForParsing(
         response.body,
-        parser.feed,
+        chunk => { parser.feed(chunk); costParser?.feed(chunk) },
         parser.finalize,
-        makeReservationHeartbeat(env, walletResId)
+        makeReservationHeartbeat(env, walletResId),
+        complete => { costProof = costParser?.finalize(complete) ?? null },
       )
       // UN seul tee, deux consommateurs sur le MÊME usage réel : analytics
       // (recordUsage, coût provider) + débit wallet (settle, prix markupé). Le
       // settle n'a lieu que sur le chemin wallet (walletResId défini).
       const rid = walletResId
+      const sid = subsidizedTicket
       waitUntil(
         parsedUsage.then((usage) =>
           Promise.allSettled([
             recordUsage(env, email, modelName, usage),
             ...(rid ? [settleWalletBilling(env, { resId: rid, email, model: modelName }, usage)] : []),
+            ...(sid && costProof ? [settleSubsidizedAttempt(env.DB, sid, costProof)] : []),
           ])
         )
       )

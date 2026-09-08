@@ -17,15 +17,17 @@ describe('openai-proxy — ordre fail-closed vision', () => {
     const read = source.indexOf('readRequestTextWithLimit(request')
     const validate = source.indexOf('validateOpenAIVisionPayload(parsedPayload)')
     const streamValidate = source.indexOf('validateOpenAIVisionStream(\n        validationBody')
-    const trial = source.indexOf('consumeEmailTrialMessage(env')
-    const allowed = source.indexOf('checkAllowedVerifiedUser(identity.email, env, waitUntil)')
+    expect(source).not.toContain('consumeEmailTrialMessage(')
+    expect(source).not.toContain('checkAllowedVerifiedUser(')
+    const access = source.indexOf('resolveNonTrialChatAccess(identity, env)')
+    expect(access).toBeGreaterThan(validate)
     const wallet = source.indexOf('beginWalletBilling(env')
     const quota = source.indexOf('consumeDailyQuota(env')
     const cap = source.indexOf('checkPremiumCap(email')
     expect(read).toBeGreaterThan(0)
     expect(validate).toBeGreaterThan(read)
     expect(streamValidate).toBeGreaterThan(0)
-    for (const sideEffect of [trial, allowed, wallet, quota, cap]) {
+    for (const sideEffect of [wallet, quota, cap]) {
       expect(sideEffect).toBeGreaterThan(validate)
       expect(sideEffect).toBeGreaterThan(streamValidate)
     }

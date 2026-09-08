@@ -1,8 +1,8 @@
 import type { Env } from '../../env'
+import { admissionUnavailableResponse } from '../_lib/admission'
+import { readTrialCounterRemaining } from '../_lib/trialAdmission'
 import {
   parseAllowedEmails,
-  ensureTrialTable,
-  TRIAL_INITIAL_BUDGET,
   verifyTokenViaTokeninfoDetailed,
 } from '../_lib/checkAllowedUser'
 
@@ -11,7 +11,7 @@ import {
  * d'un nouvel utilisateur après son premier sign-in Google.
  *
  * Idempotent : appelé plusieurs fois pour le même email, retourne toujours
- * le plan actuel sans recréer la ligne D1 ni reset le compteur KV.
+ * le plan actuel sans recréer la ligne D1 ni reset les compteurs D1.
  *
  * Flow :
  *   1. Lit le token Google depuis `Authorization: Bearer …` (fallback sur
@@ -23,9 +23,9 @@ import {
  *   4. Sinon, regarde si une ligne `subscriptions` existe déjà :
  *        - trial active  → retourne le compteur courant
  *        - autre plan    → retourne le plan tel quel
- *   5. Sinon (nouveau user) → INSERT 'trial' active. Le compteur D1 `trial_usage`
- *      est créé au 1er message (absence de ligne = 0 consommé = 30 restants).
- *      → retourne `{ plan: 'trial', trial_messages_remaining: 30 }`.
+ *   5. Sinon → lit d'abord le solde réel, puis INSERT 'trial' active.
+ *      Gmail partage aussi la consommation OTP/alias déjà existante : une
+ *      nouvelle ligne Google ne signifie pas nécessairement 30 restants.
  */
 
 interface TrialInitResponse {
@@ -111,24 +111,8 @@ async function storeAcquisition(
   }
 }
 
-async function readTrialRemaining(env: Env, email: string): Promise<number> {
-  if (!env.DB) return TRIAL_INITIAL_BUDGET
-  try {
-    await ensureTrialTable(env)
-    const row = await env.DB.prepare(
-      `SELECT used FROM trial_usage WHERE email = ?1`
-    )
-      .bind(email)
-      .first<{ used: number }>()
-    const used = row?.used ?? 0
-    // C13 — clamp explicite des DEUX bornes : jamais < 0 (déjà le cas) NI >
-    // budget (protège contre un `used` négatif/corrompu qui gonflerait le
-    // restant côté serveur). Le client était déjà borné.
-    return Math.min(TRIAL_INITIAL_BUDGET, Math.max(0, TRIAL_INITIAL_BUDGET - used))
-  } catch (err) {
-    console.error('[trial/init] read remaining failed', err)
-    return TRIAL_INITIAL_BUDGET
-  }
+async function readTrialRemaining(env: Env, email: string): Promise<number | null> {
+  return readTrialCounterRemaining(env, email, 'trial_usage')
 }
 
 function jsonOk(body: TrialInitResponse): Response {
@@ -138,7 +122,7 @@ function jsonOk(body: TrialInitResponse): Response {
     // whitelistés ; on garde '*' en fallback pour les requêtes sans
     // Origin (curl, debug). La réponse ne fuit aucune donnée sensible
     // — uniquement le plan public + compteur trial.
-    headers: { 'Access-Control-Allow-Origin': '*' },
+    headers: { 'Access-Control-Allow-Origin': '*', 'cache-control': 'no-store' },
   })
 }
 
@@ -202,6 +186,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   if (existing) {
     if (existing.plan_type === 'trial' && existing.status === 'active') {
       const remaining = await readTrialRemaining(env, email)
+      if (remaining === null) return admissionUnavailableResponse()
       return jsonOk({ plan: 'trial', trial_messages_remaining: remaining })
     }
     // Plan non-trial déjà en place → retourne tel quel sans créer de trial.
@@ -215,6 +200,11 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     // Plan free ou inconnu — on laisse passer en mode trial nouveau ci-dessous
     // si la ligne existante est un free legacy (cas rare).
   }
+
+  // A first Google sign-in is not a new benefit if OTP/another Gmail alias
+  // already consumed it. Read before creating the plan; never fabricate 30.
+  const remaining = await readTrialRemaining(env, email)
+  if (remaining === null) return admissionUnavailableResponse()
 
   // Nouveau user (ou ligne free legacy) → créer le trial + init compteur.
   // `ON CONFLICT DO NOTHING` (générique, sans cible) : ne lève JAMAIS, que la
@@ -238,6 +228,6 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   // (absence de ligne = 0 consommé = budget plein).
   return jsonOk({
     plan: 'trial',
-    trial_messages_remaining: TRIAL_INITIAL_BUDGET,
+    trial_messages_remaining: remaining,
   })
 }

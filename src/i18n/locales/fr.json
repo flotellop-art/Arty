@@ -893,6 +893,7 @@
     }
   },
   "errors": {
+    "paidFeatureRequired": "L’essai comprend le chat Haiku et sa recherche web. Cette fonction nécessite un accès payant.",
     "apiKeyMissing": "Clé API manquante — configure ta clé dans les paramètres",
     "apiKeyInvalid": "Clé API invalide ou expirée. Vérifie ta configuration.",
     "apiAccessDenied": "Accès refusé à l'API.",
@@ -900,6 +901,9 @@
     "apiOverloaded": "Le serveur IA est temporairement surchargé. Réessai automatique...",
     "apiServer": "Erreur serveur chez Anthropic. Réessaie dans un instant.",
     "admissionUnavailable": "Arty ne peut pas vérifier ton accès pour le moment. Aucune demande n’a été envoyée à l’IA. Réessaie dans 30 secondes.",
+    "subsidizedBudgetExhausted": "Les demandes gratuites sont temporairement indisponibles. Aucune demande n’a été envoyée à l’IA et aucun crédit acheté n’a été utilisé. Réessaie plus tard.",
+    "subsidizedRequestUnsupported": "Cette configuration de demande n’est pas encore disponible pour l’accès gratuit. Aucune demande n’a été envoyée à l’IA. Mets l’application à jour ou contacte le support.",
+    "apiOutcomeUnknown": "La réponse du service IA n'a pas pu être confirmée. L'appel n'est pas relancé automatiquement. Si tu utilises des crédits, vérifie ton solde avant de réessayer.",
     "apiInvalidRequest": "Requête invalide : {{message}}",
     "apiConnection": "Erreur de connexion ({{status}}). Vérifie ta connexion internet.",
     "apiBadRequest": "Requête refusée par le service IA (400). Ce n'est pas ta connexion : réessaie, et signale-le si ça persiste.",
@@ -929,6 +933,8 @@
     "streamStopped": "Réponse arrêtée",
     "streamStalled": "Connexion au serveur interrompue (réseau instable). La réponse déjà reçue est conservée.",
     "responseIncomplete": "Réponse incomplète, réessaie ta question.",
+    "continuationUnavailable": "La réponse est partielle. Cette version du service ne permet pas de la poursuivre automatiquement en confirmant le mode de paiement. La reprise automatique est arrêtée.",
+    "continuationFundingChanged": "La réponse est partielle. Ton accès ou le mode de paiement a changé : Arty a arrêté la reprise automatique. Vérifie ton accès et tes crédits avant de continuer.",
     "promptEnhancementFailed": "Impossible d'améliorer le prompt — réessaie.",
     "tooManyConcurrentStreams": "Trop de conversations en cours en parallèle. Attends qu'une réponse se termine.",
     "micDeniedNative": "Micro refusé — Paramètres Android → Apps → Arty → Autorisations → Micro",
@@ -1215,6 +1221,7 @@
     }
   },
   "settings": {
+    "paidFeature": "Réservé aux accès payants.",
     "kicker": "Paramètres",
     "titleMain": "Tes",
     "titleAccent": "préférences.",
@@ -1308,8 +1315,9 @@
       "noQuery": "Aucune question de localisation posée depuis le démarrage de l'app."
     },
     "autoMemory": {
+      "paidOnly": "Réservée aux accès payants. Pendant l’essai, ajoute tes souvenirs dans « Mémoire locale », sans appel IA supplémentaire.",
       "title": "Mémoire automatique",
-      "description": "Arty retient discrètement ce qui compte pour toi (préférences, projets, contexte). Tout reste chiffré sur ton appareil — consulte et modifie dans « Mémoire locale ».",
+      "description": "Une IA extrait les souvenirs de tes échanges, puis les enregistre chiffrés sur cet appareil. Consulte et modifie ces faits dans « Mémoire locale ».",
       "toggleAria": "Activer ou désactiver la mémoire automatique",
       "updated": "🧠 Mémoire mise à jour — voir Paramètres → Mémoire locale"
     },
@@ -1558,12 +1566,12 @@
   "localMemory": {
     "settings": {
       "title": "Mémoire locale",
-      "description": "Faits qu'Arty retient sur toi · 100% sur ton appareil"
+      "description": "Ajoute, modifie ou efface tes souvenirs sur cet appareil, sans appel IA supplémentaire."
     },
     "modal": {
       "title": "Mémoire locale",
       "counter": "{{count}} / {{max}}",
-      "privacyNotice": "Ces faits sont stockés uniquement sur cet appareil, chiffrés (AES-256). Ils personnalisent les réponses d'Arty sans être sauvegardés côté serveur.",
+      "privacyNotice": "Ces faits sont enregistrés chiffrés sur cet appareil. Ils peuvent être inclus dans le contexte envoyé au modèle pour personnaliser ses réponses. Les ajouter manuellement ne déclenche aucun appel IA supplémentaire.",
       "searchPlaceholder": "Rechercher…",
       "empty": "Aucun fait mémorisé pour l'instant.",
       "emptySearch": "Aucun résultat",
@@ -1619,7 +1627,7 @@
     "scope": "Texte seul, sans historique, fichiers, navigation, vidéo, position ni actions. Chaque envoi lance {{count}} appels (des reprises peuvent en consommer davantage). Coût indicatif fournisseur : tokens estimés, hors raisonnement/cache, conversion fixe 0,92 EUR/USD ; ce n’est pas le montant débité par Arty.",
     "sameReportedModel": "Plusieurs panneaux signalent le même modèle après routage : ce ne sont pas des réponses de modèles distincts.",
     "timeout": "La comparaison a dépassé le délai de deux minutes. Vous pouvez réessayer.",
-    "access": {"unknownModel":"Ce modèle n’est pas dans le catalogue.","auth":"Connectez ou reconnectez votre compte pour comparer.","unverified":"Accès serveur non vérifié. Réessayez après chargement ou utilisez une clé personnelle.","byok":"Le plan Pro nécessite votre clé personnelle pour ce fournisseur.","trial":"Ce modèle n’est pas inclus dans l’essai. Choisissez un modèle accessible.","plan":"Cette sélection demande des crédits, un abonnement éligible ou une clé personnelle.","twoModels":"Choisissez au moins deux modèles distincts et accessibles. Deux modèles du même fournisseur conviennent."},
+    "access": {"unknownModel":"Ce modèle n’est pas dans le catalogue.","auth":"Connectez ou reconnectez votre compte pour comparer.","unverified":"Accès serveur non vérifié. Réessayez après chargement ou utilisez une clé personnelle.","byok":"Le plan Pro nécessite votre clé personnelle pour ce fournisseur.","trial":"Le comparateur nécessite un accès payant. L’essai utilise Haiku dans le chat.","plan":"Cette sélection demande des crédits, un abonnement éligible ou une clé personnelle.","twoModels":"Choisissez au moins deux modèles distincts et accessibles. Deux modèles du même fournisseur conviennent."},
     "title": "Comparateur",
     "panels": "{{count}} / {{max}} panneaux",
     "addPanel": "Ajouter",
@@ -1754,6 +1762,7 @@
     "autoChecksToday_other": "Vérifications auto aujourd'hui : {{count}} — hors quota premium (compteur de fond dédié)"
   },
   "onboardingChoice": {
+    "trialBenefitNote": "Les 30 admissions sont communes aux connexions Google et e-mail correspondantes. Les variantes « + » partagent aussi cette limite.",
     "tryFree": {
       "title": "Essaie Arty gratuitement",
       "subtitle": "30 messages offerts. Sans carte bancaire.",

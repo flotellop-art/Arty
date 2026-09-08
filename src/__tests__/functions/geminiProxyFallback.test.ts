@@ -90,11 +90,11 @@ function success(): Response {
   })
 }
 
-async function grantTrial(): Promise<void> {
+async function grantTrial(plan = 'trial'): Promise<void> {
   await h.db.prepare(
     `INSERT INTO subscriptions (user_email, status, plan_type)
-     VALUES (?1, 'active', 'trial')`,
-  ).bind(EMAIL).run()
+     VALUES (?1, 'active', ?2)`,
+  ).bind(EMAIL, plan).run()
 }
 
 function holdTrialResponse(table: 'trial_usage' | 'email_trial_usage', afterCommit = true) {
@@ -123,10 +123,7 @@ function holdTrialResponse(table: 'trial_usage' | 'email_trial_usage', afterComm
 }
 
 describe('Gemini proxy — fallback 3.6 compté une seule fois', () => {
-  it.each([
-    { status: 401, afterCommit: true }, { status: 200, afterCommit: true },
-    { status: 503, afterCommit: true }, { status: 401, afterCommit: false },
-  ])('compense le débit trial tardif, HTTP $status, commit avant deadline=$afterCommit', async ({ status, afterCommit }) => {
+  it.each([true, false])('admission trial commune : compense un retour tardif, commit avant deadline=%s', async afterCommit => {
     await grantTrial()
     await h.db.prepare('INSERT INTO trial_usage (email, used, updated_at) VALUES (?1, 7, 0)').bind(EMAIL).run()
     await h.db.prepare('INSERT INTO email_trial_usage (email, used, updated_at) VALUES (?1, 13, 0)').bind(EMAIL).run()
@@ -140,18 +137,15 @@ describe('Gemini proxy — fallback 3.6 compté une seule fois', () => {
       const auth = authResponse(String(input))
       if (auth) return auth
       upstreamCalls += 1
-      return status === 200 || (status === 503 && upstreamCalls === 2)
-        ? success() : Response.json({ error: 'refused' }, { status })
+      return success()
     }) as typeof fetch
     try {
-      const operation = geminiProxy(context(request(), background))
+      const operation = checkAllowedVerifiedUser(EMAIL, h.env, p => { background.push(p) })
       const expire = await quotaDeadline
       if (afterCommit) await committed
       expire()
       const response = await operation
-      expect(response.status).toBe(503)
-      expect(await response.json()).toMatchObject({ error: 'admission_unavailable' })
-      expect(response.headers.get('x-trial-remaining')).toBeNull()
+      expect(response).toMatchObject({ error: 'admission_unavailable' })
       // An independent successful reservation must survive compensation.
       const other = await checkAllowedVerifiedUser(EMAIL, { ...h.env, DB: db })
       expect(other).toMatchObject({ trialDebited: true })
@@ -197,8 +191,8 @@ describe('Gemini proxy — fallback 3.6 compté une seule fois', () => {
     }
   })
 
-  it.each([400, 401, 403, 429])('ne fallback jamais sur HTTP %s et rembourse le trial', async (status) => {
-    await grantTrial()
+  it.each([400, 401, 403, 429])('ne fallback jamais sur HTTP %s et restitue le quota abonnement', async (status) => {
+    await grantTrial('subscription')
     const upstream: string[] = []
     global.fetch = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input)
@@ -221,10 +215,11 @@ describe('Gemini proxy — fallback 3.6 compté une seule fois', () => {
     const trial = await h.db.prepare('SELECT used FROM trial_usage WHERE email = ?1')
       .bind(EMAIL).first<{ used: number }>()
     expect(trial?.used ?? 0).toBe(0)
+    expect(await h.db.prepare('SELECT count FROM quota WHERE email=?1').bind(EMAIL).first()).toMatchObject({ count: 0 })
   })
 
-  it.each([404, 503])('fallback une fois sur HTTP %s et ne consomme qu’une unité trial', async (status) => {
-    await grantTrial()
+  it.each([404, 503])('fallback une fois sur HTTP %s et ne consomme qu’une unité abonnement', async (status) => {
+    await grantTrial('subscription')
     const upstream: string[] = []
     global.fetch = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input)
@@ -250,7 +245,8 @@ describe('Gemini proxy — fallback 3.6 compté une seule fois', () => {
     expect(upstream[1]).toContain('/gemini-3.5-flash:')
     const trial = await h.db.prepare('SELECT used FROM trial_usage WHERE email = ?1')
       .bind(EMAIL).first<{ used: number }>()
-    expect(trial?.used).toBe(1)
+    expect(trial?.used ?? 0).toBe(0)
+    expect(await h.db.prepare('SELECT count FROM quota WHERE email=?1').bind(EMAIL).first()).toMatchObject({ count: 1 })
   })
 
   it('déplace l’unique quota subscription vers le modèle réellement servi', async () => {
@@ -290,7 +286,7 @@ describe('Gemini proxy — fallback 3.6 compté une seule fois', () => {
   })
 
   it('applique le killswitch global avant quota et appel upstream', async () => {
-    await grantTrial()
+    await grantTrial('subscription')
     h.env.GEMINI_36_DISABLED = 'true'
     const upstream: string[] = []
     global.fetch = vi.fn(async (input: RequestInfo | URL) => {

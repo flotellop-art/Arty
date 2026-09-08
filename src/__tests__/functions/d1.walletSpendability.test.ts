@@ -125,7 +125,7 @@ describe('wallet spendability is not the accounting balance', () => {
     const response = await readApi(`?email=${encodeURIComponent(OTHER)}`)
     expect(response.status).toBe(200)
     expect(response.headers.get('cache-control')).toBe('no-store')
-    expect(await response.json()).toEqual({ hasWallet: true, balanceMicro: 10_000_000, reservedMicro: 0, availableMicro: 0, reversalPending: true })
+    expect(await response.json()).toEqual({ trialState: 'outside-trial', hasWallet: true, balanceMicro: 10_000_000, reservedMicro: 0, availableMicro: 0, reversalPending: true })
     expect(await snapshot()).toEqual(before)
     expect(await reserve()).toEqual({ status: 'insufficient' })
     expect(await snapshot()).toEqual(before)
@@ -194,7 +194,7 @@ describe('wallet spendability is not the accounting balance', () => {
 
   it('distinguishes a missing wallet from a read failure, without a false zero on the API', async () => {
     expect(await readWalletBalance(h.env, OWNER)).toEqual({ status: 'missing' })
-    expect(await (await readApi()).json()).toEqual({ hasWallet: false, balanceMicro: 0, reservedMicro: 0, availableMicro: 0, reversalPending: false })
+    expect(await (await readApi()).json()).toEqual({ trialState: 'outside-trial', hasWallet: false, balanceMicro: 0, reservedMicro: 0, availableMicro: 0, reversalPending: false })
     const response = await onRequestGet({ env: { ...h.env, DB: undefined }, request: new Request('https://tryarty.com/api/wallet/balance',
       { headers: { 'x-google-token': 'synthetic-owner-token' } }) } as never)
     expect(response.status).toBe(503)

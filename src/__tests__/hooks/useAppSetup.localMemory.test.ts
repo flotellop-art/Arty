@@ -21,6 +21,7 @@ describe('actual prompt builder with local encrypted memory',()=>{
     const h=setup();await waitFor(()=>expect(h.last()).toContain('Synthetic remembered A'))
     await act(async()=>{await facts.addFact('Synthetic remembered B')})
     h.setPrompt.mockClear();act(()=>{window.dispatchEvent(new CustomEvent('arty-rebuild-prompt',{detail:{userMessage:'Synthetic question'}}))})
+    expect(stubs.memory.loadMemory).not.toHaveBeenCalled(); expect(stubs.memory.getPromptContext).not.toHaveBeenCalled();
     expect(h.setPrompt).toHaveBeenCalledOnce();expect(h.last()).toContain('Synthetic remembered A');expect(h.last()).toContain('Synthetic remembered B')
   })
   it('clears A synchronously on switch and rebuilds only after B hydration',async()=>{

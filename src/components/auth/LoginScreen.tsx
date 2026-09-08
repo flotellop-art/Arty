@@ -292,7 +292,7 @@ export function LoginScreen({ onLogin, knownSessions, onSwitchAccount }: LoginSc
                   // finaliser l'auth : pose le splash post-login en
                   // localStorage avant le re-render racine.
                   const { initTrial } = await import('../../services/trialClient')
-                  await initTrial(accessToken)
+                  await initTrial(accessToken, email)
 
                   // Login (handles session, crypto, keys)
                   await onLogin('google', {
