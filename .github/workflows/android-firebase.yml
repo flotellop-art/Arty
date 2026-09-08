@@ -65,6 +65,8 @@ jobs:
         run: npm ci
 
       - name: Verify web app and Functions
+        env:
+          VITEST_MAX_WORKERS: '1'
         run: npm run verify
 
       - name: Build web app with permanent public Google profile
