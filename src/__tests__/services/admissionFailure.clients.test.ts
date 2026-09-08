@@ -76,7 +76,7 @@ describe('real text-client handling of an unconfirmed admission', () => {
     }
   })
 
-  it('preserves the existing Anthropic retry schedule for a genuine transient 503', async () => {
+  it('preserves the Anthropic retry schedule for an attested transient 503', async () => {
     const delays: number[] = [], realSetTimeout = globalThis.setTimeout
     vi.spyOn(globalThis, 'setTimeout').mockImplementation(((callback: (...args: unknown[]) => void, delay?: number, ...args: unknown[]) => {
       if ([2000, 4000, 8000].includes(delay ?? 0)) {
@@ -85,11 +85,18 @@ describe('real text-client handling of an unconfirmed admission', () => {
       }
       return realSetTimeout(callback, delay, ...args)
     }) as typeof setTimeout)
-    const http = vi.fn(async () => Response.json({ error: 'wallet_temporarily_unavailable' }, { status: 503 }))
+    const requests: { path: string; funding: string | null }[] = []
+    const http = vi.fn(async (url: string, init?: RequestInit) => {
+      requests.push({ path: new URL(url, 'https://tryarty.com').pathname,
+        funding: new Headers(init?.headers).get('x-arty-require-funding') })
+      return Response.json({ error: 'AI service error' }, { status: 503, headers: { 'x-arty-funding': 'v1:free' } })
+    })
     vi.stubGlobal('fetch', http)
     const call = invoke('anthropic')
     expect((await call.outcome).name).not.toBe('AdmissionUnavailableError')
     expect(http).toHaveBeenCalledTimes(4); expect(delays).toEqual([2000, 4000, 8000])
+    expect(requests).toEqual([{ path: '/api/ai/proxy', funding: null },
+      ...Array.from({ length: 3 }, () => ({ path: '/api/ai/anthropic-continue-v1', funding: 'v1:free' }))])
     expect(call.onError).toHaveBeenCalledOnce(); expect(call.onDone).not.toHaveBeenCalled()
   })
 

@@ -27,8 +27,18 @@ Preuves de cette reprise : types front/Functions réussis ; campagne ciblée
 `anthropic-resume-targeted.json`, 54 tests réussis (6 intégrés D1, 31 parcours
 client et 17 intégrité), terminée le 8 septembre à 14:17 Paris. Les deux
 contre-revues finales n'ont plus d'objection matérielle sur ce delta.
-La campagne complète du candidat final reste à recevoir via la CI habituelle ;
-ne pas lancer en parallèle une campagne complète locale équivalente.
+La première CI (`34225421297`, commit `9bd6c16`) a terminé avec 5804 tests
+réussis, 3 échecs et 1 ignoré. Les trois échecs étaient des simulations de
+503 sans attestation qui attendaient encore un réessai. Elles représentent
+désormais une erreur fournisseur attestée et conservent leurs exigences :
+quatre POST, délais 2/4/8 secondes, catégorie figée et révocation documentaire
+avant le deuxième POST. Les canaris sans attestation restent terminaux.
+La campagne ciblée après cette correction éditoriale des fixtures compte
+81 tests réussis (`anthropic-retry-fixtures-green.json`). Les deux
+contre-revues valident ce changement sans modification du code applicatif.
+La CI complète du nouveau commit reste à recevoir ; ne pas lancer en parallèle
+une campagne complète locale équivalente. Android et l'aperçu de la première
+CI ont réussi, mais le build applicatif CI n'a pas été atteint après les tests.
 
 Barrière de publication maintenue : sans politique budgétaire autorisée et
 attestée, ce lot couperait Free/essai. Préparation en brouillon uniquement,
