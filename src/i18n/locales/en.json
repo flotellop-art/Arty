@@ -1316,7 +1316,18 @@
     "customInstructions": {
       "title": "Custom instructions",
       "description": "Tell Arty how to talk to you and what it should always know. Applied to every model, with priority. Stays encrypted on your device.",
-      "placeholder": "E.g. I'm a mechanic in Lyon. Answer directly, no jargon. Be formal with me."
+      "placeholder": "E.g. I'm a mechanic in Lyon. Answer directly, no jargon. Be formal with me.",
+      "save": "Save instructions",
+      "pending": "Reading or saving…",
+      "stored": "Text saved on this device.",
+      "unavailable": "The saved text could not be confirmed. Any draft in this field is kept. Reread the saved text before trying again.",
+      "stale": "The saved text has changed since your draft was loaded. Reread it before choosing which version to keep.",
+      "reread": "Reread saved text",
+      "conflict": "The saved text has changed. Your draft is kept. Here is the saved version:",
+      "empty": "No saved instructions.",
+      "replace": "Replace with my draft",
+      "keepStored": "Keep saved version",
+      "discard": "Some instructions have not been confirmed as saved. Close and discard the draft?"
     }
   },
   "costsScreen": {

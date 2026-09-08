@@ -2,8 +2,39 @@
 
 8 septembre 2026. Base `19941871e79d62004aa145d4b7fb2ffaf7169d94` (#496),
 confirmée par `git ls-remote origin refs/heads/main`. Branche
-`codex/memory-client-release-20260908`. **Local, non publié.** La branche
+`codex/memory-client-release-20260908`. **Publié par PR497 le 8 septembre.** La branche
 locale nommée main étant périmée, elle n'est pas utilisée comme base.
+
+## Réception de publication — 8 septembre, 06:34 Paris
+
+- Candidat client `b03a2ec57e6d52fe28341389c6cfe160f6e70426`, puis
+  [PR497](https://github.com/flotellop-art/Arty/pull/497) fusionnée à04:17:05UTC :
+  main `22444494a409fc314cb628e98668c3914247df5f`, arbre identique au candidat.
+- Campagne locale89334 TERMINAL exit0 :379suites/5592PASS/1SKIP,1633,40s ;
+  build7,31s et workerOffice PASS. CI candidat34184649514 puis
+  [CI main34186451873](https://github.com/flotellop-art/Arty/actions/runs/34186451873)
+  SUCCESS. Campagnes recouvrantes, pas de cumul des tests.
+- Pages `6bf02174-1b75-42c7-bf29-f268d34f238f` lié au SHA main, servi par
+  tryarty.com et l'adresse immuable6bf02174.appfacade.pages.dev. Index
+  `index-Cjx7R1-E.js`, SHA256 `07a54a52391fdafb458fbe0ae204e7a55b5b31ab292202df353049d80e8bf186` ;
+  App `App-DZq7rQ1z.js`, SHA256 `f5e731c068253efc738af237aa68893a33d96c62a5f1f2ed4d59fa59ff51adfe`.
+- Observation68496 TERMINAL exit0 à04:34:04UTC :16échantillons/900686ms,
+  identité stable des bundles, wallet anonyme401 et CORS Android204. Prévol
+  historique appfacade.pages.dev également204, sans redirection à04:22UTC.
+  Pas une recette authentifiée, D1, télémétrie globale ou appareil installé.
+- [Firebase34186451914](https://github.com/flotellop-art/Arty/actions/runs/34186451914)
+  SUCCESS, construction/distribution signée. Reçu allowlisté téléchargé et lu :
+  `com.arty.app`,1.0.99/code100,4431999octets, SHA256
+  `0dc40439b1370417d10e8e548b3f9d8aebbc6b1b29374e96842a736d77f5885f`,
+  signature et assetlinks du checkout concordants. Ni installation physique,
+  ni OAuth, ni publication Play déduits de ce reçu.
+- Recette locale navigateur source b03a2ec reçue avant fusion : vrais ajouts,
+  édition, recharge, profils synthétiques isolés à froid, verrou second onglet,
+  avec/sans DB projets. Reçu opérationnel memory-browser-recipe/RECEIPT.md.
+
+Les mentions préparatoires ci-dessous sont historiques. La mémoire serveur
+subventionnée reste indépendante et non activée. Les consignes personnelles
+font l'objet du lot distinct décrit dans CUSTOM_INSTRUCTIONS_RELEASE.md.
 
 ## Ce que cette livraison corrige
 

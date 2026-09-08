@@ -6,6 +6,7 @@ import * as users from '../../services/userSession'
 import * as crypt from '../../services/crypto'
 import * as scoped from '../../services/scopedStorage'
 import * as facts from '../../services/localMemoryService'
+import * as instructions from '../../services/customInstructions'
 vi.mock('@capacitor/core',()=>({Capacitor:{isNativePlatform:()=>false,getPlatform:()=> 'web'},registerPlugin:()=>({})}))
 const passphrase='synthetic-memory-auth-key'
 const credentials=(email:string)=>({displayName:'Synthetic',email,identifier:email,anthropicKey:passphrase})
@@ -18,6 +19,33 @@ async function seed(method:'google'|'email',email:string,content:string){
 beforeEach(async()=>{await resetCalendarFixture();users.clearActiveSession();vi.stubGlobal('fetch',vi.fn(()=>{throw new Error('external HTTP forbidden')}))})
 afterEach(()=>{cleanup();vi.restoreAllMocks();vi.unstubAllGlobals()})
 describe('auth hydration with actual session, crypto and memory; no provider sign-in',()=>{
+  it.each(['google', 'email'] as const)('hydrates encrypted instructions on %s login without changing their bytes', async method => {
+    const email = `${method}-instructions@example.invalid`, owner = await seed(method, email, 'Historical fact')
+    await instructions.setCustomInstructions('MY PRIVATE INSTRUCTIONS'); const raw = scoped.getItem('custom-instructions')
+    users.clearActiveSession(); users.removeKnownSession(owner)
+    const h = renderHook(() => useAuth())
+    await act(async () => { await h.result.current.login(method, credentials(email)) })
+    expect(h.result.current.currentUser?.userId).toBe(owner)
+    expect(instructions.getCustomInstructions()).toBe('MY PRIVATE INSTRUCTIONS'); expect(scoped.getItem('custom-instructions')).toBe(raw)
+    expect(fetch).not.toHaveBeenCalled()
+  })
+  it('restores instructions on bootstrap and switches their real owner A to B and back', async () => {
+    const b = await seed('email', 'b-instructions@example.invalid', 'B fact'); await instructions.setCustomInstructions('B PRIVATE')
+    const a = await seed('email', 'a-instructions@example.invalid', 'A fact'); await instructions.setCustomInstructions('A PRIVATE')
+    instructions.resetCustomInstructionsCache()
+    const h = renderHook(() => useAuth()); await waitFor(() => expect(instructions.getCustomInstructions()).toBe('A PRIVATE'))
+    await act(async () => { await h.result.current.switchAccount(b) })
+    expect(instructions.getCustomInstructions()).toBe('B PRIVATE'); expect(h.result.current.currentUser?.userId).toBe(b)
+    await act(async () => { await h.result.current.switchAccount(a) })
+    expect(instructions.getCustomInstructions()).toBe('A PRIVATE'); expect(h.result.current.currentUser?.userId).toBe(a)
+  })
+  it('does not reject a valid login or erase corrupt instructions', async () => {
+    const email = 'corrupt-instructions@example.invalid', owner = await seed('email', email, 'Fact')
+    scoped.setItem('custom-instructions', 'v2:corrupt'); users.clearActiveSession(); users.removeKnownSession(owner)
+    const h = renderHook(() => useAuth()); await act(async () => { await h.result.current.login('email', credentials(email)) })
+    expect(h.result.current.currentUser?.userId).toBe(owner)
+    expect(instructions.getCustomInstructionsSnapshot().status).toBe('unavailable'); expect(scoped.getItem('custom-instructions')).toBe('v2:corrupt')
+  })
   it.each(['google','email'] as const)('publishes %s only after known membership allows memory hydration',async method=>{
     const email=`${method}@example.invalid`,owner=await seed(method,email,'Historical synthetic fact'),raw=scoped.getItem('local-memory-facts')
     users.clearActiveSession();users.removeKnownSession(owner)

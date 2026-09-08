@@ -4,6 +4,7 @@ import { resetCalendarFixture } from '../helpers/calendarFixture'
 import { deferred } from '../helpers/workspaceLocks'
 import * as facts from '../../services/localMemoryService'
 import * as crypt from '../../services/crypto'
+import * as instructions from '../../services/customInstructions'
 import * as storage from '../../services/storage'
 import * as scoped from '../../services/scopedStorage'
 import { useConversation } from '../../hooks/useConversation'
@@ -39,6 +40,36 @@ beforeEach(async()=>{
 })
 afterEach(()=>{cleanup();vi.restoreAllMocks();vi.unstubAllGlobals()})
 describe('real chat adoption and prompt preparation with actual encrypted local memory',()=>{
+  it('hydrates real encrypted instructions and preserves the prepared prompt through a later edit', async () => {
+    await instructions.setCustomInstructions('FIRST DURABLE INSTRUCTION'); instructions.resetCustomInstructionsCache()
+    const gate = deferred<string>(); vi.mocked(fetchPdfMarkdowns).mockReturnValueOnce(gate.promise)
+    const h = setup(); let pending!: Promise<boolean>
+    act(() => { pending = h.result.current.sendMessage('Read https://example.invalid/instructions.pdf', id) })
+    await waitFor(() => expect(fetchPdfMarkdowns).toHaveBeenCalledOnce())
+    await act(async () => { await instructions.setCustomInstructions('NEXT DURABLE INSTRUCTION') })
+    await act(async () => { gate.resolve('Synthetic PDF'); expect(await pending).toBe(true) })
+    expect(streamMessage).toHaveBeenCalledOnce()
+    const prompt = vi.mocked(streamMessage).mock.calls[0][4]!.systemPrompt!
+    expect(prompt).toContain('FIRST DURABLE INSTRUCTION'); expect(prompt).not.toContain('NEXT DURABLE INSTRUCTION')
+    act(() => h.result.current.stopStreaming(id))
+    await act(async () => { expect(await h.result.current.sendMessage('A second question using my saved instructions', id)).toBe(true) })
+    const next = vi.mocked(streamMessage).mock.calls[1][4]!.systemPrompt!
+    expect(next).toContain('NEXT DURABLE INSTRUCTION'); expect(next).not.toContain('FIRST DURABLE INSTRUCTION')
+    act(() => h.result.current.stopStreaming(id))
+  })
+  it('Stop finishes an adopted send while instruction decryption remains suspended', async () => {
+    await instructions.setCustomInstructions('PRIVATE INSTRUCTION'); const h = setup()
+    await waitFor(() => expect(instructions.getCustomInstructionsSnapshot().status).toBe('ready'))
+    const gate = deferred<void>(), real = crypt.decrypt
+    const read = vi.spyOn(crypt, 'decrypt').mockImplementationOnce(async raw => { const text = await real(raw); await gate.promise; return text })
+    act(() => instructions.resetCustomInstructionsCache())
+    let result: unknown = 'pending', pending!: Promise<boolean>
+    act(() => { pending = h.result.current.sendMessage('A question while preferences are loading', id); void pending.then(value => { result = value }) })
+    await waitFor(() => expect(read).toHaveBeenCalledOnce()); act(() => h.result.current.stopStreaming(id))
+    await waitFor(() => expect(result).toBe(true)); expect(streamMessage).not.toHaveBeenCalled()
+    await act(async () => { gate.resolve(); await pending }); expect(streamMessage).not.toHaveBeenCalled()
+    expect(storage.getConversation(id)!.messages.filter(message => message.role === 'user')).toHaveLength(1)
+  })
   it('Stop resolves the already adopted send before a suspended memory decryption finishes',async()=>{
     await facts.addFact('PRIVATE A FACT');const h=setup();await waitFor(()=>expect(facts.getLocalMemorySnapshot().status).toBe('ready'))
     const gate=deferred<void>(),real=crypt.decrypt

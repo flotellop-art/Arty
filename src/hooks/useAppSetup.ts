@@ -7,7 +7,7 @@ import { useComputer } from './useComputer'
 import { useMemory } from './useMemory'
 import { buildContextualPrompt, buildMailboxAccessPrompt, MAILBOX_NO_ACCESS_PROMPT } from '../constants/systemPrompt'
 import { bootstrapLocalMemory, buildLocalMemoryPrompt, getLocalMemorySnapshot, subscribeLocalMemory } from '../services/localMemoryService'
-import { getCustomInstructions } from '../services/customInstructions'
+import { bootstrapCustomInstructions, getCustomInstructions, getCustomInstructionsSnapshot, subscribeCustomInstructions } from '../services/customInstructions'
 import { createToolExecutor } from '../services/toolExecutor'
 import type { ToolDispatcher } from '../services/tools/types'
 import { getStyle, setStyle, getStylePrompt, STYLE_OPTIONS, type ResponseStyle } from '../services/responseStyles'
@@ -165,6 +165,11 @@ export function useAppSetup(conversation: ConversationHook) {
       else setSystemPrompt(undefined)
     })
     void bootstrapLocalMemory().catch(() => {})
+    const stopInstructions = subscribeCustomInstructions(() => {
+      if (getCustomInstructionsSnapshot().status === 'ready') buildPrompt()
+      else setSystemPrompt(undefined)
+    })
+    void bootstrapCustomInstructions().catch(() => {})
 
     // Listener synchrone — dispatchEvent appelle les handlers en série avant
     // de retourner. Donc systemPromptRef est à jour quand useConversation
@@ -174,7 +179,7 @@ export function useAppSetup(conversation: ConversationHook) {
       buildPrompt(detail?.userMessage)
     }
     window.addEventListener('arty-rebuild-prompt', onRebuild)
-    return () => { stopMemory(); window.removeEventListener('arty-rebuild-prompt', onRebuild) }
+    return () => { stopMemory(); stopInstructions(); window.removeEventListener('arty-rebuild-prompt', onRebuild) }
   }, [googleAuth.isConnected, memoryHook.getPromptContext, mailboxBoundaryPrompt, publicGooglePrompt, setSystemPrompt, responseStyle])
 
   // Handle action buttons clicked in reports

@@ -20,6 +20,7 @@ import { bootstrapGoogleStorage, logout as googleLogout, clearOAuthState, resetG
 import { bootstrapFileStorage } from '../services/secureFileStorage'
 import { bootstrapConversationStorage, resetConversationMemCache } from '../services/storage'
 import { bootstrapLocalMemory } from '../services/localMemoryService'
+import { bootstrapCustomInstructions } from '../services/customInstructions'
 import * as scoped from '../services/scopedStorage'
 import { clearTrialToken } from '../services/emailTrialClient'
 import { clearWalletCache } from '../services/walletClient'
@@ -70,7 +71,7 @@ export function useAuth() {
         if (current()) {
           setActiveKeys(keys.anthropic, keys.gemini, keys.mistral, keys.openai)
           adoptPendingTrialRemaining()
-          return Promise.all([bootstrapGoogleStorage(), bootstrapFileStorage(), bootstrapConversationStorage(), bootstrapLocalMemory().catch(() => {})])
+          return Promise.all([bootstrapGoogleStorage(), bootstrapFileStorage(), bootstrapConversationStorage(), bootstrapLocalMemory().catch(() => {}), bootstrapCustomInstructions().catch(() => {})])
         }
       })
       .catch((err) => {
@@ -197,7 +198,7 @@ export function useAuth() {
       rememberSession(session)
       // Its read scope requires known membership. Optional memory hydration
       // must therefore follow rememberSession, not the provisional bootstraps.
-      await bootstrapLocalMemory().catch(() => {})
+      await Promise.allSettled([bootstrapLocalMemory(), bootstrapCustomInstructions()])
       assertCurrentAttempt()
       setCurrentUser(session)
       setKnownSessions(getKnownSessions())
@@ -345,7 +346,7 @@ export function useAuth() {
       assertCurrent()
       await bootstrapGoogleStorage()
       assertCurrent()
-      await Promise.allSettled([bootstrapConversationStorage(), bootstrapFileStorage(), bootstrapLocalMemory()])
+      await Promise.allSettled([bootstrapConversationStorage(), bootstrapFileStorage(), bootstrapLocalMemory(), bootstrapCustomInstructions()])
       assertCurrent()
       setActiveKeys(keys.anthropic, keys.gemini, keys.mistral, keys.openai)
     }
