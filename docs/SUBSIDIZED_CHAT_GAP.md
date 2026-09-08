@@ -40,6 +40,20 @@ La CI complète du nouveau commit reste à recevoir ; ne pas lancer en parallèl
 une campagne complète locale équivalente. Android et l'aperçu de la première
 CI ont réussi, mais le build applicatif CI n'a pas été atteint après les tests.
 
+La seconde CI (`34226766533`, commit `a5a0d85`) a corrigé les trois échecs
+précédents, mais a terminé avec 5803 tests réussis, quatre échecs et un ignoré.
+Les logs associent explicitement les deux refus D1 au délai `consume` de
+250 ms ; les deux autres cas sont des timeouts de tests workerd à cinq secondes.
+Les trois fichiers concernés passent ensuite intégralement avec un worker :
+100 tests en 223 secondes (`anthropic-ci-diagnostic-serial.json`).
+La CI est donc bornée à un worker et son job à 30 minutes, sans aucun changement
+des assertions, délais applicatifs, délais de tests ou seuils de couverture.
+Deux contre-revues confirment les refus conservateurs ; la contention du runner
+reste une cause probable, pas une mesure de latence D1 en production.
+Une seule nouvelle campagne est justifiée par ce changement de configuration.
+En cas d'échec persistant, conserver le log et diagnostiquer le cas précis avant
+toute autre campagne ; ne pas répéter à l'identique jusqu'à obtenir du vert.
+
 Barrière de publication maintenue : sans politique budgétaire autorisée et
 attestée, ce lot couperait Free/essai. Préparation en brouillon uniquement,
 aucune fusion ni activation implicite. Ne pas appeler les routes payantes ou
