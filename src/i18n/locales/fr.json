@@ -1316,7 +1316,18 @@
     "customInstructions": {
       "title": "Instructions personnalisées",
       "description": "Dis à Arty comment te parler et ce qu'il doit toujours savoir. Appliqué à tous les modèles, en priorité. Reste chiffré sur ton appareil.",
-      "placeholder": "Ex : Je suis garagiste à Lyon. Réponds de façon directe, sans jargon. Vouvoie-moi."
+      "placeholder": "Ex : Je suis garagiste à Lyon. Réponds de façon directe, sans jargon. Vouvoie-moi.",
+      "save": "Enregistrer les consignes",
+      "pending": "Lecture ou enregistrement en cours…",
+      "stored": "Texte enregistré sur cet appareil.",
+      "unavailable": "Impossible de confirmer le texte enregistré. Si tu as un brouillon dans ce champ, il est conservé. Relis le texte enregistré avant une nouvelle tentative.",
+      "stale": "Le texte enregistré a changé depuis le chargement de ton brouillon. Relis-le avant de choisir la version à garder.",
+      "reread": "Relire le texte enregistré",
+      "conflict": "Le texte enregistré a changé. Ton brouillon est conservé. Voici la version enregistrée :",
+      "empty": "Aucune consigne enregistrée.",
+      "replace": "Remplacer par mon brouillon",
+      "keepStored": "Garder la version enregistrée",
+      "discard": "Certaines consignes ne sont pas confirmées comme enregistrées. Fermer et abandonner le brouillon ?"
     }
   },
   "costsScreen": {

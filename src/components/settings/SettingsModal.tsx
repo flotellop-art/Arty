@@ -1,4 +1,4 @@
-import { memo, useEffect, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useDialogFocusTrap } from '../../hooks/useDialogFocusTrap'
 import {
@@ -47,7 +47,7 @@ import { MemoryViewer } from './MemoryViewer'
 import { OrchestratorSync } from './OrchestratorSync'
 import { getStreakData, setVacationMode, type StreakData } from '../../services/streakService'
 import { isAutoMemoryEnabled, setAutoMemoryEnabled } from '../../services/autoMemory'
-import { getCustomInstructions, setCustomInstructions, MAX_CUSTOM_INSTRUCTIONS_CHARS } from '../../services/customInstructions'
+import { CustomInstructionsField } from './CustomInstructionsField'
 import { LocalMemoryModal } from './LocalMemoryModal'
 import { AccountDeletionPanel } from './AccountDeletionPanel'
 import { ArchiveVerifier, archiveButton } from '../workspace/ArchiveVerifier'
@@ -70,7 +70,9 @@ interface SettingsModalProps {
  */
 export const SettingsModal = memo(function SettingsModal({ open, onClose, onOpenConnections }: SettingsModalProps) {
   const { t } = useTranslation()
-  const dialogRef = useDialogFocusTrap<HTMLDivElement>(open, onClose)
+  const instructionsCloseGuard = useRef<() => boolean>(() => true)
+  const requestClose = useCallback(() => { if (!instructionsCloseGuard.current()) return false; onClose(); return true }, [onClose])
+  const dialogRef = useDialogFocusTrap<HTMLDivElement>(open, requestClose)
   const [notifEnabled, setNotifEnabled] = useState(false)
   const [locationEnabled, setLocationEnabled] = useState(false)
   const [locationFix, setLocationFix] = useState<UserLocation | null>(null)
@@ -81,7 +83,6 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose, onOpen
   const [enhanceModel, setEnhanceModelState] = useState<EnhancerModel>('haiku')
   const [briefEnabled, setBriefEnabled] = useState(false)
   const [autoMemOn, setAutoMemOn] = useState(true)
-  const [customInstructions, setCustomInstructionsState] = useState('')
   const [factCheckMode, setFactCheckModeState] = useState<FactCheckMode>(getFactCheckMode)
   const [showMemoryHistory, setShowMemoryHistory] = useState(false)
   const [showArchiveVerifier, setShowArchiveVerifier] = useState(false)
@@ -122,7 +123,6 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose, onOpen
     setEnhanceModelState(getEnhancerModel())
     setBriefEnabled(isProactiveBriefEnabled())
     setAutoMemOn(isAutoMemoryEnabled())
-    setCustomInstructionsState(getCustomInstructions())
     // L'état réel de la permission browser géoloc — peut être 'denied' alors
     // que le toggle Arty est ON (cas Chrome qui bloque silencieusement).
     if (!isNative) {
@@ -236,7 +236,7 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose, onOpen
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-theme-ink/50"
-      onClick={onClose}
+      onClick={requestClose}
     >
       <div
         ref={dialogRef}
@@ -256,7 +256,7 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose, onOpen
             {t('settings.kicker')}
           </span>
           <button
-            onClick={onClose}
+            onClick={requestClose}
             className="grid h-11 w-11 place-items-center border border-theme-border text-theme-ink hover:border-theme-accent"
             aria-label={t('common.close')}
           >
@@ -281,8 +281,8 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose, onOpen
           <button className={archiveButton} onClick={() => { setShowArchiveVerifier(false); setShowRestorer(false) }}>{t('workspaceArchive.backSettings')}</button>
           {showRestorer ? <WorkspaceRestorer /> : <ArchiveVerifier />}
         </div> : <div className="p-6 space-y-6">
-          <button className={`${archiveButton} w-full text-left`} onClick={() => setShowArchiveVerifier(true)}>{t('workspaceArchive.verifyTitle')}</button>
-          <button className={`${archiveButton} w-full text-left`} onClick={() => setShowRestorer(true)}>{t('workspaceRestore.title')}</button>
+          <button className={`${archiveButton} w-full text-left`} onClick={() => { if (instructionsCloseGuard.current()) setShowArchiveVerifier(true) }}>{t('workspaceArchive.verifyTitle')}</button>
+          <button className={`${archiveButton} w-full text-left`} onClick={() => { if (instructionsCloseGuard.current()) setShowRestorer(true) }}>{t('workspaceRestore.title')}</button>
           {WORKSPACE_SYNC_APPLY_START_ENABLED && <WorkspaceSyncReceiver />}
           <ProductMeasurementSetting />
           {/* Notifications toggle */}
@@ -553,7 +553,7 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose, onOpen
             <div className="border-t border-theme-border pt-5">
               <button
                 onClick={() => {
-                  onClose()
+                  if (!requestClose()) return
                   window.dispatchEvent(new CustomEvent('arty-open-upgrade'))
                 }}
                 className="w-full flex items-center justify-between text-left"
@@ -575,7 +575,7 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose, onOpen
           <div className="border-t border-theme-border pt-5">
             <button
               onClick={() => {
-                onClose()
+                if (!requestClose()) return
                 window.dispatchEvent(new CustomEvent('arty-open-compare'))
               }}
               className="w-full flex items-center justify-between text-left"
@@ -624,27 +624,7 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose, onOpen
             </div>
           </div>
 
-          {/* Instructions personnalisées (P1.2) — champ global injecté en tête
-              du system prompt, priorité absolue. Vide = inactif (pas de toggle),
-              sauvegarde chiffrée au blur. Vaut pour tous les modèles. */}
-          <div className="border-t border-theme-border pt-5">
-            <p className="font-display text-base text-theme-ink">📝 {t('settings.customInstructions.title')}</p>
-            <p className="font-display italic text-xs text-theme-muted mt-0.5">
-              {t('settings.customInstructions.description')}
-            </p>
-            <textarea
-              value={customInstructions}
-              onChange={(e) => setCustomInstructionsState(e.target.value.slice(0, MAX_CUSTOM_INSTRUCTIONS_CHARS))}
-              onBlur={() => setCustomInstructions(customInstructions)}
-              rows={3}
-              maxLength={MAX_CUSTOM_INSTRUCTIONS_CHARS}
-              placeholder={t('settings.customInstructions.placeholder')}
-              className="mt-2 w-full rounded-xl border border-theme-border bg-theme-bg px-3 py-2 text-sm text-theme-ink placeholder:text-theme-muted/60 focus:outline-none focus:border-theme-accent transition-colors resize-none"
-            />
-            <p className="text-right font-mono text-[10px] text-theme-muted mt-0.5">
-              {customInstructions.length}/{MAX_CUSTOM_INSTRUCTIONS_CHARS}
-            </p>
-          </div>
+          <CustomInstructionsField closeGuard={instructionsCloseGuard} />
 
           {/* Memory viewer */}
           <div className="border-t border-theme-border pt-5">
@@ -686,7 +666,7 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose, onOpen
           {(
             <div className="border-t border-theme-border pt-5">
               <button
-                onClick={() => { onClose(); if (onOpenConnections) onOpenConnections(); else window.dispatchEvent(new Event('arty-open-connections')) }}
+                onClick={() => { if (!requestClose()) return; if (onOpenConnections) onOpenConnections(); else window.dispatchEvent(new Event('arty-open-connections')) }}
                 className="w-full flex items-center justify-between text-left"
               >
                 <div>
@@ -726,7 +706,7 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose, onOpen
           <div className="border-t border-theme-border pt-5">
             <button
               onClick={() => {
-                onClose()
+                if (!requestClose()) return
                 window.dispatchEvent(new CustomEvent('arty-open-costs'))
               }}
               className="w-full flex items-center justify-between text-left"

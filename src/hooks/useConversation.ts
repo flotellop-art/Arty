@@ -14,6 +14,7 @@ import { fetchPdfMarkdowns, fetchUrlMarkdowns } from '../services/pdfUrlFetch'
 import * as storage from '../services/storage'
 import { maybeExtractMemory } from '../services/autoMemory'
 import { bootstrapLocalMemory } from '../services/localMemoryService'
+import { bootstrapCustomInstructions } from '../services/customInstructions'
 import { useStreaming } from './useStreaming'
 import { useFileAttachments, buildApiMessages, buildContentBlocks, buildTextOnlyMessages, buildMistralMessages, buildMistralContentBlocks } from './useFileAttachments'
 import { buildOpenAIRouteMessages } from './openaiRouteMessages'
@@ -1066,7 +1067,7 @@ export function useConversation(options?: { onNavigate?: (id: string) => void })
       // This message has already been durably adopted. Cancellation here is
       // handled by the same dispatch catch and still resolves sendMessage=true.
       if (!projectRequest) {
-        await bootstrapLocalMemory(toolController.signal).catch(() => {})
+        await Promise.allSettled([bootstrapLocalMemory(toolController.signal), bootstrapCustomInstructions(toolController.signal)])
         assertInvocationCurrent()
         window.dispatchEvent(new CustomEvent('arty-rebuild-prompt', { detail: { userMessage: modelText } }))
       }
