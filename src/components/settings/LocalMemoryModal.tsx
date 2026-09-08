@@ -5,10 +5,13 @@
  * Accessible depuis SettingsModal (bouton « Mémoire locale »).
  */
 
-import { memo, useState, useEffect, useCallback, useRef } from 'react'
+import { memo, useState, useEffect, useRef, useSyncExternalStore } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
-  getAll,
+  bootstrapLocalMemory,
+  getLocalMemorySnapshot,
+  subscribeLocalMemory,
+  resetLocalMemoryCache,
   addFact,
   updateFact,
   deleteFact,
@@ -16,14 +19,25 @@ import {
   MAX_FACTS,
   type LocalMemoryFact,
 } from '../../services/localMemoryService'
+import { captureLocalReadScope } from '../../services/projects/store'
+import { getActiveSessionEpoch, getActiveUserId } from '../../services/userSession'
+import { onLocalDataInvalidated } from '../../services/localDataInvalidation'
+import { waitForLocalMemory } from '../../services/localMemoryWait'
 
 interface Props {
   onClose: () => void
 }
+function captureModalView(): () => boolean {
+  try {
+    const owner = getActiveUserId(), epoch = getActiveSessionEpoch()
+    return () => { try { return owner === getActiveUserId() && epoch === getActiveSessionEpoch() } catch { return false } }
+  } catch { return () => false }
+}
 
 export const LocalMemoryModal = memo(function LocalMemoryModal({ onClose }: Props) {
   const { t } = useTranslation()
-  const [facts, setFacts] = useState<LocalMemoryFact[]>(() => getAll())
+  const snapshot = useSyncExternalStore(subscribeLocalMemory, getLocalMemorySnapshot)
+  const facts = snapshot.facts
   const [query, setQuery] = useState('')
   const [newContent, setNewContent] = useState('')
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -31,15 +45,62 @@ export const LocalMemoryModal = memo(function LocalMemoryModal({ onClose }: Prop
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
   const [addError, setAddError] = useState<string | null>(null)
   const newInputRef = useRef<HTMLTextAreaElement>(null)
-
-  // Sync avec les mises à jour externes (ex: autre onglet)
+  const mounted = useRef(false), operation = useRef(0), busyRef = useRef(false)
+  const [busy, setBusy] = useState(false)
+  const writeLifetime = useRef<AbortController | null>(null), translate = useRef(t)
+  translate.current = t
   useEffect(() => {
-    const handler = (e: Event) => {
-      setFacts((e as CustomEvent<LocalMemoryFact[]>).detail)
+    // A successful newer read clears a transient loading/unlock error. A
+    // failed write keeps the same ready snapshot, so its error remains visible.
+    if (snapshot.status === 'ready') setAddError(null)
+  }, [snapshot])
+
+  useEffect(() => {
+    mounted.current = true
+    const refresh = () => {
+      const ticket = ++operation.current
+      writeLifetime.current?.abort()
+      const sameView = captureModalView()
+      busyRef.current = false; setBusy(false)
+      setNewContent(''); setEditContent(''); setEditingId(null); setConfirmDeleteId(null); setQuery(''); setAddError(null)
+      void bootstrapLocalMemory().catch(() => {
+        if (mounted.current && operation.current === ticket && sameView()) setAddError(translate.current('localMemory.modal.storageUnavailable'))
+      })
     }
-    window.addEventListener('arty-local-memory-updated', handler)
-    return () => window.removeEventListener('arty-local-memory-updated', handler)
+    refresh()
+    const stop = onLocalDataInvalidated(refresh)
+    return () => { mounted.current = false; operation.current++; writeLifetime.current?.abort(); stop() }
   }, [])
+
+  const retryLoad = () => {
+    const ticket = ++operation.current, sameView = captureModalView()
+    writeLifetime.current?.abort(); busyRef.current = false; setBusy(false); setAddError(null)
+    resetLocalMemoryCache()
+    void bootstrapLocalMemory().catch(() => {
+      if (mounted.current && operation.current === ticket && sameView()) setAddError(translate.current('localMemory.modal.storageUnavailable'))
+    })
+  }
+
+  // Lock before the first await (Enter + blur / double-click). A late A
+  // completion must never clear B's draft, display success, or steal focus.
+  const runMutation = async <T,>(work: (assertCurrent: () => void) => Promise<T>, success: (value: T) => void) => {
+    if (busyRef.current || snapshot.status !== 'ready') return
+    busyRef.current = true; setBusy(true); setAddError(null)
+    const ticket = ++operation.current, sameView = captureModalView(), controller = new AbortController()
+    writeLifetime.current = controller
+    const current = () => mounted.current && operation.current === ticket && sameView()
+    try {
+      const scope = captureLocalReadScope()
+      const assertCurrent = () => { scope.assertCurrent(); if (!current() || controller.signal.aborted) throw new Error('memory_edit_cancelled') }
+      const value = await waitForLocalMemory(work(assertCurrent), controller.signal, 10000, () => controller.abort()); assertCurrent()
+      if (current()) success(value)
+    } catch {
+      if (current()) setAddError(t('localMemory.modal.storageUnavailable'))
+    } finally {
+      controller.abort()
+      if (current()) { busyRef.current = false; setBusy(false) }
+    }
+  }
 
   const filtered = query.trim()
     ? facts.filter((f) =>
@@ -47,18 +108,13 @@ export const LocalMemoryModal = memo(function LocalMemoryModal({ onClose }: Prop
       )
     : facts
 
-  const handleAdd = useCallback(() => {
-    setAddError(null)
+  const handleAdd = () => {
     if (!newContent.trim()) return
-    const result = addFact(newContent)
-    if (!result) {
-      setAddError(t('localMemory.modal.limitReached', { max: MAX_FACTS }))
-      return
-    }
-    setFacts(getAll())
-    setNewContent('')
-    newInputRef.current?.focus()
-  }, [newContent, t])
+    void runMutation(guard => addFact(newContent, guard), result => {
+      if (!result) { setAddError(t('localMemory.modal.limitReached', { max: MAX_FACTS })); return }
+      setNewContent(''); newInputRef.current?.focus()
+    })
+  }
 
   const handleAddKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     // Entrée seule = ajouter (Shift+Entrée = saut de ligne)
@@ -69,17 +125,18 @@ export const LocalMemoryModal = memo(function LocalMemoryModal({ onClose }: Prop
   }
 
   const startEdit = (fact: LocalMemoryFact) => {
+    if (busyRef.current) return
     setEditingId(fact.id)
     setEditContent(fact.content)
     setConfirmDeleteId(null)
   }
 
   const commitEdit = (id: string) => {
-    if (editContent.trim()) {
-      updateFact(id, editContent)
-      setFacts(getAll())
-    }
-    setEditingId(null)
+    if (!editContent.trim()) { setEditingId(null); return }
+    void runMutation(guard => updateFact(id, editContent, guard), changed => {
+      if (changed) setEditingId(null)
+      else setAddError(t('localMemory.modal.storageUnavailable'))
+    })
   }
 
   const handleEditKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>, id: string) => {
@@ -93,19 +150,21 @@ export const LocalMemoryModal = memo(function LocalMemoryModal({ onClose }: Prop
   }
 
   const handleDelete = (id: string) => {
+    if (busyRef.current) return
     if (confirmDeleteId === id) {
-      deleteFact(id)
-      setFacts(getAll())
-      setConfirmDeleteId(null)
+      void runMutation(guard => deleteFact(id, guard), changed => {
+        if (changed) setConfirmDeleteId(null)
+        else setAddError(t('localMemory.modal.storageUnavailable'))
+      })
     } else {
       setConfirmDeleteId(id)
     }
   }
 
   const handleClearAll = () => {
+    if (busyRef.current) return
     if (window.confirm(t('localMemory.modal.clearAllConfirm'))) {
-      clearLocalMemory()
-      setFacts([])
+      void runMutation(clearLocalMemory, () => { setEditingId(null); setConfirmDeleteId(null) })
     }
   }
 
@@ -155,6 +214,13 @@ export const LocalMemoryModal = memo(function LocalMemoryModal({ onClose }: Prop
           </p>
         </div>
 
+        {snapshot.status !== 'ready' && (
+          <div className="px-6 mt-3 text-sm text-theme-muted" role="status">
+            {snapshot.status === 'loading' ? t('localMemory.modal.loading') : t('localMemory.modal.storageUnavailable')}
+            {snapshot.status !== 'loading' && <button className="ml-2 underline" onClick={retryLoad}>{t('localMemory.modal.retry')}</button>}
+          </div>
+        )}
+        <fieldset disabled={busy || snapshot.status !== 'ready'} className="contents">
         {/* Search */}
         <div className="px-6 mt-4 shrink-0">
           <div className="relative">
@@ -177,7 +243,7 @@ export const LocalMemoryModal = memo(function LocalMemoryModal({ onClose }: Prop
 
         {/* List */}
         <div className="flex-1 overflow-y-auto px-6 mt-3 space-y-1.5 min-h-0">
-          {filtered.length === 0 && (
+          {snapshot.status === 'ready' && filtered.length === 0 && (
             <p className="font-display italic text-sm text-theme-muted py-6 text-center">
               {query ? t('localMemory.modal.emptySearch') : t('localMemory.modal.empty')}
             </p>
@@ -282,6 +348,7 @@ export const LocalMemoryModal = memo(function LocalMemoryModal({ onClose }: Prop
             </button>
           )}
         </div>
+        </fieldset>
       </div>
     </div>
   )

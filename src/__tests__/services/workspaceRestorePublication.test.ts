@@ -8,7 +8,8 @@ import { seedIsolatedWorkspace } from '../helpers/isolatedWorkspace'
 import { deferred } from '../helpers/workspaceLocks'
 import { fixture, ids, code, guard as archiveGuard } from '../helpers/workspaceBackup'
 import { workspaceDataKey, type IsolatedWorkspaceLayout } from '../../services/workspaceWriter/layout'
-import { renderHook, act, cleanup } from '@testing-library/react'
+import { renderHook, render, screen, fireEvent, act, cleanup } from '@testing-library/react'
+import { createElement } from 'react'
 
 vi.unmock('../../services/workspaceWriter/runtime')
 const policy = vi.hoisted(() => ({ start: true }))
@@ -72,10 +73,40 @@ beforeEach(async () => {
 })
 afterEach(async () => { cleanup(); lock.resolve(); await Promise.resolve(); await Promise.resolve(); vi.restoreAllMocks(); vi.unstubAllGlobals() })
 
-it.each(['same', 'token-account-change', 'response-account-change', 'body-account-change', 'database-fence-change', 'notification-account-change'] as const)('auto memory applies only to the captured live owner: %s', async cut => {
+it('real document retirement cancels a mounted memory edit without late UI rejection or write',async()=>{
+  const {default:i18n}=await import('../../i18n');await i18n.changeLanguage('fr')
+  const facts=await import('../../services/localMemoryService'), {LocalMemoryModal}=await import('../../components/settings/LocalMemoryModal')
+  await facts.addFact('Synthetic A');const raw=localStorage.getItem('arty-a-local-memory-facts')
+  render(createElement(LocalMemoryModal,{onClose:vi.fn()}));await vi.waitFor(()=>expect(facts.getLocalMemorySnapshot().status).toBe('ready'))
+  const gate=deferred<void>(),real=crypt.encrypt
+  const encryption=vi.spyOn(crypt,'encrypt').mockImplementationOnce(async text=>{const cipher=await real(text);await gate.promise;return cipher})
+  const input=screen.getByRole('textbox',{name:i18n.t('localMemory.modal.addPlaceholder')})
+  fireEvent.change(input,{target:{value:'Late A'}});fireEvent.click(screen.getByRole('button',{name:i18n.t('localMemory.modal.addAria')}))
+  await vi.waitFor(()=>expect(encryption).toHaveBeenCalledOnce())
+  act(()=>runtime.documentWorkspace.retire())
+  await act(async()=>{gate.resolve();await Promise.resolve();await Promise.resolve()})
+  expect(localStorage.getItem('arty-a-local-memory-facts')).toBe(raw)
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+})
+
+it('a fresh admitted document hydrates the actual A+B ciphertext without the old RAM cache',async()=>{
+  const before=await import('../../services/localMemoryService')
+  const a=await before.addFact('Synthetic A'),b=await before.addFact('Synthetic B'),raw=localStorage.getItem('arty-a-local-memory-facts')
+  expect(raw).toMatch(/^v[12]:/)
+  await ready()
+  const after=await import('../../services/localMemoryService');expect(after.getLocalMemorySnapshot().status).toBe('idle')
+  await after.bootstrapLocalMemory();expect(after.getAll()).toEqual([a,b]);expect(localStorage.getItem('arty-a-local-memory-facts')).toBe(raw)
+})
+
+it.each(['same', 'token-account-change', 'response-account-change', 'body-account-change', 'database-fence-change', 'database-fence-before-dispatch', 'notification-account-change'] as const)('auto memory applies only to the captured live owner: %s', async cut => {
   const google = await import('../../services/googleAuth'), trial = await import('../../services/trialClient'), toast = await import('../../services/toast')
   const token = deferred<string | null>(), response = deferred<Response>(), body = deferred<unknown>()
-  vi.spyOn(google, 'getValidAccessToken').mockReturnValue(token.promise); vi.spyOn(trial, 'getTrialRemaining').mockReturnValue(null)
+  await google.storeUser({email:'a@example.invalid',name:'a',picture:''})
+  await google.storeMailboxFreeGrant({access_token:'synthetic-a',refresh_token:'synthetic-refresh-a',expires_at:Date.now()+3600000},undefined,{verifiedEmail:'a@example.invalid'})
+  const grant = google.captureGoogleGrant()!
+  expect(grant).not.toBeNull()
+  vi.spyOn(google,'captureGoogleGrant').mockReturnValue({isCurrent:grant.isCurrent,getAccessToken:()=>token.promise})
+  vi.spyOn(trial, 'getTrialRemaining').mockReturnValue(null)
   const notify = vi.spyOn(toast, 'toast').mockImplementation(() => {}), fetchMock = vi.fn(() => response.promise); vi.stubGlobal('fetch', fetchMock)
   const memory = await import('../../services/autoMemory'), facts = await import('../../services/localMemoryService'), work = await import('../../services/conversationWork')
   const conv = { id: 'synthetic-auto-memory', title: 'Synthetic', createdAt: 1, updatedAt: 2, messages: [1, 2, 3].map(n => ({ id: `m${n}`, role: 'user' as const, timestamp: n, content: 'Synthetic recurring preference for verifying cross-account response isolation. '.repeat(2) })) }
@@ -83,8 +114,11 @@ it.each(['same', 'token-account-change', 'response-account-change', 'body-accoun
   // A duplicate invocation must not release the first invocation's busy lease.
   await memory.maybeExtractMemory(conv); expect(work.hasActiveConversationWork()).toBe(true)
   if (cut === 'token-account-change') await enter('b')
+  if (cut === 'database-fence-before-dispatch') {
+    const db = await openDB(layout.projects.name); await db.put('meta', 'new-erasure-fence', 'erasure-fence'); db.close()
+  }
   token.resolve('synthetic-token')
-  if (cut === 'token-account-change') { await run; expect(fetchMock).not.toHaveBeenCalled() }
+  if (cut === 'token-account-change' || cut === 'database-fence-before-dispatch') { await run; expect(fetchMock).not.toHaveBeenCalled() }
   else {
     await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledOnce())
     if (cut === 'response-account-change') await enter('b')
@@ -107,8 +141,15 @@ it.each(['same', 'token-account-change', 'response-account-change', 'body-accoun
     expect(facts.getAll().map(f => f.content)).toEqual(['Synthetic durable preference'])
     expect(scoped.getJSON('auto-memory-progress')).toEqual({ 'synthetic-auto-memory': 3 }); expect(notify).toHaveBeenCalledOnce()
   } else {
-    expect(facts.getAll()).toEqual([]); expect(scoped.getJSON('auto-memory-progress')).toBeNull(); expect(notify).not.toHaveBeenCalled()
+    expect(facts.getAll()).toEqual([]); expect(notify).not.toHaveBeenCalled()
+    // This fence changes AFTER the HTTP attempt, so retaining A's attempt is
+    // required to avoid rebilling an unknown outcome. The new BEFORE-dispatch
+    // canary above still requires no progress and no HTTP at all.
+    if (cut === 'database-fence-change') expect(scoped.getJSON('auto-memory-progress')).toEqual({ 'synthetic-auto-memory': 3 })
+    else expect(scoped.getJSON('auto-memory-progress')).toBeNull()
   }
+  if (cut === 'token-account-change' || cut === 'database-fence-before-dispatch') expect(localStorage.getItem('arty-a-auto-memory-progress')).toBeNull()
+  else expect(JSON.parse(localStorage.getItem('arty-a-auto-memory-progress')!)).toEqual({ 'synthetic-auto-memory': 3 })
 })
 
 it.each([[1, 1], [2, 1], [3, 1], [1, 2], [2, 2], [3, 2]] as const)('real archive v%s → projects physical %s → atomic adoption → no-key cold publication → usable copies', async (version, physical) => {

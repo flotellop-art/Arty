@@ -10,8 +10,8 @@
  *
  * Déclencheur : ≥ EXTRACT_EVERY_N_USER_MSGS nouveaux messages user depuis la
  * dernière extraction de la conversation, avec un filtre de substance
- * (conversations « ok / merci » exclues). Coût ~0,001 $/extraction (Haiku,
- * via /api/ai/memory-extract — HORS quota utilisateur, cf. endpoint).
+ * (conversations « ok / merci » exclues). Appel Haiku financé par Arty,
+ * via /api/ai/memory-extract — HORS quota utilisateur, cf. endpoint.
  *
  * Garde-fous produit (audit RÈGLE 7) :
  * - euOnly → JAMAIS d'extraction (la conversation ne doit pas partir vers
@@ -23,13 +23,13 @@
 
 import * as scoped from './scopedStorage'
 import { apiUrl } from './apiBase'
-import { getValidAccessToken } from './googleAuth'
+import { captureGoogleGrant, onGoogleGrantInvalidated } from './googleAuth'
 import { getTrialRemaining } from './trialClient'
 import {
   getAll as getAllFacts,
-  addFact,
-  updateFact,
-  deleteFact,
+  bootstrapLocalMemory,
+  mutateLocalMemory,
+  createLocalMemoryFact,
   MAX_FACTS,
   type LocalMemoryFact,
 } from './localMemoryService'
@@ -39,6 +39,8 @@ import i18n from '../i18n'
 import { toast } from './toast'
 import { beginConversationWork } from './conversationWork'
 import { captureLocalReadScope } from './projects/store'
+import { onLocalDataInvalidated } from './localDataInvalidation'
+import { documentWorkspaceSignal } from './workspaceWriter/runtime'
 
 const SETTING_KEY = 'auto-memory-enabled'
 const PROGRESS_KEY = 'auto-memory-progress'
@@ -62,8 +64,9 @@ export function setAutoMemoryEnabled(enabled: boolean): void {
 }
 
 // ── Suivi de progression par conversation ────────────────────────────────────
-// Map convId → nombre de messages user déjà traités. Évite de ré-extraire les
-// mêmes messages. Stockage scoped (par compte), non chiffré : ce sont des
+// Map convId → nombre de messages user déjà tentés (pas forcément mémorisés).
+// Une réponse inconnue ne permet pas de refaire automatiquement le même appel.
+// Stockage scoped (par compte), non chiffré : ce sont des
 // compteurs, pas du contenu.
 
 function getProgress(): Record<string, number> {
@@ -122,29 +125,30 @@ interface ExtractionResult {
  *  de changements effectifs. Éviction FIFO : la mémoire auto ne doit jamais
  *  échouer silencieusement au cap (bug addFact→null identifié à l'audit) —
  *  le fait le plus ANCIEN est évincé pour faire de la place. */
-export function applyExtraction(result: ExtractionResult, existing: LocalMemoryFact[], assertCurrent: () => void = () => {}): number {
+export async function applyExtraction(result: ExtractionResult, existing: LocalMemoryFact[], assertCurrent: () => void = () => {}): Promise<number> {
+  if (!result.add.length && !result.replace.length) return 0
+  return mutateLocalMemory(current => {
   let changes = 0
   for (const r of result.replace) {
     assertCurrent()
-    if (updateFact(r.id, r.fact)) changes++
-    assertCurrent() // mutators synchronously notify listeners, which can switch accounts
+    const original = existing.find(f => f.id === r.id)
+    const fact = current.find(f => f.id === r.id)
+    if (!original || !fact || fact.content !== original.content || fact.createdAt !== original.createdAt || !r.fact.trim() || fact.content === r.fact.trim()) continue
+    fact.content = r.fact.trim(); changes++
   }
   for (const a of result.add) {
     assertCurrent()
-    const current = getAllFacts()
+    const norm = a.fact.trim().toLowerCase()
+    if (!norm || current.some(f => f.content.trim().toLowerCase() === norm)) continue
     if (current.length >= MAX_FACTS) {
       const oldest = [...current].sort((x, y) => x.createdAt - y.createdAt)[0]
-      if (oldest) deleteFact(oldest.id)
-      assertCurrent()
+      if (oldest) current.splice(current.findIndex(f => f.id === oldest.id), 1)
     }
-    // Dédup de dernier ressort (le serveur demande déjà à Haiku de comparer) :
-    // contenu identique normalisé → skip.
-    const norm = a.fact.trim().toLowerCase()
-    if (existing.some((f) => f.content.trim().toLowerCase() === norm)) continue
-    if (addFact(a.fact)) changes++
+    current.push(createLocalMemoryFact(a.fact)); changes++
     assertCurrent()
   }
   return changes
+  }, assertCurrent)
 }
 
 // ── Extraction principale ────────────────────────────────────────────────────
@@ -161,12 +165,24 @@ export function hasEuData(conv: Pick<Conversation, 'euOnly' | 'usedModels'>): bo
 
 let inFlight = false
 
+/** Cancel this consumer's wait, never the shared Google refresh. */
+function waitForMemory<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const cleanup = () => signal.removeEventListener('abort', abort)
+    const abort = () => { cleanup(); reject(new Error('memory_cancelled')) }
+    if (signal.aborted) { void promise.catch(() => {}); abort(); return }
+    signal.addEventListener('abort', abort, { once: true })
+    promise.then(value => { cleanup(); resolve(value) }, error => { cleanup(); reject(error) })
+  })
+}
+
 /**
  * À appeler en fire-and-forget depuis onDone (useConversation). Ne throw
  * jamais, ne bloque jamais l'UI.
  */
 export async function maybeExtractMemory(conv: Conversation | null | undefined): Promise<void> {
   let finishWork: (() => void) | undefined
+  let dispose = () => {}
   try {
     if (!conv || inFlight) return
     if (isDocumentConversation(conv)) return
@@ -188,15 +204,36 @@ export async function maybeExtractMemory(conv: Conversation | null | undefined):
       return
     }
 
-    const scope = captureLocalReadScope()
+    const grant = captureGoogleGrant()
+    if (!grant) return
+    const lifetime = new AbortController(), scope = captureLocalReadScope(lifetime.signal)
+    const abort = () => lifetime.abort()
+    const assertCurrent = () => {
+      scope.assertCurrent()
+      if (!grant.isCurrent() || lifetime.signal.aborted || documentWorkspaceSignal.aborted
+        || !isAutoMemoryEnabled() || hasEuData(conv) || isDocumentConversation(conv)) throw new Error('memory_cancelled')
+    }
+    const stopGrant = onGoogleGrantInvalidated(() => { if (!grant.isCurrent()) abort() })
+    const stopLocal = onLocalDataInvalidated(() => { try { assertCurrent() } catch { abort() } })
+    documentWorkspaceSignal.addEventListener('abort', abort, { once: true })
+    const timer = setTimeout(abort, 35000)
+    dispose = () => { abort(); clearTimeout(timer); stopGrant(); stopLocal(); documentWorkspaceSignal.removeEventListener('abort', abort) }
+    assertCurrent()
     finishWork = beginConversationWork(conv.id); inFlight = true
-    const token = await getValidAccessToken()
-    scope.assertCurrent()
+    const token = await waitForMemory(grant.getAccessToken(), lifetime.signal)
+    assertCurrent()
     if (!token) return
 
-    const existing = getAllFacts()
-    await scope.validateReadOnly(); scope.assertCurrent()
-    const res = await fetch(apiUrl('/api/ai/memory-extract'), {
+    await waitForMemory(bootstrapLocalMemory(), lifetime.signal); assertCurrent()
+    const existing = getAllFacts().map(f => ({ ...f }))
+    const sentFacts = projectExtractionFacts(existing)
+    // A replacement cannot target a fact omitted or only partially transmitted.
+    const replaceable = existing.filter(f => sentFacts.some(sent => sent.id === f.id && sent.content === f.content))
+    await waitForMemory(scope.validateReadOnly(), lifetime.signal); assertCurrent()
+    // Reserve this prefix before dispatch. This records an ATTEMPT, never an
+    // extraction success. It also covers lost HTTP/JSON responses after billing.
+    setProgress(conv.id, userMessages.length); assertCurrent()
+    const res = await waitForMemory(fetch(apiUrl('/api/ai/memory-extract'), {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
@@ -204,17 +241,14 @@ export async function maybeExtractMemory(conv: Conversation | null | undefined):
       },
       body: JSON.stringify({
         transcript: buildTranscript(fresh),
-        facts: projectExtractionFacts(existing),
+        facts: sentFacts,
       }),
-    })
-    scope.assertCurrent()
+      signal: lifetime.signal, redirect: 'error', cache: 'no-store',
+    }), lifetime.signal)
+    assertCurrent()
 
-    const data = res.ok ? (await res.json()) as Partial<ExtractionResult> : null
-    await scope.validateReadOnly(); scope.assertCurrent()
-    // Quota d'extraction du jour atteint (20) ou échec : on marque la
-    // progression pour ne pas marteler l'endpoint, et on réessaiera
-    // naturellement sur les messages suivants.
-    setProgress(conv.id, userMessages.length)
+    const data = res.ok ? (await waitForMemory(res.json(), lifetime.signal)) as Partial<ExtractionResult> : null
+    await waitForMemory(scope.validateReadOnly(), lifetime.signal); assertCurrent()
     if (!data) return
     const result: ExtractionResult = {
       add: Array.isArray(data.add) ? data.add.filter((a) => typeof a?.fact === 'string') : [],
@@ -222,8 +256,8 @@ export async function maybeExtractMemory(conv: Conversation | null | undefined):
         ? data.replace.filter((r) => typeof r?.id === 'string' && typeof r?.fact === 'string')
         : [],
     }
-    const changes = applyExtraction(result, existing, scope.assertCurrent)
-    scope.assertCurrent()
+    const changes = await waitForMemory(applyExtraction(result, replaceable, assertCurrent), lifetime.signal)
+    assertCurrent()
     if (changes > 0) {
       // Transparence (stratégie confiance) : jamais de mémorisation invisible.
       try { toast(i18n.t('settings.autoMemory.updated'), 'info') } catch { /* tests */ }
@@ -231,6 +265,7 @@ export async function maybeExtractMemory(conv: Conversation | null | undefined):
   } catch {
     // Silencieux par design — la mémoire auto ne doit jamais perturber le chat.
   } finally {
+    dispose()
     if (finishWork) { finishWork(); inFlight = false }
   }
 }

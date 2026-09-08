@@ -13,6 +13,7 @@ import { notifyRouteOverrides } from '../services/router/notifyRouteOverrides'
 import { fetchPdfMarkdowns, fetchUrlMarkdowns } from '../services/pdfUrlFetch'
 import * as storage from '../services/storage'
 import { maybeExtractMemory } from '../services/autoMemory'
+import { bootstrapLocalMemory } from '../services/localMemoryService'
 import { useStreaming } from './useStreaming'
 import { useFileAttachments, buildApiMessages, buildContentBlocks, buildTextOnlyMessages, buildMistralMessages, buildMistralContentBlocks } from './useFileAttachments'
 import { buildOpenAIRouteMessages } from './openaiRouteMessages'
@@ -830,6 +831,12 @@ export function useConversation(options?: { onNavigate?: (id: string) => void })
         synthesis.markObservationBound()
       }
       const toolController = new AbortController()
+      // Stop must cancel optional preparation before a provider controller
+      // exists. Office retains its original stream/controller identity.
+      if (officeController) {
+        officeController.signal.addEventListener('abort', () => toolController.abort(), { once: true })
+        if (officeController.signal.aborted) toolController.abort()
+      } else setAbortController(targetId, toolController)
       const imageCryptoCurrent = captureCryptoGuard(), imageFence = getSessionProjectFence()
       const assertImageScope = captureGeneratedImageView()
       const invocationOwner = documentContext ? documentContext.owner : getActiveUserId()
@@ -974,20 +981,6 @@ export function useConversation(options?: { onNavigate?: (id: string) => void })
         storage.saveConversation(conv)
       }
 
-      // Roadmap PR 12.1 — déclenche la reconstruction du system prompt avec
-      // le user message courant. useAppSetup écoute cet event de manière
-      // synchrone (dispatchEvent → handler → setSystemPrompt → ref updated)
-      // donc systemPromptRef.current est à jour quand on appelle le LLM
-      // ci-dessous. Sans cet event : fallback legacy = mémoire complète
-      // injectée (5k tokens parasites sur "salut"). Avec : profil minimal
-      // si le message ne touche pas à la mémoire.
-      try {
-        if (!projectRequest)
-        window.dispatchEvent(
-          new CustomEvent('arty-rebuild-prompt', { detail: { userMessage: modelText } })
-        )
-      } catch { /* SSR / test env */ }
-
       // P1.5 — flag les conversations contenant des données Google. Le texte
       // des réponses peut intégrer le contenu d'un mail/fichier lu par un tool ;
       // ce flag déclenche l'avertissement renforcé avant un partage public.
@@ -1070,6 +1063,18 @@ export function useConversation(options?: { onNavigate?: (id: string) => void })
       // bloquée, quota de streams consommé jusqu'au reload.
       try {
 
+      // This message has already been durably adopted. Cancellation here is
+      // handled by the same dispatch catch and still resolves sendMessage=true.
+      if (!projectRequest) {
+        await bootstrapLocalMemory(toolController.signal).catch(() => {})
+        assertInvocationCurrent()
+        window.dispatchEvent(new CustomEvent('arty-rebuild-prompt', { detail: { userMessage: modelText } }))
+      }
+      // Freeze the rebuilt turn prompt before any PDF/history/research await.
+      // Later memory refreshes must not erase its language/instructions/mail
+      // boundary or replace its filtered Google context with a full profile.
+      const invocationSystemPrompt = systemPromptRef.current
+
       // URLs de PDF public collées : ni `web_fetch`/`url_context` (Claude/
       // Gemini n'avalent pas un PDF binaire) ni Mistral (aucune lecture d'URL)
       // ne savent les lire. On convertit chaque PDF en Markdown via Linkup
@@ -1142,7 +1147,7 @@ export function useConversation(options?: { onNavigate?: (id: string) => void })
           controller = streamMessage(enrichedMessages, onToken, onDone, onErr, {
             assertRequestCurrent: assertInvocationCurrent,
             beforeDocumentRequest: beforeOwnedRequest,
-            systemPrompt: systemPromptRef.current,
+            systemPrompt: invocationSystemPrompt,
             onToolCall: trackedToolHandler,
             // Niveau de réflexion utilisateur (chat réel uniquement — jamais
             // sur les appels imposés type comparateur/brief). Cf. anthropicClient.
@@ -1168,7 +1173,7 @@ export function useConversation(options?: { onNavigate?: (id: string) => void })
         }
         controller = streamGeminiMessage(apiMessages, onToken, onDone, onErr, {
           assertRequestCurrent: assertInvocationCurrent,
-          systemPrompt: systemPromptRef.current,
+          systemPrompt: invocationSystemPrompt,
           reflectionLevel: getReflectionLevel(),
           conversationId: targetId,
           invocationId,
@@ -1196,7 +1201,7 @@ export function useConversation(options?: { onNavigate?: (id: string) => void })
         controller = streamMistralMessage(apiMessages, onToken, onDone, onErr, {
           assertRequestCurrent: assertInvocationCurrent,
           documentReadOnly: officeRequest,
-          systemPrompt: preparedProject?.systemPrompt ?? systemPromptRef.current,
+          systemPrompt: preparedProject?.systemPrompt ?? invocationSystemPrompt,
           beforeDocumentRequest: beforeOwnedRequest,
           onToolCall: trackedToolHandler,
           // Fix 429 — outgoingText ≠ modelText ⇔ du contenu d'URL/PDF a été
@@ -1238,7 +1243,7 @@ export function useConversation(options?: { onNavigate?: (id: string) => void })
           assertRequestCurrent: assertInvocationCurrent,
           expectedUserId: invocationOwner,
           expectedSessionEpoch: invocationEpoch,
-          systemPrompt: systemPromptRef.current,
+          systemPrompt: invocationSystemPrompt,
           // Boucle tools OpenAI (parité Mistral) : tools custom via le même
           // handler HITL, web_search/fetch_url interceptés dans le client.
           // Ferme le bug terrain « Ouvre le lien » → « je n'ai pas l'accès
@@ -1281,7 +1286,7 @@ export function useConversation(options?: { onNavigate?: (id: string) => void })
         controller = streamMessage(apiMessages, onToken, onDone, onErr, {
           assertRequestCurrent: assertInvocationCurrent,
           documentReadOnly: officeRequest,
-          systemPrompt: preparedProject?.systemPrompt ?? systemPromptRef.current,
+          systemPrompt: preparedProject?.systemPrompt ?? invocationSystemPrompt,
           beforeDocumentRequest: beforeOwnedRequest,
           onToolCall: trackedToolHandler,
           reflectionLevel: getReflectionLevel(),
