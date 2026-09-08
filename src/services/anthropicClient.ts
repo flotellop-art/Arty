@@ -266,6 +266,7 @@ function formatApiError(status: number, body: string): string {
       // ce cas s'affichait comme une erreur générique, ce qui a envoyé le
       // diagnostic quatre fois dans le décor. Il porte désormais son nom.
       if (err === 'upstream_billing') return i18n.t('errors.apiUpstreamBilling')
+      if (status === 409 && err === 'upstream_outcome_unknown') return i18n.t('errors.apiOutcomeUnknown')
       return err
     }
 

@@ -308,7 +308,26 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
       method: 'POST',
       headers,
       body: JSON.stringify(parsedBody),
+      // A redirect is not authority to replay a paid POST or forward x-api-key.
+      redirect: 'manual',
     })
+
+    if (response.status >= 300 && response.status < 400) {
+      // Do not read/forward the redirect body or Location, even for BYOK. Its
+      // cancellation ACK must not hold the response (or fail into wallet void).
+      void response.body?.cancel().catch(() => undefined)
+      if (walletResId) {
+        // A dispatched request is not proven unbilled by a redirect. Reuse the
+        // existing incomplete-usage contract, not a fabricated zero-token bill.
+        waitUntil(settleWalletBilling(env, { resId: walletResId, email, model: modelName },
+          createAnthropicParser().finalize()))
+      }
+      return Response.json({ error: 'upstream_outcome_unknown' }, {
+        // 409 is terminal for both current and old clients (which retry 5xx).
+        status: 409, headers: { 'cache-control': 'no-store',
+          ...(trialRemaining !== undefined ? { 'x-trial-remaining': String(trialRemaining) } : {}) },
+      })
+    }
 
     const responseHeaders = (extra: Record<string, string> = {}) => {
       const out: Record<string, string> = {
