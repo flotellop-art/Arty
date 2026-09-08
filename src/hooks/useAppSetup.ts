@@ -6,7 +6,7 @@ import { useDrive } from './useDrive'
 import { useComputer } from './useComputer'
 import { useMemory } from './useMemory'
 import { buildContextualPrompt, buildMailboxAccessPrompt, MAILBOX_NO_ACCESS_PROMPT } from '../constants/systemPrompt'
-import { buildLocalMemoryPrompt } from '../services/localMemoryService'
+import { bootstrapLocalMemory, buildLocalMemoryPrompt, getLocalMemorySnapshot, subscribeLocalMemory } from '../services/localMemoryService'
 import { getCustomInstructions } from '../services/customInstructions'
 import { createToolExecutor } from '../services/toolExecutor'
 import type { ToolDispatcher } from '../services/tools/types'
@@ -144,12 +144,6 @@ export function useAppSetup(conversation: ConversationHook) {
     // de langue (Phase 3 i18n) atteigne les clients IA. Sans ça, les clients
     // tombent sur leurs constantes FR hardcodées et l'UI EN n'a aucun effet
     // sur la langue des réponses.
-    if (!googleAuth.isConnected) {
-      const prompt = buildLocalMemoryPrompt() + buildContextualPrompt({ customInstructions: getCustomInstructions() }) + getStylePrompt(responseStyle)
-      setSystemPrompt(mailboxBoundaryPrompt + publicGooglePrompt + prompt)
-      return
-    }
-
     // Roadmap PR 12.1 — injection mémoire conditionnelle.
     // Au boot et aux changements Google/Drive, on construit un prompt avec
     // mémoire COMPLÈTE (fallback legacy safe). Mais quand sendMessage dispatch
@@ -157,13 +151,20 @@ export function useAppSetup(conversation: ConversationHook) {
     // avec le user message → mémoire filtrée (économie ~95% des tokens sur
     // requêtes type "salut", "merci", "comment ça va").
     const buildPrompt = (userMessage?: string) => {
-      const memorySummary = memoryHook.getPromptContext(userMessage)
+      const memorySummary = googleAuth.isConnected ? memoryHook.getPromptContext(userMessage) : undefined
       // Drive may be cached for the UI, but its metadata is never silently
       // copied into every model request.
       const prompt = buildLocalMemoryPrompt() + buildContextualPrompt({ memorySummary, customInstructions: getCustomInstructions() }) + getStylePrompt(responseStyle)
       setSystemPrompt(mailboxBoundaryPrompt + publicGooglePrompt + prompt)
     }
     buildPrompt()
+    const stopMemory = subscribeLocalMemory(() => {
+      // Clear immediately on owner/key/document invalidation. Never retain A's
+      // already-built prompt while B's encrypted memory is still loading.
+      if (getLocalMemorySnapshot().status === 'ready') buildPrompt()
+      else setSystemPrompt(undefined)
+    })
+    void bootstrapLocalMemory().catch(() => {})
 
     // Listener synchrone — dispatchEvent appelle les handlers en série avant
     // de retourner. Donc systemPromptRef est à jour quand useConversation
@@ -173,7 +174,7 @@ export function useAppSetup(conversation: ConversationHook) {
       buildPrompt(detail?.userMessage)
     }
     window.addEventListener('arty-rebuild-prompt', onRebuild)
-    return () => window.removeEventListener('arty-rebuild-prompt', onRebuild)
+    return () => { stopMemory(); window.removeEventListener('arty-rebuild-prompt', onRebuild) }
   }, [googleAuth.isConnected, memoryHook.getPromptContext, mailboxBoundaryPrompt, publicGooglePrompt, setSystemPrompt, responseStyle])
 
   // Handle action buttons clicked in reports

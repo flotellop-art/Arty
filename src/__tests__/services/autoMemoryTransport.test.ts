@@ -1,9 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-const mocks = vi.hoisted(() => ({ facts: vi.fn(), add: vi.fn(), update: vi.fn(), remove: vi.fn() }))
+const mocks = vi.hoisted(() => ({ facts: vi.fn(), add: vi.fn(), update: vi.fn(), remove: vi.fn(), mutate: vi.fn() }))
 vi.mock('../../services/localMemoryService', () => ({ getAll: mocks.facts, addFact: mocks.add,
-  updateFact: mocks.update, deleteFact: mocks.remove, MAX_FACTS: 80 }))
+  updateFact: mocks.update, deleteFact: mocks.remove, MAX_FACTS: 80,
+  bootstrapLocalMemory: async () => {}, mutateLocalMemory: mocks.mutate, createLocalMemoryFact: vi.fn() }))
 vi.mock('../../services/scopedStorage', () => ({ getItem: () => null, getJSON: () => ({}), setJSON: vi.fn() }))
-vi.mock('../../services/googleAuth', () => ({ getValidAccessToken: async () => 'synthetic-token' }))
+vi.mock('../../services/googleAuth', () => ({ captureGoogleGrant: () => ({isCurrent:()=>true,getAccessToken:async()=> 'synthetic-token'}), onGoogleGrantInvalidated:()=>()=>{} }))
 vi.mock('../../services/trialClient', () => ({ getTrialRemaining: () => null }))
 vi.mock('../../services/conversationWork', () => ({ beginConversationWork: () => () => undefined }))
 vi.mock('../../services/projects/store', () => ({ captureLocalReadScope: () => ({ assertCurrent() {}, async validateReadOnly() {} }) }))
@@ -39,6 +40,7 @@ describe('bounded memory transport without editing local facts', () => {
     expect(sent!.facts).toEqual(facts.map(f => ({ id: f.id, content: f.content.slice(0, 200) })))
     expect(facts[0].content.length).toBeGreaterThan(200)
     expect(mocks.add).not.toHaveBeenCalled(); expect(mocks.update).not.toHaveBeenCalled(); expect(mocks.remove).not.toHaveBeenCalled()
+    expect(mocks.mutate).not.toHaveBeenCalled()
   })
   it('ignores invalid IDs without shortening them and caps only the transmitted list', async () => {
     const facts = Object.freeze([{ id: 'lm-' + 'z'.repeat(62), content: 'must not be shortened' },
@@ -52,5 +54,6 @@ describe('bounded memory transport without editing local facts', () => {
     expect(sent!.facts.map(f => f.id)).toEqual(Array.from({ length: 80 }, (_, i) => `lm-${i}`))
     expect(facts).toHaveLength(82); expect(facts[0].id).toHaveLength(65)
     expect(mocks.add).not.toHaveBeenCalled(); expect(mocks.update).not.toHaveBeenCalled(); expect(mocks.remove).not.toHaveBeenCalled()
+    expect(mocks.mutate).not.toHaveBeenCalled()
   })
 })
