@@ -68,11 +68,47 @@ La réception locale ne vaut pas mise en production : celle-ci nécessitera une
 vérification des index et volumes D1, une bascule serveur coordonnée (un ancien
 handler peut ignorer le cumul), la CI de livraison et le parcours réel téléphone.
 
+## Réception locale du 8 septembre 2026
+
+Candidat de code : `75f0832b387d13c914cc0848d3f44177215e48f4`.
+CDC fixé avant implémentation dans `28bf578`. **Lot local reçu** : 464 tests
+ciblés distincts acquis dans 19 fichiers, TypeScript application et Functions
+validé, build validé. Aucune campagne complète de CI distante ou téléphone
+réel n’a été exécutée. Les avertissements de taille des bundles et d’imports
+mixtes existaient déjà ; ils n’empêchent pas le build.
+
+| Règles | Preuves principales dans `src/__tests__` |
+| --- | --- |
+| R1–R4, R11 | `functions/d1.trialBenefit.test.ts` : cumul des deux canaux, aliases, domaines ordinaires, concurrence à 29, anciens totaux, sessions et droits isolés. |
+| R5–R6 | `functions/trialBenefit.deadline.test.ts`, `trialAdmission.test.ts`, `trialContinuationSnapshot.test.ts`, `d1.trialAdmission.test.ts` : ACK perdu, rollback, compteurs invalides, délais et compensation unique. |
+| R7–R8 | `functions/d1.trialBenefit.test.ts`, `services/trialClient.scoping.test.ts`, `trialCounterCache.test.ts`, `components/EmailTrialFlow.test.tsx`, `App.loginRoute.test.tsx` : quota réel/inconnu, propriétaire exact, ancien serveur et pannes de stockage. |
+| R9 | `services/walletClient.test.ts`, `hooks/usePlanStatus.grant.test.tsx`, `functions/d1.walletSpendability.test.ts` : classification serveur, vrai Free, ancien cache positif, changement pendant un GET, grant et wallet révoqués. |
+| R10 | `functions/d1.anthropicSubsidizedGap.test.ts`, `d1.anthropicPreflight.test.ts`, `d1.trialFundingDiagnostic.test.ts`, `simpleTrialOffer.test.ts` : Haiku financé, outils gratuits limités, parcours payants/BYOK préservés, continuation épuisée sans débit wallet. |
+| R4, sessions | `services/isolatedWorkspaceRuntime.test.ts` : identité, chiffrement et espace local préservés. |
+
+Les reçus JSON locaux sont conservés dans `artifacts/shared-trial-*.json`.
+`artifacts/shared-trial-reception.json` indique le candidat, leurs empreintes
+SHA-256 et la consolidation des résultats. Les premières campagnes contiennent
+les échecs diagnostiqués : anciens mocks de requête unitaire, champ wallet
+nouveau, anciens attendus d’offre gratuite. Les reprises ciblées les ont
+résolus ; aucun échec connu de cette recette ne reste ouvert. Les tests déjà
+acquis ont été conservés, pas comptés deux fois ni relancés systématiquement.
+
+Contre-revues en lecture seule : serveur/finance (`audit_loop`) et client/session
+(`audit_progress`). L’objection client sur un ancien restant positif qui bloquait
+un wallet récemment attesté a été corrigée : une réponse serveur fraîche prime
+l’ancien affichage, tandis qu’un événement quota ultérieur peut refermer l’accès.
+La correction a été testée puis relue ; aucune objection bloquante restante.
+
 ## Point de reprise unique
 
-État : CDC fixé avant implémentation ; deux contre-revues initiales réalisées.
-Décisions : restriction historique R3 assumée, aucune migration d’identité ;
-conserver les délais du candidat actuel et distinguer inconnu/hors essai.
-Prochaine action : intégrer sélectivement le lot existant, étendre son groupe
-de restriction, puis exécuter la recette ci-dessus. Les preuves et le candidat
-final seront inscrits ici sans recréer un plan général.
+État : implémentation et réception locale terminées sur le candidat ci-dessus.
+Décisions maintenues : restriction historique R3, identités inchangées, délais
+existants, quota inconnu distinct d’un compte hors essai. Aucun budget activé,
+aucun fournisseur réellement appelé, aucun changement distant appliqué.
+
+Prochaine mission possible, distincte : préparer la livraison. Avant toute
+production, vérifier les index et volumes D1 (leur création paresseuse peut coûter
+plus cher au premier passage), organiser la bascule serveur coordonnée, passer
+la CI puis vérifier le parcours sur téléphone. Pas de reprise automatique de ce
+lot terminé, ni de nouvelle contre-revue identique sans changement matériel.
