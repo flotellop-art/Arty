@@ -1,5 +1,42 @@
 # Enquête ciblée : essai épuisé, 503 au lieu de 409
 
+## Reprise : observation du cas original et comparaison des moteurs
+
+Le test original des six changements de financement est désormais instrumenté
+par `admissionTrace.ts` : SQL, préparation/bind, programmation/déclenchement/
+annulation du vrai timer de 250 ms, réponse avant règlement et état financier
+avant les assertions. Les handles et délais réels sont conservés. L'oracle
+reste strictement 409 ; les assertions gagnent le contrôle du wallet et des
+rejets SQL/background. Six cas réussis, 51 autres non sélectionnés ; le test
+trial-to-wallet a annulé son timer après environ 117 ms, sans déclenchement.
+
+Une expérience supplémentaire exécute quatre paires dans un ordre alterné :
+le même handler, la même requête et la même instance D1, depuis Node puis
+depuis workerd. Aucun ralentissement injecté. Les huit appels répondent 409,
+sans déclenchement du timer ni modification financière. Quatre tests réussis.
+
+Miniflare expose à Node un proxy D1 : certaines opérations franchissent un
+pont synchrone utilisant `Atomics.wait` (version installée, `index.js`,
+`getD1Database`, `#syncCall`, `SynchronousFetcher`). Le handler natif utilise
+directement son binding D1 dans workerd. L'expérience complète prend localement
+619–643 ms côté Node contre 29–38 ms côté workerd. Ces chiffres incluent le
+règlement et les cinq lectures de contrôle financier : ils ne représentent
+pas la latence d'admission et ne mesurent pas une accélération du produit.
+Les horloges internes des moteurs ne sont pas assimilées à une seule horloge.
+
+Conclusion : un effet de la topologie du banc est mesuré ; aucun nouveau
+timeout spontané n'est reproduit. L'origine de la CI historique reste inconnue.
+Deux contre-revues acceptent l'instrumentation et ces limites. Une seule
+nouvelle CI est justifiée pour recevoir les traces du cas original sur le
+runner réel ; aucune modification applicative, de deadline ou d'oracle.
+
+Preuves locales : `.playwright-mcp/original-admission-traced.log`,
+`original-admission-traced-tests.json`, `admission-topology.json` et
+`admission-topology-tests.json` dans le même dossier. Leurs résultats sont
+distincts de la CI complète, encore à recevoir pour cette instrumentation.
+
+## Enquête précédente
+
 8 septembre 2026. Code applicatif examiné : `51b846a`, PR #500.
 La CI historique reste en échec : 5806 tests réussis, un échec, un ignoré.
 Cette enquête ne déploie rien et ne modifie aucune protection applicative.

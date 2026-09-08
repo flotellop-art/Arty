@@ -6,6 +6,7 @@ import { onRequestPost } from '../../../functions/api/ai/proxy'
 import { onRequestPost as continuePost } from '../../../functions/api/ai/anthropic-continue-v1'
 import { createSession } from '../../../functions/api/_lib/emailTrial'
 import { makeD1Harness, type D1Harness } from './d1Harness'
+import { traceAdmission, admissionFinancialState } from './admissionTrace'
 
 const EMAIL = 'subsidized-chat@example.test'
 const schema = readFileSync(new URL('../../../migrations/0013_subsidized_budget.sql', import.meta.url), 'utf8')
@@ -248,19 +249,34 @@ describe('qualified chat funding and outcome boundaries, actual local D1', () =>
     { scenario: 'byok-lost', path: 'trial', expected: 'v1:byok', used: 7, wallet: 100000000 },
     { scenario: 'subscription-to-trial', path: 'trial', expected: 'v1:subscription', used: 7, wallet: 100000000 },
     { scenario: 'google-to-otp', path: 'otp', expected: 'v1:trial-google', wallet: 0 },
-  ])('refuses continuation funding change $scenario before any new AI debit/hold/provider', async ({ path, expected, used, wallet }) => {
+  ])('refuses continuation funding change $scenario before any new AI debit/hold/provider', async ({ scenario, path, expected, used, wallet }) => {
     await fund()
     if (path === 'trial') { await seedTrial(); await h.db.prepare('UPDATE trial_usage SET used=?').bind(used!).run() }
     await h.db.prepare('INSERT INTO wallet (user_email,balance_micro) VALUES (?,?)').bind(EMAIL, wallet).run()
-    const response = await invoke(request(path, body(), { 'x-arty-require-funding': expected }))
-    expect(response.status).toBe(409)
-    expect(await response.json()).toEqual({ error: 'continuation_funding_changed' })
-    await Promise.all(background)
-    expect(calls).toHaveLength(0)
-    expect((await h.db.prepare('SELECT id FROM reservation').all()).results).toEqual([])
-    expect((await h.db.prepare('SELECT id FROM subsidized_attempt_v1').all()).results).toEqual([])
-    if (path === 'trial') expect(await h.db.prepare('SELECT used FROM trial_usage').first()).toEqual({ used })
-    expect((await h.db.prepare('SELECT used FROM email_trial_usage').all()).results).toEqual([])
+    const observer = traceAdmission(h.db)
+    h.env.DB = observer.db
+    try {
+      const response = await onRequestPost({ env: h.env,
+        request: request(path, body(), { 'x-arty-require-funding': expected }),
+        waitUntil: (task: Promise<unknown>) => { background.push(task); observer.waitUntil(task) },
+      } as never) as Response
+      observer.mark('response', { status: response.status })
+      const responseBody = await response.json()
+      const settlement = await observer.drain()
+      const state = await admissionFinancialState(h.db)
+      const evidence = { scenario, status: response.status, body: responseBody, events: observer.events, settlement, state, providerCalls: calls.length }
+      // Collect all financial evidence before status can fail and print it once.
+      if (response.status !== 409 || process.env.ARTY_TRACE_ADMISSION === '1') console.info('ADMISSION_TRACE', JSON.stringify(evidence))
+      expect(state.holds).toEqual([])
+      expect(state.tickets).toEqual([])
+      expect(state.emailTrial).toEqual([])
+      expect(state.wallet).toEqual({ balance_micro: wallet, reserved_micro: 0 })
+      if (path === 'trial') expect(state.trial).toEqual({ used, updated_at: 0 })
+      expect(calls).toHaveLength(0)
+      expect(settlement).toEqual({ rejectedBackground: [], rejectedSql: [] })
+      expect(response.status, JSON.stringify(evidence)).toBe(409)
+      expect(responseBody).toEqual({ error: 'continuation_funding_changed' })
+    } finally { await observer.drain(); h.env.DB = h.db; observer.restore() }
   })
   it.each(['free', 'trial', 'otp'])('%s sends a funded native-search SSE intact with an engaged ticket', async path => {
     if (path === 'trial') await seedTrial()
