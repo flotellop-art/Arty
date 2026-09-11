@@ -28,6 +28,10 @@ Pas de clé Gemini disponible dans cet environnement : l'analyse réelle par Goo
 
 ## Point de reprise
 
-Dossier : `D:\CodexData\worktrees\37fe\Project Arty`. Branche : `codex/tiktok-video-reading-20260911`, issue du commit `322b58e46d2dc39749ea0399a4e22766d6645e27`. Le commit de ce lot doit contenir uniquement les fichiers TikTok et leurs raccordements ; les modifications documentaires déjà présentes sont hors périmètre. Cette branche contient également des travaux antérieurs non publiés : ne pas publier son ensemble comme une modification TikTok isolée.
+Candidat de livraison isolé : `D:\CodexData\worktrees\37fe\Arty-tiktok-release-20260911`, branche `codex/tiktok-release-20260911`, sur `origin/main` `9d01e34e81d3e228c2bf41dfdcccd4cfc957d6cd`. Le seul ajout TikTok `64b8ef9f` a été reporté en `11048de9`. Les conflits ont conservé le refus d'admission serveur et la garde de session de la recherche hybride. Le client TikTok a ensuite été raccordé au traitement actuel des refus d'essai et de crédits, avec 97 tests ciblés réussis après cette adaptation. Types, compilation, contrôles OAuth publics et export documentaire réussis. Deux contre-revues ont validé les raccords à cette nouvelle base.
 
-Prochaine validation utile : exécuter un parcours réel complet sur un environnement disposant de la clé Gemini et des protections habituelles d'Arty, puis vérifier l'accès TikTok depuis l'hébergement cible. L'enquête sur le fact-checking demandée ensuite constitue une mission séparée.
+La branche de développement initiale `codex/tiktok-video-reading-20260911` dans `D:\CodexData\worktrees\37fe\Project Arty` conserve les autres travaux de l'utilisateur ; ne pas la publier comme un lot isolé.
+
+État Cloudflare vérifié le 11 septembre : production `9d01e34`, URL immuable `https://1394b9ff.appfacade.pages.dev`. La clé Gemini est configurée en production, mais son nom est absent des variables de Preview. La Preview utilise aussi la base `arty-db` de production. Aucune clé n'a été copiée, aucune configuration d'accès ou base modifiée. L'absence de clé locale n'implique donc pas l'absence de clé sur le site public.
+
+Prochaine validation utile : un parcours réel complet du candidat avec une clé Gemini disponible et une identité Arty réelle, en sachant quels compteurs seront utilisés. Vérifier ensuite le modèle servi, la récupération depuis Cloudflare et le suivi sans seconde analyse. Une session de démonstration ou le serveur Vite seul ne prouvent pas ce parcours. L'enquête sur le fact-checking demandée ensuite constitue une mission séparée.

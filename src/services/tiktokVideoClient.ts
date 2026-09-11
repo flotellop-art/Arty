@@ -4,7 +4,8 @@ import { apiUrl } from './apiBase'
 import { getGeminiKey } from './activeApiKey'
 import { buildAiHeaders } from './aiHttp'
 import { recordUsage } from './costTracker'
-import { updateTrialFromResponse } from './trialClient'
+import { captureAiEntitlementReceipt } from './aiEntitlementReceipt'
+import { admissionUnavailableError } from './admissionFailure'
 import { extractTikTokUrls, TIKTOK_ANALYSIS_MODEL, TIKTOK_MAX_ANALYSIS_CHARS, validTikTokAnalysis, type TikTokAnalysis } from './tiktokVideoTypes'
 
 export function videoAnalysisContext(analysis: TikTokAnalysis): string {
@@ -41,7 +42,9 @@ export async function prepareTikTokTurn(options: TikTokTurnOptions): Promise<Tik
     && m.videoAnalysis.url === url)?.videoAnalysis
   if (cached) return cached
   if (!options.available) throw new Error(i18n.t('video.planRequired'))
-  const headers = await buildAiHeaders({ byokKey: getGeminiKey(), assertRequestCurrent: check })
+  const byokKey = getGeminiKey()
+  const receipt = captureAiEntitlementReceipt(!byokKey || byokKey === 'server-provided', options.signal, check)
+  const headers = await buildAiHeaders({ byokKey, assertRequestCurrent: check })
   check()
   const controller = new AbortController()
   const abort = () => controller.abort()
@@ -51,10 +54,14 @@ export async function prepareTikTokTurn(options: TikTokTurnOptions): Promise<Tik
     const response = await fetch(apiUrl('/api/ai/gemini-proxy'), { method: 'POST', headers,
       signal: controller.signal, body: JSON.stringify({ model: TIKTOK_ANALYSIS_MODEL, stream: false, tiktokVideoUrl: url }) })
     check()
-    updateTrialFromResponse(response)
+    receipt.updateTrial(response)
     if (!response.ok) {
-      const error = await response.json().catch(() => ({}))
+      const body = await response.text().catch(() => '')
       check()
+      const fundingError = admissionUnavailableError(response.status, body) ?? receipt.error(response.status, body)
+      if (fundingError) throw fundingError
+      let error: { error?: string } = {}
+      try { error = JSON.parse(body) ?? {} } catch { /* opaque upstream failure */ }
       const key = error.error === 'tiktok_video_limit' ? 'video.tooLarge'
         : [401, 402, 403, 429].includes(response.status) ? 'video.planRequired' : 'video.unavailable'
       throw new Error(i18n.t(key))

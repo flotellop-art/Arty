@@ -2,16 +2,18 @@ import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
 import { prepareTikTokTurn, withTikTokAnalyses, type TikTokTurnOptions } from '../../services/tiktokVideoClient'
 import { projectLocalSyncConversationShape } from '../../services/workspaceSync/captureProjection'
 import type { Message } from '../../types'
+import { resetCalendarFixture } from '../helpers/calendarFixture'
+import { getTrialRemaining, setTrialRemaining } from '../../services/trialClient'
+import { getWalletSnapshot, clearWalletCache, fetchWalletBalance } from '../../services/walletClient'
 vi.mock('../../services/aiHttp', () => ({ buildAiHeaders: vi.fn(async () => ({ 'x-google-token': 'synthetic' })) }))
 vi.mock('../../services/activeApiKey', () => ({ getGeminiKey: () => null }))
-vi.mock('../../services/trialClient', () => ({ updateTrialFromResponse: vi.fn() }))
 vi.mock('../../services/costTracker', () => ({ recordUsage: vi.fn() }))
 const url = 'https://vm.tiktok.com/ZN8jJBpVS/'
 const analysis = { url, text: '00:12 — un exemple observé.', model: 'gemini-3.5-flash', analyzedAt: 1 }
 const message: Message = { id: 'm1', role: 'user', content: url, timestamp: 1, videoAnalysis: analysis }
 function options(extra: Partial<TikTokTurnOptions> = {}): TikTokTurnOptions { return { text: url, messages: [], euOnly: false, available: true, documentRestricted: false, signal: new AbortController().signal, assertCurrent: vi.fn(), ...extra } }
 const success = () => Response.json({ candidates: [{ finishReason: 'STOP', content: { parts: [{ text: analysis.text }] } }] }, { headers: { 'x-arty-model-used': analysis.model } })
-beforeEach(() => vi.clearAllMocks())
+beforeEach(async () => { await resetCalendarFixture(); clearWalletCache(); vi.clearAllMocks() })
 afterEach(() => vi.unstubAllGlobals())
 describe('TikTok conversation preparation', () => {
   it('sends only the URL, never the user question or private history', async () => {
@@ -39,6 +41,26 @@ describe('TikTok conversation preparation', () => {
       vi.stubGlobal('fetch', vi.fn(async () => res))
       await expect(prepareTikTokTurn(options())).rejects.toThrow()
     }
+  })
+  it('reflects an exhausted trial and a terminal wallet refusal using the shared funding contract', async () => {
+    setTrialRemaining(5)
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json({ error: 'trial_expired' }, { status: 403 })))
+    await expect(prepareTikTokTurn(options())).rejects.toMatchObject({ name: 'TrialExpiredError' })
+    expect(getTrialRemaining()).toBe(0)
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json({ hasWallet: true, balanceMicro: 900000, reservedMicro: 0, availableMicro: 900000, reversalPending: false })))
+    await fetchWalletBalance()
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json({ error: 'wallet_reconciliation_pending' }, { status: 409 })))
+    await expect(prepareTikTokTurn(options())).rejects.toMatchObject({ name: 'WalletReconciliationError' })
+    expect(getWalletSnapshot()?.reversalPending).toBe(true)
+  })
+  it('does not mutate funding after the request becomes obsolete while reading an error body', async () => {
+    setTrialRemaining(5)
+    let current = true
+    const res = Response.json({ error: 'trial_expired' }, { status: 403 })
+    vi.spyOn(res, 'text').mockImplementation(async () => { current = false; return '{"error":"trial_expired"}' })
+    vi.stubGlobal('fetch', vi.fn(async () => res))
+    await expect(prepareTikTokTurn(options({ assertCurrent: () => { if (!current) throw new Error('changed') } }))).rejects.toThrow('changed')
+    expect(getTrialRemaining()).toBe(5)
   })
   it('aborts the network and rejects late results after Stop', async () => {
     const ctrl = new AbortController(); let release!: (response: Response) => void; let signal: AbortSignal | undefined
