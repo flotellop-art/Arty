@@ -2,6 +2,7 @@ import { PROJECT_LIMITS, validDescriptor, validProjectId, type ProjectSourceRefe
 import type { ProjectTurn } from '../projects/chatPolicy'
 import { BACKUP_FEATURES, BACKUP_LIMITS as L, BackupError, type BackupSnapshot, type BackupManifest, type BackupDiagnostics, type BackupSchemaVersion } from './types'
 import { utf8 } from './bytes'
+import { isFactReview } from '../../../shared/factCheckEvidence'
 
 function fail(): never { throw new BackupError('format') }
 function limit(): never { throw new BackupError('limit') }
@@ -111,8 +112,8 @@ function factCheck(value: unknown): void {
   enumeration(value.overallConfidence, ['high', 'medium', 'low']); text(value.modelLabel, 2000); integer(value.checkedAt)
   if (value.status !== undefined) enumeration(value.status, ['pending', 'success-empty', 'success-with-claims', 'failed', 'partial'])
   if (value.limitations !== undefined) {
-    array(value.limitations, 4)
-    value.limitations.forEach(v => enumeration(v, ['search_unavailable', 'response_truncated', 'claim_limit', 'completion_unknown']))
+    array(value.limitations, 5)
+    value.limitations.forEach(v => enumeration(v, ['search_unavailable', 'response_truncated', 'claim_limit', 'completion_unknown', 'evidence_missing']))
   }
   if (value.coverage !== undefined) {
     object(value.coverage, ['inputChars', 'submittedChars', 'claimLimitReached'])
@@ -125,7 +126,8 @@ function factCheck(value: unknown): void {
   if (value.appliedCorrections !== undefined) integer(value.appliedCorrections, 1000)
   array(value.claims, 100)
   for (const claim of value.claims) {
-    object(claim, ['claim', 'verdict', 'explanation'], ['originalText', 'correction', 'applied'])
+    object(claim, ['claim', 'verdict', 'explanation'], ['originalText', 'correction', 'applied', 'review'])
+    if (claim.review !== undefined && !isFactReview(claim.review)) fail()
     text(claim.claim, 10_000); text(claim.explanation, 20_000); enumeration(claim.verdict, ['verified', 'uncertain', 'wrong'])
     for (const key of ['originalText', 'correction']) if (claim[key] !== undefined) text(claim[key], L.contentChars)
     if (claim.applied !== undefined) bool(claim.applied)

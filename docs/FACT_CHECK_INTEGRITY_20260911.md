@@ -1,5 +1,10 @@
 # Fact-checking : intégrité des résultats et corrections
 
+Historique du premier lot (`9324324`). La suite autorisée — lecture des preuves,
+contrôle du contexte, contestation indépendante et Gemini 3.8 — est décrite dans
+[FACT_CHECK_EVIDENCE_20260911.md](FACT_CHECK_EVIDENCE_20260911.md). Les limites et
+résultats ci-dessous concernent uniquement ce premier lot.
+
 Lot autorisé le 11 septembre 2026 : validations trompeuses, remplacements
 automatiques dangereux et couverture silencieusement limitée.
 Branche `codex/fact-check-integrity-20260911`, base

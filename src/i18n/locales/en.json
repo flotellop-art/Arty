@@ -817,6 +817,14 @@
       "reviewedBy": "Reviewed by {{model}}",
       "partialDetail": "This check cannot confirm the entire response. Proposed corrections were not applied automatically.",
       "searchUnavailable": "Verification against sources could not be completed.",
+      "evidenceMissing": "Some claims lack checked evidence. Corrections remain proposals.",
+      "evidenceSource": "Evidence {{count}} and context",
+      "fetchedAt": "Page accessed on {{date}} (access date, not publication date).",
+      "challenge": {
+        "accepted": "Sensitive correction also accepted by {{model}}.",
+        "rejected": "Correction challenged by {{model}}: it is not applied.",
+        "unavailable": "Review by another model could not be completed. Correction not applied."
+      },
       "completionUnknown": "Completion of this check could not be confirmed.",
       "limitedText": "Only the first {{submitted}} of {{total}} characters were sent to the verifier. The rest was not checked.",
       "claimLimit": "The limit of 10 displayed points has been reached. This result does not guarantee exhaustive verification.",
@@ -1274,9 +1282,9 @@
       "auto": "Auto (recommended)",
       "haiku": "Always fast (Haiku 4.5)",
       "sonnet": "Always strict (Sonnet 5)",
-      "costAuto": "Fast Haiku by default, strict Sonnet on sensitive topics (prices, quotes, medical, legal). ~$0.0005-0.0015/message.",
-      "costHaiku": "~$0.0005/message · adds 1-2s after each response",
-      "costSonnet": "~$0.0015/message · adds 3-5s · better for nuance"
+      "costAuto": "Quick initial check, then evidence reading when needed. Sensitive corrections require another model. Cost and duration vary.",
+      "costHaiku": "Initial check only: corrections without checked evidence remain proposals.",
+      "costSonnet": "Search and reading of up to three pages. Another model challenges sensitive corrections. Each review uses the verification allowance; cost and duration vary."
     },
     "upgrade": {
       "description": "Lifetime Pro, subscription, +100 messages pack"

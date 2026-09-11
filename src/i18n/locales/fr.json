@@ -817,6 +817,14 @@
       "reviewedBy": "Relu par {{model}}",
       "partialDetail": "Ce contrôle ne permet pas de confirmer toute la réponse. Les corrections proposées n’ont pas été appliquées automatiquement.",
       "searchUnavailable": "La vérification par des sources n’a pas pu être menée à terme.",
+      "evidenceMissing": "Certaines affirmations manquent de preuves contrôlées. Les corrections restent des propositions.",
+      "evidenceSource": "Preuve {{count}} et contexte",
+      "fetchedAt": "Page consultée le {{date}} (date de consultation, pas de publication).",
+      "challenge": {
+        "accepted": "Correction sensible également acceptée par {{model}}.",
+        "rejected": "Correction contestée par {{model}} : elle n’est pas appliquée.",
+        "unavailable": "La vérification par un autre modèle n’a pas abouti. Correction non appliquée."
+      },
       "completionUnknown": "La fin du contrôle n’a pas pu être confirmée.",
       "limitedText": "Seuls les {{submitted}} premiers caractères sur {{total}} ont été transmis au vérificateur. La suite n’a pas été contrôlée.",
       "claimLimit": "La limite de 10 points affichés est atteinte. Ce résultat ne garantit pas une vérification exhaustive.",
@@ -1274,9 +1282,9 @@
       "auto": "Auto (recommandé)",
       "haiku": "Toujours rapide (Haiku 4.5)",
       "sonnet": "Toujours strict (Sonnet 5)",
-      "costAuto": "Haiku rapide par défaut, Sonnet strict sur les sujets sensibles (prix, devis, médical, juridique). ~$0.0005-0.0015/message.",
-      "costHaiku": "~$0.0005/message · ajoute 1-2s après chaque réponse",
-      "costSonnet": "~$0.0015/message · ajoute 3-5s · meilleur sur les nuances"
+      "costAuto": "Premier contrôle rapide, puis lecture des preuves si nécessaire. Les corrections sensibles exigent un autre modèle. Coût et durée variables.",
+      "costHaiku": "Premier contrôle seulement : les corrections sans preuve contrôlée restent des propositions.",
+      "costSonnet": "Recherche et lecture de trois pages au maximum. Un autre modèle conteste les corrections sensibles. Chaque contrôle consomme le plafond de vérification ; coût et durée variables."
     },
     "upgrade": {
       "description": "Pro à vie, abonnement, pack +100 messages"

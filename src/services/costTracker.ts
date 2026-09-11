@@ -8,6 +8,7 @@
  */
 
 import * as scoped from './scopedStorage'
+import { gemini38Pricing } from '../../shared/gemini38Pricing'
 
 // USD → EUR (taux fixe — pas besoin d'une précision boursière pour
 // estimer un coût mensuel d'API).
@@ -15,6 +16,7 @@ export const EUR_PER_USD = 0.92
 
 // $ par 1M tokens (input / output)
 export const MODEL_COSTS: Record<string, { input: number; output: number }> = {
+  get 'gemini-3.8-flash'() { const { input, output } = gemini38Pricing(); return { input, output } },
   'claude-haiku-4-5':  { input: 1.00,  output: 5.00 },
   'claude-sonnet-4-6': { input: 3.00,  output: 15.00 }, // legacy — conservé pour les coûts historiques
   // Sonnet 5 : tarif durable $3/$15 (l'intro $2/$10 court jusqu'au 31/08/2026 —
@@ -123,6 +125,7 @@ export function normaliseModel(model: string): string {
   if (model.startsWith('claude-haiku')) return 'claude-haiku-4-5'
   if (model.startsWith('claude-sonnet')) return 'claude-sonnet-5'
   if (model.startsWith('claude-opus')) return 'claude-opus-4-8'
+  if (/^gemini-3\.8-flash(?:-|$)/.test(model)) return 'gemini-3.8-flash'
   if (model.startsWith('gpt-5-mini') || model.includes('mini')) return 'gpt-5-mini'
   if (model.startsWith('gpt-')) return 'gpt-5'
   if (model.startsWith('gemini-3.1') && model.includes('flash-lite')) return 'gemini-flash-lite-3.1'

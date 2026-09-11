@@ -5,6 +5,7 @@ import { projectLocalSyncConversationShape } from '../../services/workspaceSync/
 import { mapCapturedConversation } from '../../services/workspaceBackup/captureMapping'
 import { validateSnapshot } from '../../services/workspaceBackup/schema'
 import type { FactCheckClaim, Conversation } from '../../types'
+import { proof } from '../fixtures/factEvidence'
 vi.mock('../../services/apiBase', () => ({ apiUrl: (p: string) => p }))
 vi.mock('../../services/googleAuth', () => ({ getValidAccessToken: vi.fn(async () => 'synthetic') }))
 vi.mock('../../services/costTracker', () => ({ recordUsage: vi.fn() }))
@@ -44,7 +45,7 @@ describe('fact-check integrity through the real client', () => {
   it('marks missing research after a failed escalation and after a no-web model fallback', async () => {
     const http = vi.fn().mockResolvedValueOnce(response([claim()], { webEvidence: false })).mockResolvedValueOnce(new Response('', { status: 503 }))
     vi.stubGlobal('fetch', http)
-    expect((await factCheckResponse('Question', answer, 'auto')).result).toMatchObject({ status: 'partial', limitations: ['search_unavailable'] })
+    expect((await factCheckResponse('Question', answer, 'auto')).result).toMatchObject({ status: 'partial', limitations: expect.arrayContaining(['search_unavailable', 'evidence_missing']) })
     expect(http).toHaveBeenCalledTimes(2)
     http.mockReset().mockResolvedValue(response([], { webEvidence: false, fallback: 'model', model: 'claude-sonnet-5' }))
     expect((await factCheckResponse('Question', answer, 'auto')).result?.status).toBe('partial')
@@ -76,7 +77,8 @@ describe('fact-check integrity through the real client', () => {
     vi.stubGlobal('fetch', vi.fn(async () => response(Array.from({ length: count }, () => claim()))))
     const result = (await factCheckResponse('Question', answer, 'haiku')).result!
     expect(result.claims).toHaveLength(Math.min(count, 10))
-    expect(result.status).toBe(count >= 10 ? 'partial' : 'success-empty')
+    expect(result.status).toBe('partial')
+    expect(result.limitations?.includes('claim_limit')).toBe(count >= 10)
   })
   it('preserves limitations in sync and backup capture, with old results still readable', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => response()))
@@ -89,6 +91,29 @@ describe('fact-check integrity through the real client', () => {
     expect(() => validateSnapshot({ conversations: [captured], projects: [], files: [], objects: [] })).not.toThrow()
     delete result.coverage; delete result.limitations; result.status = 'success-empty'
     expect(projectLocalSyncConversationShape(conv).messages[0]!.factCheck).toEqual(result)
+  })
+  it('accepts only server receipts and preserves proof through archive and sync', async () => {
+    const p = proof({ sensitive: true, challenge: 'accepted', challengerModel: 'gemini-3.8-flash' })
+    vi.stubGlobal('fetch', vi.fn(async () => response([claim()], { evidenceVersion: 1, evidenceChecks: [p] })))
+    const result = (await factCheckResponse('Question', answer, 'gemini')).result!
+    expect(result.status).toBe('success-empty')
+    expect(result.claims[0]!.review).toEqual(p)
+    const conv: Conversation = { id: 'proof', title: '', createdAt: 1, updatedAt: 1, messages: [{ id: 'm', role: 'assistant', content: answer, timestamp: 1, factCheck: result }] }
+    const restored = projectLocalSyncConversationShape(JSON.parse(JSON.stringify(conv)))
+    expect(restored.messages[0]!.factCheck).toEqual(result)
+    const captured = mapCapturedConversation(restored)
+    expect(captured.messages[0]!.factCheck).toEqual(result)
+    expect(() => validateSnapshot({ conversations: [captured], projects: [], files: [], objects: [] })).not.toThrow()
+    vi.stubGlobal('fetch', vi.fn(async () => response([{ ...claim(), review: p }])))
+    expect((await factCheckResponse('Question', answer, 'gemini')).result?.status).toBe('partial')
+  })
+  it('rejects a receipt for a different replacement even if its proof is accepted', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => response([{ ...claim('wrong'), originalText: 'une valeur initiale', correction: 'une autre valeur' }], { evidenceVersion: 1, evidenceChecks: [proof()] })))
+    expect((await factCheckResponse('Question', answer, 'gemini')).result).toMatchObject({ status: 'partial', limitations: ['evidence_missing'] })
+  })
+  it.each([proof({ challenge: 'unavailable', sensitive: true }), proof({ contextMatches: false }), proof({ evidence: [] })])('never grants a complete result for rejected proof: %j', async p => {
+    vi.stubGlobal('fetch', vi.fn(async () => response([claim('wrong')], { evidenceVersion: 1, evidenceChecks: [p] })))
+    expect((await factCheckResponse('Question', answer, 'gemini')).result).toMatchObject({ status: 'partial', limitations: ['evidence_missing'] })
   })
   it('keeps a successful first pass partial when the required second tier has exhausted its quota', async () => {
     const http = vi.fn().mockResolvedValueOnce(response([claim()], { webEvidence: false })).mockResolvedValueOnce(new Response('', { status: 429 }))

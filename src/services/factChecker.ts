@@ -26,6 +26,7 @@ import { isDocumentConversation } from './projects/chatPolicy'
 import { unified } from 'unified'
 import remarkParse from 'remark-parse'
 import remarkGfm from 'remark-gfm'
+import { hasAcceptedFactProof, isFactReview, factCorrection, factProofTarget, type FactReview } from '../../shared/factCheckEvidence'
 
 export type Verdict = FactCheckClaim['verdict']
 export type { FactCheckResult, FactCheckClaim }
@@ -863,13 +864,13 @@ export async function recoverAssistantLinks(
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-export type FactCheckMode = 'off' | 'auto' | 'haiku' | 'sonnet'
+export type FactCheckMode = 'off' | 'auto' | 'haiku' | 'sonnet' | 'gemini'
 
 const SETTING_KEY = 'fact-check-mode'
 
 export function getFactCheckMode(): FactCheckMode {
   const v = scoped.getItem(SETTING_KEY)
-  if (v === 'off' || v === 'sonnet' || v === 'haiku' || v === 'auto') return v
+  if (v === 'off' || v === 'sonnet' || v === 'haiku' || v === 'auto' || v === 'gemini') return v
   // Défaut : 'auto' pour les payants (Haiku rapide / Sonnet sur sujets
   // sensibles), 'off' pour les free ET les essais (cap quota). 'trial' :
   // défensif — rien ne l'écrit aujourd'hui (l'essai est normalisé 'free'),
@@ -930,7 +931,7 @@ function today(): string {
     (mode sonnet explicite → palier sonnet ; auto/haiku → palier haiku).
     Exporté pour le pré-garde de runFactCheckOnLatest. */
 export function isFactCheckQuotaExhausted(mode: FactCheckMode = getFactCheckMode()): boolean {
-  const tier = mode === 'sonnet' ? 'sonnet' : 'haiku'
+  const tier = mode === 'sonnet' || mode === 'gemini' ? 'sonnet' : 'haiku'
   return quotaExhaustedDayByTier[tier] === today()
 }
 
@@ -1072,7 +1073,7 @@ export async function factCheckResponse(
   }
 
   // Modes explicites (settings) : un seul palier, pas d'escalade.
-  if (mode === 'haiku' || mode === 'sonnet') {
+  if (mode === 'haiku' || mode === 'sonnet' || mode === 'gemini') {
     return done(await runCheckTier(mode, question, response, sourcesBlock, hasFreshSources))
   }
 
@@ -1110,10 +1111,11 @@ const TIER_INFO = {
   // avant de répondre. Le budget inclut aussi Gemini + google_search si
   // Anthropic reste indisponible.
   sonnet: { model: 'claude-sonnet-5', label: 'Sonnet 5', timeoutMs: 150_000 },
+  gemini: { model: 'gemini-3.8-flash', label: 'Gemini 3.8 Flash', timeoutMs: 150_000 },
 } as const
 
 interface FactCheckRequestPayload {
-  tier: 'haiku' | 'sonnet'
+  tier: 'haiku' | 'sonnet' | 'gemini'
   question: string
   response: string
   sources: string
@@ -1172,7 +1174,7 @@ async function requestFactCheck(
 }
 
 async function runCheckTier(
-  tier: 'haiku' | 'sonnet',
+  tier: 'haiku' | 'sonnet' | 'gemini',
   question: string,
   response: string,
   sourcesBlock: string,
@@ -1217,7 +1219,7 @@ async function runCheckTier(
   if (res.status === 429) {
     // Plafond de fond du PALIER atteint → suspendre CE palier jusqu'à
     // demain ; les appelants skippent SANS badge (raison sentinelle).
-    quotaExhaustedDayByTier[tier] = today()
+    quotaExhaustedDayByTier[tier === 'gemini' ? 'sonnet' : tier] = today()
     console.info('[factChecker] quota de fond ' + tier + ' atteint — palier suspendu pour la journée')
     return { result: null, reason: FACT_CHECK_QUOTA_REASON }
   }
@@ -1238,6 +1240,8 @@ async function runCheckTier(
   let fallback: 'model' | 'without_web_search' | 'provider' | undefined
   let completion: 'complete' | 'incomplete' | undefined
   let webEvidence = false
+  let evidenceVersion: unknown
+  let evidenceChecks: unknown
   try {
     const data = (await res.json()) as {
       content?: Array<{ type?: string; text?: string }>
@@ -1245,12 +1249,17 @@ async function runCheckTier(
       fallback?: 'model' | 'without_web_search' | 'provider'
       completion?: 'complete' | 'incomplete'
       webEvidence?: boolean
+      evidenceVersion?: unknown
+      evidenceChecks?: unknown
       usage?: { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number }
+      reviewUsage?: Array<{ model: string; usage: { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number } }>
     }
     servedModel = typeof data.model === 'string' && data.model ? data.model : info.model
     fallback = data.fallback
     completion = data.completion
     webEvidence = data.webEvidence === true
+    evidenceVersion = data.evidenceVersion
+    evidenceChecks = data.evidenceChecks
     // Une citation web peut couper le JSON final en plusieurs blocs `text`.
     // Les concaténer préserve l'objet complet ; extractJsonObject ignore la
     // prose éventuelle produite avant les recherches.
@@ -1265,6 +1274,12 @@ async function runCheckTier(
         const inputT = (data.usage.input_tokens || 0) + (data.usage.cache_read_input_tokens || 0)
         const outputT = data.usage.output_tokens || 0
         recordUsage(servedModel, inputT, outputT)
+        for (const added of (Array.isArray(data.reviewUsage) ? data.reviewUsage : []).slice(0, 2)) {
+          if (typeof added?.model !== 'string' || !added.usage) continue
+          const input = (added.usage.input_tokens ?? 0) + (added.usage.cache_read_input_tokens ?? 0)
+          const output = added.usage.output_tokens ?? 0
+          if (Number.isFinite(input) && input >= 0 && Number.isFinite(output) && output >= 0) recordUsage(added.model, input, output)
+        }
       } catch { /* tracking doit pas casser */ }
     }
   } catch (err) {
@@ -1331,26 +1346,28 @@ async function runCheckTier(
       // Correction proposée — uniquement pour 'wrong' avec originalText et
       // correction présents. Le fact-checker doit fournir le passage
       // EXACT à remplacer pour qu'on puisse faire un find/replace fiable.
-      if (verdict === 'wrong' && typeof c.originalText === 'string' && typeof c.correction === 'string') {
-        const orig = c.originalText.trim()
-        const corr = c.correction.trim()
-        if (orig.length > 0 && orig.length < 500 && corr.length > 0 && corr.length < 500) {
-          claim.originalText = orig
-          claim.correction = corr
-        }
-      }
+      Object.assign(claim, factCorrection({ verdict, originalText: c.originalText, correction: c.correction }))
       return claim
     })
     .filter((c) => c.claim.length > 0)
     .slice(0, 10) // cap à 10 claims max pour éviter une explosion UI
 
   const limitations: NonNullable<FactCheckResult['limitations']> = []
+  const checks = evidenceVersion === 1 && Array.isArray(evidenceChecks) && evidenceChecks.length === claims.length && evidenceChecks.every(isFactReview)
+    ? evidenceChecks as FactReview[] : null
+  for (const [index, claim] of claims.entries()) {
+    if (checks?.[index]?.target === factProofTarget(claim)) claim.review = checks[index]
+    if (!hasAcceptedFactProof(claim.review)) {
+      if (claim.verdict === 'verified') claim.verdict = 'uncertain'
+      if (!limitations.includes('evidence_missing')) limitations.push('evidence_missing')
+    }
+  }
   if (response.length > 6000) limitations.push('response_truncated')
   if (rawClaims.length >= 10) limitations.push('claim_limit')
   if (completion !== 'complete') limitations.push('completion_unknown')
-  if (!webEvidence && (tier === 'sonnet' || fallback !== undefined || (!hasFreshSources && claims.length > 0))) limitations.push('search_unavailable')
+  if (!webEvidence && !(claims.length > 0 && claims.every(c => hasAcceptedFactProof(c.review))) && (tier !== 'haiku' || fallback !== undefined || (!hasFreshSources && claims.length > 0))) limitations.push('search_unavailable')
   return {
-    deepCheckAttempted: fallback === 'model' || tier === 'sonnet',
+    deepCheckAttempted: tier !== 'haiku',
     result: {
       overallConfidence,
       claims,
@@ -1359,8 +1376,8 @@ async function runCheckTier(
         : fallback === 'without_web_search'
           ? 'Sonnet 5 (secours sans recherche)'
           : fallback === 'provider'
-            ? `${servedModel === 'gemini-3.5-flash' ? 'Gemini 3.5 Flash' : 'Gemini 3.6 Flash'} (secours)`
-          : info.label,
+            ? `${servedModel.startsWith('gemini-3.8') ? 'Gemini 3.8 Flash' : servedModel.startsWith('gemini-3.5') ? 'Gemini 3.5 Flash' : 'Gemini 3.6 Flash'} (secours)`
+          : tier === 'gemini' && !servedModel.startsWith('gemini-3.8') ? `${servedModel} (secours)` : info.label,
       checkedAt: Date.now(),
       // BUG 59 — status structuré : succès "vide" = aucun claim risqué
       // (wrong/uncertain), succès "avec claims" = au moins un à signaler.
@@ -1611,7 +1628,17 @@ export async function runFactCheckOnLatest(
       patchMessage(conversationId, assistantMsg.id, (m) => ({ ...m, content: prepared.content }))
       refreshConversations()
     }
+    const expectedContent = contentWasPrepared ? prepared.content : originalContent
+    const expectedCheck = assistantMsg.factCheck?.checkedAt
     prepared = await recoverAssistantLinks(question, originalContent, prepared)
+    // Recovery is asynchronous too. Never restore a stale answer, question or
+    // privacy choice before the pending marker and later result guards run.
+    const current = storage.getConversation(conversationId)
+    const currentAnswer = current?.messages.find(m => m.id === assistantMsg.id)
+    const currentQuestion = current?.messages.find(m => m.id === userMsg!.id)
+    if (!current || current.euOnly || isDocumentConversation(current) || !currentAnswer || currentAnswer.interrupted ||
+      currentAnswer.content !== expectedContent || currentAnswer.factCheck?.checkedAt !== expectedCheck ||
+      !currentQuestion || getMessageTextForModel(currentQuestion) !== question) return
     contentWasPrepared = prepared.content !== originalContent
   }
 
@@ -1688,6 +1715,7 @@ export async function runFactCheckOnLatest(
     // placeholder sans badge d'échec — skip intentionnel, pas une panne.
     if (outcome.reason === FACT_CHECK_QUOTA_REASON) {
       patchMessage(conversationId, assistantMsg.id, (m) => {
+        if (m.content !== prepared.content || m.factCheck?.checkedAt !== pendingFactCheck.checkedAt) return m
         const { factCheck: _dropped, ...rest } = m
         return { ...rest, content: prepared.content }
       })
@@ -1708,7 +1736,8 @@ export async function runFactCheckOnLatest(
     patchMessage(
       conversationId,
       assistantMsg.id,
-      (m) => ({ ...m, content: prepared.content, factCheck: failedFactCheck })
+      (m) => m.content === prepared.content && m.factCheck?.checkedAt === pendingFactCheck.checkedAt
+        ? { ...m, factCheck: failedFactCheck } : m
     )
     refreshConversations()
     return
@@ -1734,7 +1763,8 @@ export async function runFactCheckOnLatest(
   patchMessage(
     conversationId,
     assistantMsg.id,
-    (m) => ({ ...m, content: correctedContent, factCheck: result }),
+    (m) => m.content === prepared.content && m.factCheck?.checkedAt === pendingFactCheck.checkedAt
+      ? { ...m, content: correctedContent, factCheck: result } : m,
     true
   )
   refreshConversations()

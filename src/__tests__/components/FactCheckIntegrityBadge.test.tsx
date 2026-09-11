@@ -2,8 +2,19 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
 import { FactCheckBadge } from '../../components/chat/FactCheckBadge'
 import i18n from '../../i18n'
+import { proof } from '../fixtures/factEvidence'
 afterEach(cleanup)
 describe('partial fact-check display', () => {
+  it('shows the exact evidence, its context and the independent objection', async () => {
+    await i18n.changeLanguage('fr')
+    render(<FactCheckBadge result={{ overallConfidence: 'low', modelLabel: 'Sonnet', checkedAt: 1, status: 'partial', limitations: ['evidence_missing'],
+      claims: [{ claim: 'Un point sensible', verdict: 'wrong', explanation: '', review: proof({ sensitive: true, status: 'contested', challenge: 'rejected', challengerModel: 'gemini-3.8-flash' }) }] }} />)
+    fireEvent.click(screen.getByRole('button'))
+    expect(screen.getByText(/Correction contestée par gemini-3.8-flash/)).toBeTruthy()
+    expect(screen.getByRole('link').getAttribute('href')).toBe('https://example.com/source')
+    expect(screen.getByText('Contexte avant. Extrait synthétique de la source. Contexte après.')).toBeTruthy()
+    expect(screen.getByText(/pas de publication/)).toBeTruthy()
+  })
   it.each(['fr', 'en'])('shows missing coverage even with no claims in %s', async language => {
     await i18n.changeLanguage(language)
     render(<FactCheckBadge result={{ overallConfidence: 'high', claims: [], modelLabel: 'Haiku', checkedAt: 1, status: 'partial',

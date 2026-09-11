@@ -42,6 +42,7 @@ vi.mock('../../services/storage', () => {
 import { runFactCheckOnLatest } from '../../services/factChecker'
 import * as storage from '../../services/storage'
 import type { Conversation, Message } from '../../types'
+import { proof } from '../fixtures/factEvidence'
 
 const convStore = (storage as unknown as { __convs: Map<string, Conversation> }).__convs
 
@@ -123,6 +124,7 @@ describe('runFactCheckOnLatest — gardes', () => {
           content: [{ type: 'text', text: llmJson }],
           completion: 'complete',
           webEvidence: true,
+          evidenceVersion: 1, evidenceChecks: [proof({ target: JSON.stringify(['La tour Eiffel mesure 350 mètres', 'wrong', 'mesure 350 mètres', 'mesure 330 mètres']) })],
           usage: { input_tokens: 100, output_tokens: 50 },
         }),
         { status: 200 }
@@ -179,5 +181,28 @@ describe('runFactCheckOnLatest — gardes', () => {
     expect(target.factCheck?.status).toBe('failed')
     expect(target.content).toBe(originalAssistant.content)
     expect(originalAssistant.factCheck).toBeUndefined()
+  })
+  it.each([200, 503, 429])('does not overwrite a response edited while checking (HTTP %s)', async status => {
+    const conv = makeConv(); convStore.set(conv.id, conv)
+    fetchMock.mockImplementation(async () => {
+      const current = convStore.get(conv.id)!
+      current.messages[1] = { ...current.messages[1]!, content: 'Nouvelle réponse écrite pendant le contrôle.', factCheck: undefined }
+      return status === 200 ? Response.json({ completion: 'complete', content: [{ type: 'text', text: '{"overall_confidence":"high","claims":[]}' }] }) : new Response('', { status })
+    })
+    await runFactCheckOnLatest(conv.id, () => {})
+    expect(convStore.get(conv.id)!.messages[1]).toMatchObject({ content: 'Nouvelle réponse écrite pendant le contrôle.', factCheck: undefined })
+  })
+  it('does not restore old content or launch a fact-check after editing during link recovery', async () => {
+    const conv = makeConv()
+    conv.messages[1]!.content += ' [Guide officiel](https://example.com/invente).'
+    convStore.set(conv.id, conv)
+    fetchMock.mockImplementation(async () => {
+      const current = convStore.get(conv.id)!
+      current.messages[1] = { ...current.messages[1]!, content: 'Réponse modifiée pendant la recherche du lien.', factCheck: undefined }
+      return Response.json({ results: [] })
+    })
+    await runFactCheckOnLatest(conv.id, () => {})
+    expect(convStore.get(conv.id)!.messages[1]).toMatchObject({ content: 'Réponse modifiée pendant la recherche du lien.', factCheck: undefined })
+    expect(fetchMock.mock.calls.every(c => !String(c[0]).includes('/ai/fact-check'))).toBe(true)
   })
 })

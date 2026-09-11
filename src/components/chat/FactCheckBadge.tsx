@@ -170,6 +170,7 @@ export const FactCheckBadge = memo(function FactCheckBadge({ result, historical 
             <p>{t('chat.factCheck.partialDetail')}</p>
             {result.limitations?.includes('search_unavailable') && <p>{t('chat.factCheck.searchUnavailable')}</p>}
             {result.limitations?.includes('completion_unknown') && <p>{t('chat.factCheck.completionUnknown')}</p>}
+            {result.limitations?.includes('evidence_missing') && <p>{t('chat.factCheck.evidenceMissing')}</p>}
             {result.coverage && result.coverage.submittedChars < result.coverage.inputChars &&
               <p>{t('chat.factCheck.limitedText', { submitted: result.coverage.submittedChars, total: result.coverage.inputChars })}</p>}
             {(result.coverage?.claimLimitReached || result.limitations?.includes('claim_limit')) && <p>{t('chat.factCheck.claimLimit')}</p>}
@@ -217,6 +218,18 @@ export const FactCheckBadge = memo(function FactCheckBadge({ result, historical 
                   {c.explanation && (
                     <p className="ml-5 mt-0.5 text-theme-muted">{c.explanation}</p>
                   )}
+                  {c.review && <div className="ml-5 mt-1 space-y-1">
+                    <p className="text-theme-muted">{c.review.reason}</p>
+                    {c.review.challengerModel && <p>{t(`chat.factCheck.challenge.${c.review.challenge}`, { model: c.review.challengerModel })}</p>}
+                    {c.review.sensitive && c.review.challenge === 'unavailable' && <p className="text-amber-700 dark:text-amber-400">{t('chat.factCheck.challenge.unavailable')}</p>}
+                    {c.review.evidence.map((e, index) => <details key={`${e.sourceId}-${index}`} className="border-l border-theme-border pl-2">
+                      <summary className="cursor-pointer">{t('chat.factCheck.evidenceSource', { count: index + 1 })}</summary>
+                      <a href={e.url} target="_blank" rel="noopener noreferrer" className="underline break-all">{e.url}</a>
+                      <blockquote className="mt-1">{e.quote}</blockquote>
+                      <p className="text-theme-muted whitespace-pre-wrap mt-1">{e.context}</p>
+                      <p className="text-theme-muted">{t('chat.factCheck.fetchedAt', { date: new Date(e.fetchedAt).toLocaleString() })}</p>
+                    </details>)}
+                  </div>}
                 </div>
               )
             })

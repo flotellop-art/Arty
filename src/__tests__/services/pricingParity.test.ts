@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { getPricing } from '../../../functions/api/_lib/pricing'
 import { MODEL_COSTS, normaliseModel } from '../../services/costTracker'
 
@@ -34,5 +34,14 @@ describe('parité tarifs client ↔ serveur — modèles de chat exposés', () =
   it.each(cases)('%s = $%s / $%s par MTok', (model, input, output) => {
     expect(getPricing(model)).toMatchObject({ input, output })
     expect(MODEL_COSTS[normaliseModel(model)]).toEqual({ input, output })
+  })
+  it.each([['2026-12-31T23:59:59Z', 0.75, 3.75], ['2027-01-01T00:00:00Z', 1.5, 7.5]] as const)('expires the Gemini 3.8 introductory price at %s', (date, input, output) => {
+    vi.useFakeTimers(); vi.setSystemTime(new Date(date))
+    try {
+      for (const model of ['gemini-3.8-flash', 'gemini-3.8-flash-001']) {
+        expect(getPricing(model)).toMatchObject({ input, output })
+        expect(MODEL_COSTS[normaliseModel(model)]).toEqual({ input, output })
+      }
+    } finally { vi.useRealTimers() }
   })
 })

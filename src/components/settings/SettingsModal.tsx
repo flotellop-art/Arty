@@ -467,6 +467,7 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose, onOpen
                 <option value="auto">{t('settings.factChecker.auto')}</option>
                 <option value="haiku">{t('settings.factChecker.haiku')}</option>
                 <option value="sonnet">{t('settings.factChecker.sonnet')}</option>
+                <option value="gemini">Gemini 3.8 Flash</option>
               </select>
             </div>
             {factCheckMode !== 'off' && (

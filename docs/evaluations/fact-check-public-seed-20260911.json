@@ -1,0 +1,55 @@
+{
+  "kind": "public_source_seed_not_a_completed_benchmark",
+  "reviewedOn": "2026-09-11",
+  "instructions": "Réponses de test rédigées pour cette évaluation, pas des sorties observées d'Arty. Garder gold caché aux modèles. Relever les pages intégrales lors de l'essai ; les URL ci-dessous identifient les preuves consultées, pas un cache documentaire complet. Les résultats corrects peuvent être verified ou omis comme faits stables évidents, mais ne doivent jamais subir de correction nuisible.",
+  "sources": {
+    "eiffel": { "url": "https://www.toureiffel.paris/fr/actualites/histoire-et-culture/de-300-330-metres-lhistoire-de-la-taille-de-la-tour", "authority": "Site officiel de la tour Eiffel", "reviewedSections": ["2000", "2022"] },
+    "metre": { "url": "https://www.bipm.org/en/si-base-units/metre", "authority": "Bureau international des poids et mesures", "reviewedSections": ["SI base unit: metre (m)"] },
+    "webb": { "url": "https://www.esa.int/Science_Exploration/Space_Science/Webb/Webb_has_arrived_at_L2", "authority": "Agence spatiale européenne", "publishedOn": "2022-01-24", "reviewedSections": ["Webb has arrived at L2"] }
+  },
+  "cases": [
+    {
+      "id": "eiffel_wrong_date_height",
+      "question": "Quelle hauteur la tour Eiffel a-t-elle atteinte avec son antenne du 15 mars 2022 ?",
+      "response": "Après la pose de sa nouvelle antenne le 15 mars 2022, la tour Eiffel a atteint une hauteur totale de 324 mètres.",
+      "sourceIds": ["eiffel"],
+      "gold": { "truth": "wrong", "requiredCorrection": "330 mètres", "forbiddenChanges": ["changer la date de l'opération", "modifier d'autres faits"] }
+    },
+    {
+      "id": "eiffel_correct_historical_height",
+      "question": "Quelle hauteur atteignait la tour Eiffel après la modification de son antenne en 2000 ?",
+      "response": "Dans le contexte de l'installation de l'antenne UHF en 2000, la tour Eiffel a atteint une hauteur de 324 mètres.",
+      "sourceIds": ["eiffel"],
+      "gold": { "truth": "correct", "forbiddenChanges": ["remplacer 324 par 330 en utilisant la hauteur de 2022", "effacer la date historique"] }
+    },
+    {
+      "id": "light_wrong_unit",
+      "question": "Quelle valeur exacte de la vitesse de la lumière dans le vide intervient dans la définition du mètre ?",
+      "response": "Pour définir le mètre, le Système international fixe la vitesse de la lumière dans le vide à exactement 299 792 458 kilomètres par seconde.",
+      "sourceIds": ["metre"],
+      "gold": { "truth": "wrong", "requiredCorrection": "299 792 458 mètres par seconde", "forbiddenChanges": ["omettre la condition dans le vide", "conserver le facteur 1000 erroné"] }
+    },
+    {
+      "id": "light_correct_approximation",
+      "question": "Donne un ordre de grandeur simple de la vitesse de la lumière dans le vide.",
+      "response": "Pour donner un ordre de grandeur, la lumière se déplace dans le vide à environ 300 000 kilomètres par seconde.",
+      "sourceIds": ["metre"],
+      "gold": { "truth": "correct_approximation", "forbiddenChanges": ["qualifier cet arrondi d'erreur factuelle", "remplacer kilomètres par mètres sans adapter la valeur"] }
+    },
+    {
+      "id": "webb_wrong_distance_unit",
+      "question": "À quelle distance de la Terre se situe approximativement L2 dans le communiqué ESA du 24 janvier 2022 sur Webb ?",
+      "response": "Dans ce communiqué sur l'arrivée de Webb, le point L2 du système Soleil-Terre est situé à environ 1,5 million de mètres de la Terre.",
+      "sourceIds": ["webb"],
+      "gold": { "truth": "wrong", "requiredCorrection": "environ 1,5 million de kilomètres", "forbiddenChanges": ["présenter la distance comme exacte", "affirmer que Webb se trouve immobile au point L2"] }
+    },
+    {
+      "id": "webb_correct_source_attribution",
+      "question": "Résume ce que le communiqué de l'ESA du 24 janvier 2022 indique à propos de la destination de Webb.",
+      "response": "Le communiqué de l'ESA décrit une trajectoire vers l'orbite autour de L2, à près de 1,5 million de kilomètres de la Terre.",
+      "sourceIds": ["webb"],
+      "gold": { "truth": "correct", "forbiddenChanges": ["confondre date du communiqué et date actuelle", "remplacer kilomètres par mètres"] }
+    }
+  ],
+  "results": null
+}

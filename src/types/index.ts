@@ -58,6 +58,7 @@ export type ChatSendHandler = (
 ) => void | boolean | Promise<void | boolean>
 
 export interface FactCheckClaim {
+  review?: import('../../shared/factCheckEvidence').FactReview
   claim: string
   verdict: 'verified' | 'uncertain' | 'wrong'
   explanation: string
@@ -84,7 +85,7 @@ export interface FactCheckResult {
   // pas — l'UI dérive alors l'état des magic strings du modelLabel
   // (rétro-compat, voir deriveStatus dans FactCheckBadge).
   status?: 'pending' | 'success-empty' | 'success-with-claims' | 'failed' | 'partial'
-  limitations?: Array<'search_unavailable' | 'response_truncated' | 'claim_limit' | 'completion_unknown'>
+  limitations?: Array<'search_unavailable' | 'response_truncated' | 'claim_limit' | 'completion_unknown' | 'evidence_missing'>
   /** Amount submitted, not a guarantee that every character was verified. */
   coverage?: { inputChars: number; submittedChars: number; claimLimitReached: boolean }
   // Si au moins 1 claim a été corrigé, on stocke le texte original

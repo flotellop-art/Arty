@@ -4,6 +4,7 @@ import { envelopeFail as fail } from './envelopeFormat'
 import { SYNC_LIMITS } from './types'
 import { canonicalSyncJSON } from './captureContent'
 import type { SyncCaptureSelection } from './capture'
+import { isFactReview } from '../../../shared/factCheckEvidence'
 
 type Read = (input: unknown) => unknown
 const own = (v: object, k: string) => Object.prototype.hasOwnProperty.call(v, k)
@@ -78,9 +79,15 @@ function projectConversationShape(input: unknown, limits: { nodes: number; chars
   const turn = shape({ version: one(1), mode: one('search', 'overview', 'detached'), euOnly: bool, partial: bool, sources: list(100, source) },
     { projectId: id, projectRevision: integer, projectName: text })
   const fact = shape({ overallConfidence: one('high', 'medium', 'low'), modelLabel: text, checkedAt: integer,
-    claims: list(100, shape({ claim: text, verdict: one('verified', 'uncertain', 'wrong'), explanation: text }, { originalText: text, correction: text, applied: bool })) },
+    claims: list(100, shape({ claim: text, verdict: one('verified', 'uncertain', 'wrong'), explanation: text }, { originalText: text, correction: text, applied: bool,
+      review: v => {
+        const copy = shape({ target: text, status: text, model: text, sensitive: bool, contextMatches: bool, reason: text, challenge: text,
+          evidence: list(2, shape({ sourceId: text, url: text, quote: text, context: text, fetchedAt: integer, sha256: text })) }, { challengerModel: text })(v)
+        if (!isFactReview(copy)) return fail('format')
+        return copy
+      } })) },
     { status: one('pending', 'success-empty', 'success-with-claims', 'failed', 'partial'), originalContent: text, appliedCorrections: integer,
-      limitations: list(4, one('search_unavailable', 'response_truncated', 'claim_limit', 'completion_unknown')),
+      limitations: list(5, one('search_unavailable', 'response_truncated', 'claim_limit', 'completion_unknown', 'evidence_missing')),
       coverage: shape({ inputChars: integer, submittedChars: integer, claimLimitReached: bool }) })
   const attribution = shape({ model: text, provider: one('claude', 'mistral', 'gemini', 'openai') }, { invocationId: text, requestedModel: text,
     source: one('requested', 'proxy', 'provider'), reason: text, subModelReason: text, reflecting: bool, background: bool, conversationId: id, confirmed: bool })
