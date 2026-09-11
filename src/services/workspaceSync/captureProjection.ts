@@ -79,7 +79,9 @@ function projectConversationShape(input: unknown, limits: { nodes: number; chars
     { projectId: id, projectRevision: integer, projectName: text })
   const fact = shape({ overallConfidence: one('high', 'medium', 'low'), modelLabel: text, checkedAt: integer,
     claims: list(100, shape({ claim: text, verdict: one('verified', 'uncertain', 'wrong'), explanation: text }, { originalText: text, correction: text, applied: bool })) },
-    { status: one('pending', 'success-empty', 'success-with-claims', 'failed'), originalContent: text, appliedCorrections: integer })
+    { status: one('pending', 'success-empty', 'success-with-claims', 'failed', 'partial'), originalContent: text, appliedCorrections: integer,
+      limitations: list(4, one('search_unavailable', 'response_truncated', 'claim_limit', 'completion_unknown')),
+      coverage: shape({ inputChars: integer, submittedChars: integer, claimLimitReached: bool }) })
   const attribution = shape({ model: text, provider: one('claude', 'mistral', 'gemini', 'openai') }, { invocationId: text, requestedModel: text,
     source: one('requested', 'proxy', 'provider'), reason: text, subModelReason: text, reflecting: bool, background: bool, conversationId: id, confirmed: bool })
   const comparison = shape({ version: one(1), groupId: id, sourceConversationId: id, sourceMessageId: id, peerId: id, questionId: id, responseId: id,
@@ -99,6 +101,8 @@ function projectConversationShape(input: unknown, limits: { nodes: number; chars
   const messages = new Set<string>()
   if (result.outputRestriction && result.hasProjectContext !== true) return fail('format')
   for (const m of result.messages) {
+    const coverage = m.factCheck?.coverage
+    if (coverage && (coverage.submittedChars > 6000 || coverage.submittedChars > coverage.inputChars)) fail('format')
     if (m.id === 'streaming' || messages.has(m.id)) fail('format')
     messages.add(m.id)
     if (m.generatedImages !== undefined && (m.role !== 'assistant' || !m.generatedImages.every(isGeneratedImageId) || new Set(m.generatedImages).size !== m.generatedImages.length)) fail('format')

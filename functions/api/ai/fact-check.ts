@@ -86,6 +86,8 @@ interface FactCheckProviderPayload {
   content: Array<{ type: 'text'; text: string }>
   usage: FactCheckUsagePayload
   model: string
+  completion: 'complete' | 'incomplete'
+  webEvidence: boolean
 }
 
 // Prompt système du fact-checker — vit CÔTÉ SERVEUR (le client ne peut pas
@@ -342,10 +344,19 @@ export async function fetchGeminiWithRetry(
   throw lastErr instanceof Error ? lastErr : new Error('gemini fetch failed')
 }
 
+function isHttpSourceURL(value: unknown): boolean {
+  if (typeof value !== 'string') return false
+  try {
+    const url = new URL(value)
+    return (url.protocol === 'https:' || url.protocol === 'http:') && !!url.hostname
+  } catch { return false }
+}
+
 function normalizeGeminiFactCheck(
   data: {
     candidates?: Array<{
-      content?: { parts?: Array<{ text?: string }> }
+      finishReason?: string
+      content?: { parts?: Array<{ text?: string; thought?: boolean }> }
       groundingMetadata?: {
         webSearchQueries?: string[]
         groundingChunks?: unknown[]
@@ -363,7 +374,7 @@ function normalizeGeminiFactCheck(
 ): FactCheckProviderPayload | null {
   const text = (data.candidates ?? [])
     .flatMap((candidate) => candidate.content?.parts ?? [])
-    .map((part) => typeof part.text === 'string' ? part.text : '')
+    .map((part) => typeof part.text === 'string' && !part.thought ? part.text : '')
     .join('')
   if (!text) return null
 
@@ -388,6 +399,12 @@ function normalizeGeminiFactCheck(
 
   return {
     content: [{ type: 'text', text }],
+    completion: data.candidates?.length === 1 && data.candidates[0]?.finishReason === 'STOP' ? 'complete' : 'incomplete',
+    webEvidence: (data.candidates ?? []).some(c => c.groundingMetadata?.groundingChunks?.some(chunk => {
+      if (!chunk || typeof chunk !== 'object' || !('web' in chunk)) return false
+      const web = chunk.web
+      return !!web && typeof web === 'object' && 'uri' in web && isHttpSourceURL(web.uri)
+    })),
     usage: {
       input_tokens: Math.max(0, (metadata?.promptTokenCount ?? 0) - cachedTokens),
       output_tokens: (metadata?.candidatesTokenCount ?? 0) + (metadata?.thoughtsTokenCount ?? 0),
@@ -602,6 +619,8 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
           })
           return Response.json({
             content: data.content,
+            completion: data.completion,
+            webEvidence: data.webEvidence,
             usage: data.usage,
             model: data.model,
             fallback: 'provider' satisfies FallbackKind,
@@ -617,8 +636,9 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     }
 
     const data = (await res.json()) as {
+      stop_reason?: string
       model?: string
-      content?: Array<{ type?: string; text?: string }>
+      content?: Array<{ type?: string; text?: string; content?: Array<{ type?: string; url?: string }>; citations?: Array<{ type?: string; url?: string }> }>
       usage?: FactCheckUsagePayload
     }
     if (typeof data.model === 'string' && data.model) servedModel = data.model
@@ -637,6 +657,12 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     // le JSON final en plusieurs fragments.
     return Response.json({
       content: data.content ?? [],
+      completion: data.stop_reason === 'end_turn' ? 'complete' : 'incomplete',
+      webEvidence: (data.content ?? []).some(block =>
+        (block.type === 'web_search_tool_result' && Array.isArray(block.content) &&
+          block.content.some(item => item.type === 'web_search_result' && isHttpSourceURL(item.url))) ||
+        (block.type === 'text' && Array.isArray(block.citations) && block.citations.some(citation =>
+          citation.type === 'web_search_result_location' && isHttpSourceURL(citation.url)))),
       usage: data.usage ?? {},
       model: servedModel,
       ...(fallback ? { fallback } : {}),

@@ -188,4 +188,41 @@ describe('endpoint fact-check, secours fournisseur Gemini', () => {
     expect(result).toEqual({ payload: null, status: 401 })
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
+
+  it.each(['STOP', 'MAX_TOKENS', 'SAFETY', undefined])('atteste la fin Gemini uniquement pour STOP (%s)', async finishReason => {
+    fetchMock.mockResolvedValue(Response.json({ candidates: [{ finishReason, content: {
+      parts: [{ text: '{"overall_confidence":"high","claims":[]}' }],
+    }, groundingMetadata: { webSearchQueries: ['une requête sans résultat'] } }] }))
+    const result = await requestGeminiFactCheck('test-key', 'Question', 3000, true, 10000)
+    expect(result.payload).toMatchObject({ completion: finishReason === 'STOP' ? 'complete' : 'incomplete', webEvidence: false })
+  })
+
+  it.each(['end_turn', 'max_tokens', 'pause_turn', undefined])('atteste la fin Anthropic uniquement pour end_turn (%s)', async stopReason => {
+    fetchMock.mockResolvedValue(Response.json({ stop_reason: stopReason, content: [
+      { type: 'web_search_tool_result', content: { type: 'web_search_tool_result_error', error_code: 'too_many_requests' } },
+      { type: 'text', text: '{"overall_confidence":"high","claims":[]}' },
+    ], usage: { input_tokens: 12, output_tokens: 5 } }))
+    const response = await onRequestPost({ request: new Request('https://tryarty.com/api/ai/fact-check', {
+      method: 'POST', body: JSON.stringify({ tier: 'sonnet', question: 'Question', response: 'Une réponse à vérifier. '.repeat(5) }),
+    }), env: { ANTHROPIC_API_KEY: 'test-key' } } as never)
+    expect(await response.json()).toMatchObject({ completion: stopReason === 'end_turn' ? 'complete' : 'incomplete', webEvidence: false })
+    expect(recordUsageMock).toHaveBeenCalledWith(expect.anything(), 'owner@example.test', expect.any(String), expect.objectContaining({ inputTokens: 12, outputTokens: 5 }))
+  })
+  it.each([{}, { web: { uri: 'https://' } }, { web: { uri: 'https://example.test/source' } }])('requires a usable structured Gemini web source: %j', async chunk => {
+    fetchMock.mockResolvedValue(Response.json({ candidates: [{ finishReason: 'STOP', content: {
+      parts: [{ thought: true, text: 'Interne: {}' }, { text: '{"overall_confidence":"high","claims":[]}' }],
+    }, groundingMetadata: { groundingChunks: [chunk] } }] }))
+    const result = await requestGeminiFactCheck('test-key', 'Question', 3000, true, 10000)
+    expect(result.payload?.webEvidence).toBe('web' in chunk && chunk.web.uri === 'https://example.test/source')
+    expect(result.payload?.content[0]?.text).toBe('{"overall_confidence":"high","claims":[]}')
+  })
+  it.each(['web_search_result_location', 'char_location'])('accepts only web citations when raw Anthropic results are excluded: %s', async citationType => {
+    fetchMock.mockResolvedValue(Response.json({ stop_reason: 'end_turn', content: [{ type: 'text',
+      text: '{"overall_confidence":"high","claims":[]}', citations: [{ type: citationType, url: 'https://example.test/source' }],
+    }] }))
+    const response = await onRequestPost({ request: new Request('https://tryarty.com/api/ai/fact-check', {
+      method: 'POST', body: JSON.stringify({ tier: 'sonnet', response: 'Une réponse à vérifier. '.repeat(5) }),
+    }), env: { ANTHROPIC_API_KEY: 'test-key' } } as never)
+    expect(await response.json()).toMatchObject({ completion: 'complete', webEvidence: citationType === 'web_search_result_location' })
+  })
 })

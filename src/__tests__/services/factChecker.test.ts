@@ -11,15 +11,15 @@ function wrongClaim(originalText: string, correction: string): FactCheckClaim {
 }
 
 describe('applyClaimCorrections — match exact (comportement historique)', () => {
-  it('remplace toutes les occurrences exactes et pose applied=true', () => {
+  it('laisse intact un passage répété et pose applied=false', () => {
     const c = wrongClaim('Opus 4.7', 'Opus 4.8')
     const { correctedContent, appliedCount } = applyClaimCorrections(
       'Titre : Opus 4.7. Le corps parle aussi de Opus 4.7.',
       [c]
     )
-    expect(correctedContent).toBe('Titre : Opus 4.8. Le corps parle aussi de Opus 4.8.')
-    expect(appliedCount).toBe(1)
-    expect(c.applied).toBe(true)
+    expect(correctedContent).toBe('Titre : Opus 4.7. Le corps parle aussi de Opus 4.7.')
+    expect(appliedCount).toBe(0)
+    expect(c.applied).toBe(false)
   })
 
   it('passage introuvable → contenu intact, applied=false', () => {

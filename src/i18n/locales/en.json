@@ -813,6 +813,13 @@
       "auto": "Auto"
     },
     "factCheck": {
+      "partial": "Partial verification",
+      "reviewedBy": "Reviewed by {{model}}",
+      "partialDetail": "This check cannot confirm the entire response. Proposed corrections were not applied automatically.",
+      "searchUnavailable": "Verification against sources could not be completed.",
+      "completionUnknown": "Completion of this check could not be confirmed.",
+      "limitedText": "Only the first {{submitted}} of {{total}} characters were sent to the verifier. The rest was not checked.",
+      "claimLimit": "The limit of 10 displayed points has been reached. This result does not guarantee exhaustive verification.",
       "pending": "Checking…",
       "pendingDetail": "The answer is being fact-checked — the result will show up here.",
       "unavailable": "Fact-check unavailable",
@@ -831,7 +838,8 @@
       "toVerifyMany": "{{count}} points to verify",
       "toVerifySuffix": "{{count}} to verify",
       "correctValue": "correct value:",
-      "notAppliedHint": "The response could not be corrected automatically — the quoted passage no longer appears verbatim. Rely on the value above."
+      "proposedValue": "proposal to verify:",
+      "notAppliedHint": "This proposal was not applied automatically. Check it before editing the response."
     },
     "messageList": {
       "branch": "Branch from this message",

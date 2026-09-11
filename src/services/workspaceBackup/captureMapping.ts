@@ -42,8 +42,9 @@ export function mapCapturedConversation(source: Conversation): BackupConversatio
   })
   const sourceRef: Mapper = v => shape(v, ['projectId', 'projectRevision', 'documentId', 'documentRevision', 'sourceHash', 'extractorVersion', 'name', 'format', 'startLine', 'endLine', 'partial'])
   const turn: Mapper = v => shape(v, ['version', 'mode', 'euOnly', 'partial', 'sources'], ['projectId', 'projectRevision', 'projectName'], { sources: list(100, sourceRef) })
-  const fact: Mapper = v => shape(v, ['overallConfidence', 'claims', 'modelLabel', 'checkedAt'], ['status', 'originalContent', 'appliedCorrections'], {
+  const fact: Mapper = v => shape(v, ['overallConfidence', 'claims', 'modelLabel', 'checkedAt'], ['status', 'originalContent', 'appliedCorrections', 'limitations', 'coverage'], {
     claims: list(100, c => shape(c, ['claim', 'verdict', 'explanation'], ['originalText', 'correction', 'applied'])),
+    limitations: list(4), coverage: c => shape(c, ['inputChars', 'submittedChars', 'claimLimitReached']),
   })
   const file: Mapper = v => {
     const ref = shape(v, ['id'], ['visionCrop'], { visionCrop: crop })

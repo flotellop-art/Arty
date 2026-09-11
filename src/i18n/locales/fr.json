@@ -813,6 +813,13 @@
       "auto": "Auto"
     },
     "factCheck": {
+      "partial": "Vérification partielle",
+      "reviewedBy": "Relu par {{model}}",
+      "partialDetail": "Ce contrôle ne permet pas de confirmer toute la réponse. Les corrections proposées n’ont pas été appliquées automatiquement.",
+      "searchUnavailable": "La vérification par des sources n’a pas pu être menée à terme.",
+      "completionUnknown": "La fin du contrôle n’a pas pu être confirmée.",
+      "limitedText": "Seuls les {{submitted}} premiers caractères sur {{total}} ont été transmis au vérificateur. La suite n’a pas été contrôlée.",
+      "claimLimit": "La limite de 10 points affichés est atteinte. Ce résultat ne garantit pas une vérification exhaustive.",
       "pending": "Vérification…",
       "pendingDetail": "La réponse est en cours de vérification factuelle — le résultat s'affichera ici.",
       "unavailable": "Fact-check indisponible",
@@ -831,7 +838,8 @@
       "toVerifyMany": "{{count}} points à vérifier",
       "toVerifySuffix": "{{count}} à vérifier",
       "correctValue": "valeur correcte :",
-      "notAppliedHint": "La réponse n'a pas pu être corrigée automatiquement — le passage cité n'y figure pas tel quel. Tiens compte de la valeur ci-dessus."
+      "proposedValue": "proposition à vérifier :",
+      "notAppliedHint": "Cette proposition n’a pas été appliquée automatiquement. Vérifie-la avant de modifier la réponse."
     },
     "messageList": {
       "branch": "Créer une branche depuis ce message",

@@ -23,6 +23,9 @@ import { recordUsage } from './costTracker'
 import type { FactCheckResult, FactCheckClaim, Message } from '../types'
 import { getMessageTextForModel } from './quickActions'
 import { isDocumentConversation } from './projects/chatPolicy'
+import { unified } from 'unified'
+import remarkParse from 'remark-parse'
+import remarkGfm from 'remark-gfm'
 
 export type Verdict = FactCheckClaim['verdict']
 export type { FactCheckResult, FactCheckClaim }
@@ -1041,8 +1044,14 @@ export function extractJsonObject(text: string): string | null {
  * générique "indisponible". Permet le diagnostic en prod sans logs.
  */
 export type FactCheckOutcome =
-  | { result: FactCheckResult }
+  | { result: FactCheckResult; deepCheckAttempted?: boolean }
   | { result: null; reason: string }
+
+function partialCheck(outcome: FactCheckOutcome, reason: NonNullable<FactCheckResult['limitations']>[number]): FactCheckOutcome {
+  if (!outcome.result) return outcome
+  return { ...outcome, result: { ...outcome.result, status: 'partial',
+    limitations: [...new Set([...(outcome.result.limitations ?? []), reason])] } }
+}
 
 export async function factCheckResponse(
   question: string,
@@ -1064,25 +1073,25 @@ export async function factCheckResponse(
 
   // Modes explicites (settings) : un seul palier, pas d'escalade.
   if (mode === 'haiku' || mode === 'sonnet') {
-    return done(await runCheckTier(mode, question, response, sourcesBlock))
+    return done(await runCheckTier(mode, question, response, sourcesBlock, hasFreshSources))
   }
 
   // Mode 'auto' (D5) : Haiku d'abord, Sonnet+web_search seulement si la
   // passe rapide remonte au moins un claim risqué.
-  const first = await runCheckTier('haiku', question, response, sourcesBlock)
+  const first = await runCheckTier('haiku', question, response, sourcesBlock, hasFreshSources)
   if (!first.result) return first
   // Le fallback serveur a déjà exécuté Sonnet : ne pas payer puis attendre
   // une seconde passe Sonnet dans la même vérification logique.
-  if (first.result.modelLabel.startsWith('Sonnet 5')) return done(first)
+  if (first.deepCheckAttempted) return done(first)
   if (!shouldEscalateToSonnet(first.result, hasFreshSources)) return done(first)
   // Palier Sonnet du jour déjà épuisé → le résultat Haiku est final (le
   // palier Haiku, lui, reste disponible pour les prochains messages).
-  if (quotaExhaustedDayByTier.sonnet === today()) return done(first)
+  if (quotaExhaustedDayByTier.sonnet === today()) return done(partialCheck(first, 'search_unavailable'))
 
-  const escalated = await runCheckTier('sonnet', question, response, sourcesBlock)
+  const escalated = await runCheckTier('sonnet', question, response, sourcesBlock, hasFreshSources)
   // Si l'escalade échoue (timeout, plafond Sonnet du jour…), le résultat
   // Haiku reste plus utile qu'un badge d'échec.
-  return done(escalated.result ? escalated : first)
+  return done(escalated.result ? escalated : partialCheck(first, 'search_unavailable'))
 }
 
 // Timeouts client GÉNÉREUX depuis que la vérif est asynchrone (publication
@@ -1166,7 +1175,8 @@ async function runCheckTier(
   tier: 'haiku' | 'sonnet',
   question: string,
   response: string,
-  sourcesBlock: string
+  sourcesBlock: string,
+  hasFreshSources: boolean,
 ): Promise<FactCheckOutcome> {
   const info = TIER_INFO[tier]
 
@@ -1226,15 +1236,21 @@ async function runCheckTier(
   let text = ''
   let servedModel: string = info.model
   let fallback: 'model' | 'without_web_search' | 'provider' | undefined
+  let completion: 'complete' | 'incomplete' | undefined
+  let webEvidence = false
   try {
     const data = (await res.json()) as {
       content?: Array<{ type?: string; text?: string }>
       model?: string
       fallback?: 'model' | 'without_web_search' | 'provider'
+      completion?: 'complete' | 'incomplete'
+      webEvidence?: boolean
       usage?: { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number }
     }
     servedModel = typeof data.model === 'string' && data.model ? data.model : info.model
     fallback = data.fallback
+    completion = data.completion
+    webEvidence = data.webEvidence === true
     // Une citation web peut couper le JSON final en plusieurs blocs `text`.
     // Les concaténer préserve l'objet complet ; extractJsonObject ignore la
     // prose éventuelle produite avant les recherches.
@@ -1259,12 +1275,17 @@ async function runCheckTier(
     console.warn('[factChecker] no text in response')
     return { result: null, reason: 'réponse vide' }
   }
+  if (completion === 'incomplete') return { result: null, reason: 'vérification interrompue par le fournisseur' }
 
   // Le LLM peut wrapper le JSON dans des backticks ou ajouter du texte.
   // Extraction à accolades équilibrées (l'ancien regex greedy /\{[\s\S]*\}/
   // capturait jusqu'à la DERNIÈRE accolade du texte — du commentaire après
   // le JSON suffisait à produire un « JSON malformé »).
-  const candidate = extractJsonObject(text)
+  const payloadText = text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '')
+  // An array containing an otherwise valid result is still the wrong schema.
+  // Never extract its first nested object and report that object as a success.
+  const firstContainer = payloadText.search(/[\[{]/)
+  const candidate = payloadText[firstContainer] === '[' ? payloadText : extractJsonObject(payloadText)
   if (!candidate) {
     console.warn('[factChecker] no JSON found in response text:', text.slice(0, 200))
     return { result: null, reason: 'pas de JSON dans la réponse LLM' }
@@ -1272,17 +1293,30 @@ async function runCheckTier(
 
   let parsed: { overall_confidence?: unknown; claims?: unknown }
   try {
-    parsed = JSON.parse(candidate)
+    try { parsed = JSON.parse(payloadText) }
+    catch { parsed = JSON.parse(candidate) }
   } catch (err) {
     console.warn('[factChecker] JSON.parse failed:', err, 'raw:', candidate.slice(0, 200))
     return { result: null, reason: 'JSON malformé' }
   }
 
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed) || !Array.isArray(parsed.claims) ||
+    !['high', 'medium', 'low'].includes(parsed.overall_confidence as string) ||
+    parsed.claims.some(c => !c || typeof c !== 'object' || Array.isArray(c) ||
+      typeof c.claim !== 'string' || !c.claim.trim() || typeof c.explanation !== 'string' ||
+      !['verified', 'uncertain', 'wrong'].includes(c.verdict) ||
+      (c.originalText !== undefined && (typeof c.originalText !== 'string' || !c.originalText.trim())) ||
+      (c.correction !== undefined && (typeof c.correction !== 'string' || !c.correction.trim())))) {
+    return { result: null, reason: 'format de vérification invalide' }
+  }
   const overall = parsed.overall_confidence
+  if (overall !== 'high' && parsed.claims.every(c => c.verdict === 'verified')) {
+    return { result: null, reason: 'confiance et conclusions de vérification incohérentes' }
+  }
   const overallConfidence: FactCheckResult['overallConfidence'] =
     overall === 'high' || overall === 'medium' || overall === 'low' ? overall : 'medium'
 
-  const rawClaims = Array.isArray(parsed.claims) ? parsed.claims : []
+  const rawClaims = parsed.claims
   const claims: FactCheckClaim[] = rawClaims
     .filter((c): c is Record<string, unknown> => typeof c === 'object' && c !== null)
     .map((c) => {
@@ -1290,9 +1324,9 @@ async function runCheckTier(
         ? c.verdict
         : 'uncertain'
       const claim: FactCheckClaim = {
-        claim: String(c.claim || '').slice(0, 500),
+        claim: (c.claim as string).trim().slice(0, 500),
         verdict: verdict as Verdict,
-        explanation: String(c.explanation || '').slice(0, 500),
+        explanation: (c.explanation as string).slice(0, 500),
       }
       // Correction proposée — uniquement pour 'wrong' avec originalText et
       // correction présents. Le fact-checker doit fournir le passage
@@ -1310,7 +1344,13 @@ async function runCheckTier(
     .filter((c) => c.claim.length > 0)
     .slice(0, 10) // cap à 10 claims max pour éviter une explosion UI
 
+  const limitations: NonNullable<FactCheckResult['limitations']> = []
+  if (response.length > 6000) limitations.push('response_truncated')
+  if (rawClaims.length >= 10) limitations.push('claim_limit')
+  if (completion !== 'complete') limitations.push('completion_unknown')
+  if (!webEvidence && (tier === 'sonnet' || fallback !== undefined || (!hasFreshSources && claims.length > 0))) limitations.push('search_unavailable')
   return {
+    deepCheckAttempted: fallback === 'model' || tier === 'sonnet',
     result: {
       overallConfidence,
       claims,
@@ -1324,7 +1364,9 @@ async function runCheckTier(
       checkedAt: Date.now(),
       // BUG 59 — status structuré : succès "vide" = aucun claim risqué
       // (wrong/uncertain), succès "avec claims" = au moins un à signaler.
-      status: claims.some((c) => c.verdict !== 'verified')
+      limitations,
+      coverage: { inputChars: response.length, submittedChars: Math.min(response.length, 6000), claimLimitReached: rawClaims.length >= 10 },
+      status: limitations.length ? 'partial' : claims.some((c) => c.verdict !== 'verified')
         ? 'success-with-claims'
         : 'success-empty',
     },
@@ -1338,14 +1380,10 @@ async function runCheckTier(
 // qui ratait silencieusement dès que le fact-checker citait le passage sans
 // son markdown (**gras**), avec une apostrophe droite là où la réponse en a
 // une courbe, un espace insécable, un tiret différent… et le badge affichait
-// quand même « barré → corrigé ». Stratégie :
-//   1) match exact → remplace TOUTES les occurrences (comportement
-//      historique, équivalent replaceAll absent de la cible ES2020) ;
-//   2) sinon match TOLÉRANT sur une version normalisée (markdown */_ ignoré,
-//      apostrophes/tirets/degrés/espaces unifiés, casse pliée) avec table
-//      d'index pour remplacer le passage RÉEL dans le texte original.
-//      Garde-fous anti sur-remplacement : passage ≥ 10 chars et exactement
-//      1 occurrence normalisée, sinon abandon.
+// quand même « barré → corrigé ». Une occurrence normalisée unique est
+// exigée, même en présence d'un match exact. Les passages doivent appartenir
+// au texte, sans toucher au code, aux liens ni aux délimiteurs Markdown.
+// Toutes les corrections ciblent l'original et les chevauchements sont refusés.
 // Chaque claim reçoit `applied` pour que le badge dise la vérité (un claim
 // peut matcher pendant qu'un autre rate dans le même message).
 
@@ -1372,8 +1410,11 @@ function normalizeForMatch(text: string): NormalizedText {
     } else {
       lastWasSpace = false
     }
-    norm.push(ch.toLowerCase())
-    map.push(i)
+    const lowered = ch.toLowerCase()
+    norm.push(lowered)
+    // Some letters (İ) expand on case folding: retain an offset for every
+    // UTF-16 unit, otherwise all subsequent replacement spans shift.
+    for (let unit = 0; unit < lowered.length; unit++) map.push(i)
   }
   return { norm: norm.join(''), map }
 }
@@ -1384,36 +1425,64 @@ export function applyClaimCorrections(
   content: string,
   claims: FactCheckClaim[],
 ): { correctedContent: string; appliedCount: number } {
-  let corrected = content
-  let appliedCount = 0
+  // Only replace a span inside one prose text node. Links, code, HTML and
+  // Markdown delimiters are never edited, even if the model asks for it.
+  type Node = { type: string; position?: { start: { offset?: number }; end: { offset?: number } }; children?: Node[] }
+  const prose: Array<{ start: number; end: number }> = []
+  const visit = (node: Node) => {
+    if (['link', 'linkReference', 'image', 'imageReference', 'definition', 'code', 'inlineCode', 'html'].includes(node.type)) return
+    if (node.type === 'text' && node.position?.start.offset !== undefined && node.position.end.offset !== undefined)
+      prose.push({ start: node.position.start.offset, end: node.position.end.offset })
+    node.children?.forEach(visit)
+  }
+  const parser = unified().use(remarkParse).use(remarkGfm)
+  const originalTree = parser.parse(content) as Node
+  const structure = (node: Node): string => `${node.type}[${node.children?.map(structure).join(',') ?? ''}]`
+  visit(originalTree)
+  const urls = [...content.matchAll(/(?:https?:\/\/|www\.)[^\s<>]+/gi)].map(m => ({ start: m.index!, end: m.index! + m[0].length }))
+  const { norm, map } = normalizeForMatch(content)
+  const edits: Array<{ start: number; end: number; claim: FactCheckClaim }> = []
   for (const c of claims) {
     if (c.verdict !== 'wrong' || !c.originalText || !c.correction) continue
     c.applied = false
 
-    if (corrected.includes(c.originalText)) {
-      corrected = corrected.split(c.originalText).join(c.correction)
-      c.applied = true
-      appliedCount++
-      continue
-    }
-
     if (c.originalText.length < MIN_FUZZY_MATCH_LENGTH) continue
-    const { norm, map } = normalizeForMatch(corrected)
     const target = normalizeForMatch(c.originalText).norm
-    if (target.length === 0) continue
+    if (target.trim().length < MIN_FUZZY_MATCH_LENGTH || /[\r\n]/.test(c.correction)) continue
     const first = norm.indexOf(target)
     if (first === -1 || norm.indexOf(target, first + 1) !== -1) continue
     const start = map[first]
     const last = map[first + target.length - 1]
     if (start === undefined || last === undefined) continue
-    // Le span original couvre aussi les caractères ignorés intérieurs
-    // (**, espaces doublés). Les ** encadrants restent en place : remplacer
-    // l'intérieur d'un **…** conserve le gras, balancé.
-    corrected = corrected.slice(0, start) + c.correction + corrected.slice(last + 1)
-    c.applied = true
-    appliedCount++
+    const end = last + 1
+    const word = (s: string) => /[\p{L}\p{N}\p{M}]/u.test(s)
+    const firstChar = content.slice(start, end).match(/^./u)?.[0] ?? ''
+    const lastChar = content.slice(start, end).match(/.$/u)?.[0] ?? ''
+    const before = content.slice(0, start).match(/.$/u)?.[0] ?? ''
+    const after = content.slice(end).match(/^./u)?.[0] ?? ''
+    if ((word(firstChar) && word(before)) || (word(lastChar) && word(after))) continue
+    if (!prose.some(p => start >= p.start && end <= p.end) || urls.some(u => start < u.end && end > u.start)) continue
+    edits.push({ start, end, claim: c })
   }
-  return { correctedContent: corrected, appliedCount }
+  const safe = edits.filter(e => !edits.some(other => other !== e && e.start < other.end && e.end > other.start))
+  let corrected = content
+  for (const e of safe.sort((a, b) => b.start - a.start)) {
+    let replacement = e.claim.correction!.replace(/[\\`*_[\]<>#+|~&]/g, '\\$&')
+    // A plain paragraph must not turn into a list or a horizontal rule.
+    if (/^\s*$/.test(content.slice(content.lastIndexOf('\n', e.start - 1) + 1, e.start))) {
+      replacement = replacement.replace(/^(\s*)(-+)/, '$1\\$2')
+        .replace(/^(\s*\d+)([.)])(?=\s)/, '$1\\$2')
+    }
+    corrected = corrected.slice(0, e.start) + replacement + corrected.slice(e.end)
+  }
+  // Context matters: a replacement inside a quote can introduce a list,
+  // and '=' on the next line can turn a paragraph into a Setext heading.
+  // Keep such proposals visible without rewriting the response structure.
+  if (structure(parser.parse(corrected) as Node) !== structure(originalTree)) {
+    return { correctedContent: content, appliedCount: 0 }
+  }
+  for (const e of safe) e.claim.applied = true
+  return { correctedContent: corrected, appliedCount: safe.length }
 }
 
 // Remplacement IMMUTABLE d'un message (pattern H1/togglePinMessage) : muter
@@ -1649,7 +1718,11 @@ export async function runFactCheckOnLatest(
   // Applique les corrections (matching exact + tolérant, flags
   // claim.applied). On garde l'original dans factCheck.originalContent
   // pour le diff du dropdown.
-  const { correctedContent, appliedCount } = applyClaimCorrections(prepared.content, result.claims)
+  for (const claim of result.claims) if (claim.verdict === 'wrong') claim.applied = false
+  const { correctedContent, appliedCount } = result.status === 'partial'
+    ? { correctedContent: prepared.content, appliedCount: 0 }
+    : applyClaimCorrections(prepared.content, result.claims)
+  result.appliedCorrections = appliedCount
   if (appliedCount > 0) {
     result.originalContent = originalContent
     result.appliedCorrections = appliedCount

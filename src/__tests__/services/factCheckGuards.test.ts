@@ -121,6 +121,8 @@ describe('runFactCheckOnLatest — gardes', () => {
       new Response(
         JSON.stringify({
           content: [{ type: 'text', text: llmJson }],
+          completion: 'complete',
+          webEvidence: true,
           usage: { input_tokens: 100, output_tokens: 50 },
         }),
         { status: 200 }
@@ -145,6 +147,23 @@ describe('runFactCheckOnLatest — gardes', () => {
     expect(after.messages).not.toBe(originalMessages)
     expect(target).not.toBe(originalAssistant)
     expect(refresh).toHaveBeenCalled()
+  })
+
+  it('vérification partielle → proposition conservée sans modifier la réponse', async () => {
+    const conv = makeConv()
+    convStore.set(conv.id, conv)
+    const original = conv.messages[1]!.content
+    fetchMock.mockResolvedValue(Response.json({
+      completion: 'complete', webEvidence: false,
+      content: [{ type: 'text', text: JSON.stringify({ overall_confidence: 'low', claims: [{
+        claim: 'La hauteur', verdict: 'wrong', explanation: 'Une proposition à vérifier',
+        originalText: 'mesure 350 mètres', correction: 'mesure 330 mètres',
+      }] }) }],
+    }))
+    await runFactCheckOnLatest('conv-1', () => {})
+    const target = convStore.get('conv-1')!.messages[1]!
+    expect(target.content).toBe(original)
+    expect(target.factCheck).toMatchObject({ status: 'partial', appliedCorrections: 0, claims: [{ applied: false }] })
   })
 
   it('échec réseau → badge failed posé en immuable, contenu préservé', async () => {

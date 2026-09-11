@@ -83,7 +83,10 @@ export interface FactCheckResult {
   // Optionnel : les résultats persistés avant l'ajout de ce champ n'en ont
   // pas — l'UI dérive alors l'état des magic strings du modelLabel
   // (rétro-compat, voir deriveStatus dans FactCheckBadge).
-  status?: 'pending' | 'success-empty' | 'success-with-claims' | 'failed'
+  status?: 'pending' | 'success-empty' | 'success-with-claims' | 'failed' | 'partial'
+  limitations?: Array<'search_unavailable' | 'response_truncated' | 'claim_limit' | 'completion_unknown'>
+  /** Amount submitted, not a guarantee that every character was verified. */
+  coverage?: { inputChars: number; submittedChars: number; claimLimitReached: boolean }
   // Si au moins 1 claim a été corrigé, on stocke le texte original
   // ici pour permettre à l'UI d'afficher le diff dans le dropdown.
   // La réponse affichée (Message.content) est déjà le texte corrigé.
