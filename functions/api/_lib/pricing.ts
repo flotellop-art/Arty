@@ -4,6 +4,7 @@
 // officielles restent Anthropic Console / OpenAI Platform / Mistral / Google AI.
 //
 // Mettre à jour quand les providers changent leurs tarifs.
+import { gemini38Pricing } from '../../../src/services/gemini38Pricing'
 
 export interface ModelPricing {
   /** USD per 1M input tokens. */
@@ -137,6 +138,7 @@ const PRICING: Record<string, ModelPricing> = {
   // GA 21/07/2026 — nouveau modèle rapide recommandé par Google pour remplacer
   // 2.5 Flash. Déployé d'abord sur la recherche one-shot, chat inchangé.
   'gemini-3.6-flash': { input: 1.5, output: 7.5, cacheRead: 0.15, groundingPerQuery: 14 / 1000 },
+  get 'gemini-3.8-flash'() { return gemini38Pricing() },
   // GA 21/07/2026 — exposé au comparateur uniquement pendant la phase d'A/B.
   'gemini-3.5-flash-lite': { input: 0.3, output: 2.5, cacheRead: 0.03, groundingPerQuery: 14 / 1000 },
   // ⚠️ MORTES — voir commentaire ci-dessus : alias de coûts historiques

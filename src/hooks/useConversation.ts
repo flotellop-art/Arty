@@ -11,6 +11,8 @@ import { canExecuteRoute, resolveRoute } from '../services/router/resolveRoute'
 import { classifyRouteAttachments, gatherRouteInput } from '../services/router/gatherRouteInput'
 import { notifyRouteOverrides } from '../services/router/notifyRouteOverrides'
 import { fetchPdfMarkdowns, fetchUrlMarkdowns } from '../services/pdfUrlFetch'
+import { extractTikTokUrls, validTikTokAnalysis } from '../services/tiktokVideoTypes'
+import { prepareTikTokTurn, videoAnalysisContext, withTikTokAnalyses } from '../services/tiktokVideoClient'
 import * as storage from '../services/storage'
 import { maybeExtractMemory } from '../services/autoMemory'
 import { bootstrapLocalMemory } from '../services/localMemoryService'
@@ -461,7 +463,7 @@ export function useConversation(options?: { onNavigate?: (id: string) => void })
             if (getInvocationId(targetId) === documentInvocation) discardStream(targetId)
             officeController!.abort()
           })
-          preparedOfficeMessages = await prepareOfficeMessages(requestMessages, documentContext)
+          preparedOfficeMessages = withTikTokAnalyses(await prepareOfficeMessages(requestMessages, documentContext))
           documentContext!.assertCurrent()
           if (projectRequest) {
             conv.euOnly = isProjectEU(conv)
@@ -747,6 +749,8 @@ export function useConversation(options?: { onNavigate?: (id: string) => void })
       }
 
       const userMessage: Message = {
+        ...(validTikTokAnalysis(options?.videoAnalysis) && extractTikTokUrls(text).length === 1
+          && extractTikTokUrls(text)[0] === options.videoAnalysis.url ? { videoAnalysis: options.videoAnalysis } : {}),
         id: generateId(),
         role: 'user',
         content: synthesis?.question ?? text,
@@ -1084,6 +1088,32 @@ export function useConversation(options?: { onNavigate?: (id: string) => void })
       // le chemin de données euOnly (recherche web Mistral via /api/search/web)
       // et hébergé en EU → compatible avec la promesse "données EU".
       let outgoingText = modelText
+      if (extractTikTokUrls(text).length > 0) {
+        // Stop must cancel preparation, not merely hide a later response.
+        setAbortController(targetId, toolController)
+        setProgressContent(i18n.t('video.reading'), targetId)
+        const analysis = await prepareTikTokTurn({ text, messages: conv.messages,
+          euOnly: !!conv.euOnly, available: routeInput.availability.gemini,
+          documentRestricted: officeRequest || projectRequest,
+          signal: toolController.signal, assertCurrent: assertInvocationCurrent })
+        assertInvocationCurrent()
+        if (analysis) {
+          const latest = storage.getConversation(targetId)
+          const source = latest?.messages.find(m => m.id === userMessage.id && m.role === 'user')
+          if (!latest || !source || source.content !== userMessage.content) throw new DOMException('Request cancelled', 'AbortError')
+          source.videoAnalysis = analysis
+          if (!latest.usedModels?.includes('gemini')) latest.usedModels = [...(latest.usedModels ?? []), 'gemini']
+          storage.saveConversation(latest)
+          conv.messages = latest.messages
+          refreshConversations()
+          assertInvocationCurrent()
+          outgoingText = `${outgoingText}\n\n${videoAnalysisContext(analysis)}`
+        }
+        resetAccumulated(targetId)
+        setProgressContent('', targetId)
+      }
+      // Reuse saved observations on follow-ups; never re-download old links.
+      const chatMessages = withTikTokAnalyses(conv.messages)
       if (provider !== 'hybrid' && !officeRequest) {
         const pdfUrls = extractPdfUrls(text)
         if (pdfUrls.length > 0) {
@@ -1131,16 +1161,16 @@ export function useConversation(options?: { onNavigate?: (id: string) => void })
         setProgressContent('🔍 Recherche en cours (Gemini)...', targetId)
         Promise.all([
           geminiResearch(modelText, undefined, getReflectionLevel(), targetId, assertInvocationCurrent),
-          buildApiMessages(conv.messages),
+          buildApiMessages(chatMessages),
         ]).then(([research, enrichedMessages]) => {
           // Si l'utilisateur a cliqué Stop PENDANT la recherche Gemini,
           // stopStreaming() a déjà nettoyé le stream. Sans ce garde, le .then
           // démarrerait quand même une génération Claude "zombie" après le Stop.
           if (!invocationStillCurrent()) return
-          if (research) {
+          if (research || outgoingText !== modelText) {
             enrichedMessages[enrichedMessages.length - 1] = {
               role: 'user',
-              content: `${modelText}\n\n--- RECHERCHE WEB (données Gemini, à jour) ---\n${research}\n--- FIN RECHERCHE ---\n\nUtilise ces données pour ton rapport. Cite les sources trouvées.`,
+              content: research ? `${outgoingText}\n\n--- RECHERCHE WEB (données Gemini, à jour) ---\n${research}\n--- FIN RECHERCHE ---\n\nUtilise ces données pour ton rapport. Cite les sources trouvées.` : outgoingText,
             }
           }
           resetAccumulated(targetId)
@@ -1167,12 +1197,13 @@ export function useConversation(options?: { onNavigate?: (id: string) => void })
       } else if (provider === 'gemini') {
         // Gemini text-only pour l'instant — le multimodal Gemini sera dans
         // une PR future (formats parts/inlineData différents de Claude).
-        const apiMessages = await buildTextOnlyMessages(conv.messages)
+        const apiMessages = await buildTextOnlyMessages(chatMessages)
         assertInvocationCurrent()
         if (outgoingText !== modelText) {
           apiMessages[apiMessages.length - 1] = { role: 'user', content: outgoingText }
         }
         controller = streamGeminiMessage(apiMessages, onToken, onDone, onErr, {
+          videoSourceText: modelText,
           assertRequestCurrent: assertInvocationCurrent,
           systemPrompt: invocationSystemPrompt,
           reflectionLevel: getReflectionLevel(),
@@ -1185,7 +1216,7 @@ export function useConversation(options?: { onNavigate?: (id: string) => void })
         // multimodal pour passer les images en image_url. Indispensable pour
         // que les conversations euOnly puissent analyser des images sans
         // sortir d'EU vers Claude/Gemini.
-        const apiMessages = preparedProject?.mistralMessages ?? await buildMistralMessages(preparedOfficeMessages ?? conv.messages, documentContext)
+        const apiMessages = preparedProject?.mistralMessages ?? await buildMistralMessages(preparedOfficeMessages ?? chatMessages, documentContext)
         assertInvocationCurrent()
         // Pour le message courant, on ré-injecte les fichiers depuis la RAM
         // (pendingFilesRef) : ça bypass l'IndexedDB roundtrip et garantit
@@ -1220,7 +1251,7 @@ export function useConversation(options?: { onNavigate?: (id: string) => void })
         // serveur (/api/ai/openai-proxy) qui utilise env.OPENAI_API_KEY.
         const openaiKey = getOpenAIKey()
         const openaiRoute = await buildOpenAIRouteMessages({
-          history: conv.messages,
+          history: chatMessages,
           routeDecision,
           currentFiles,
           outgoingText,
@@ -1264,7 +1295,7 @@ export function useConversation(options?: { onNavigate?: (id: string) => void })
         // et PDFs des tours précédents (rechargés depuis IndexedDB via
         // buildApiMessages/hydrateFiles). Plus de bug de fichier oublié au
         // tour suivant.
-        const apiMessages = preparedProject?.claudeMessages ?? await buildApiMessages(preparedOfficeMessages ?? conv.messages, documentContext)
+        const apiMessages = preparedProject?.claudeMessages ?? await buildApiMessages(preparedOfficeMessages ?? chatMessages, documentContext)
         assertInvocationCurrent()
         if (!officeRequest && currentFiles && currentFiles.length > 0) {
           apiMessages[apiMessages.length - 1] = { role: 'user', content: await buildContentBlocks(outgoingText, currentFiles) }
@@ -1476,7 +1507,7 @@ export function useConversation(options?: { onNavigate?: (id: string) => void })
       toast(i18n.t(protectsComparison ? 'compare.context.retryBranch' : 'image.galleryRetryBranch'))
       selectConversation(id)
       navigationRef.current?.(id)
-      void sendMessage(content, id, user.files, { replaceMessageId: user.id, quickAction: user.quickAction,
+      void sendMessage(content, id, user.files, { replaceMessageId: user.id, quickAction: user.quickAction, videoAnalysis: user.videoAnalysis,
         ...(relocate ? { relocateVisionCrop: true } : {}) })
     } catch { setError(i18n.t('image.errorFailed')) }
     return true
@@ -1513,7 +1544,7 @@ export function useConversation(options?: { onNavigate?: (id: string) => void })
         userMsg.content,
         targetId,
         originalFiles,
-        userMsg.quickAction ? { quickAction: userMsg.quickAction } : undefined,
+        { quickAction: userMsg.quickAction, videoAnalysis: userMsg.videoAnalysis },
       )
     },
     [activeId, refreshConversations, sendMessage, resendImageBranch]
@@ -1551,6 +1582,7 @@ export function useConversation(options?: { onNavigate?: (id: string) => void })
         {
           ...(relocatesAutoCrop || atomicOfficeEdit ? { replaceMessageId: messageId } : {}),
           ...(msg.quickAction ? { quickAction: msg.quickAction } : {}),
+          ...(msg.videoAnalysis ? { videoAnalysis: msg.videoAnalysis } : {}),
           ...(relocatesAutoCrop ? { relocateVisionCrop: true } : {}),
         },
       )
@@ -1588,7 +1620,7 @@ export function useConversation(options?: { onNavigate?: (id: string) => void })
       userMsg.content,
       targetId,
       originalFiles,
-      userMsg.quickAction ? { quickAction: userMsg.quickAction } : undefined,
+      { quickAction: userMsg.quickAction, videoAnalysis: userMsg.videoAnalysis },
     )
   }, [activeId, refreshConversations, sendMessage, resendImageBranch])
 

@@ -4,6 +4,7 @@ import { onRequestPost as geminiProxy } from '../../../functions/api/ai/gemini-p
 import { makeD1Harness, type D1Harness } from './d1Harness'
 import { checkAllowedVerifiedUser } from '../../../functions/api/_lib/checkAllowedUser'
 import { consumeEmailTrialMessage } from '../../../functions/api/_lib/emailTrial'
+import * as tiktok from '../../../functions/api/_lib/tiktokVideo'
 
 const EMAIL = 'gemini-fallback@example.test'
 const TOKEN = 'google-access-token'
@@ -123,6 +124,51 @@ function holdTrialResponse(table: 'trial_usage' | 'email_trial_usage', afterComm
 }
 
 describe('Gemini proxy — fallback 3.6 compté une seule fois', () => {
+  it.each([false, true])('TikTok preserves quota/refund and cleanup, failure=%s', async fail => {
+    await h.db.prepare(`INSERT INTO subscriptions (user_email, status, plan_type) VALUES (?1, 'active', 'subscription')`).bind(EMAIL).run()
+    const cleanup = vi.fn(async () => undefined)
+    const prepare = vi.spyOn(tiktok, 'prepareTikTokForGemini').mockImplementation(async (_url, _key, _signal, register) => {
+      register(cleanup)
+      if (fail) throw new Error('sensitive signed address must not escape')
+      return tiktok.tikTokAnalysisBody('https://generativelanguage.googleapis.com/v1beta/files/test123')
+    })
+    const upstream: Record<string, unknown>[] = []
+    global.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const auth = authResponse(String(input)); if (auth) return auth
+      upstream.push(JSON.parse(init!.body as string)); return success()
+    }) as typeof fetch
+    const background: Promise<unknown>[] = []
+    const req = new Request('https://tryarty.com/api/ai/gemini-proxy', { method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-google-token': TOKEN },
+      body: JSON.stringify({ model: 'gemini-3.8-flash', stream: false, tiktokVideoUrl: 'https://vm.tiktok.com/ZN8jJBpVS/', contents: [{ text: 'private injected history' }], tools: [{ google_search: {} }] }) })
+    const response = await geminiProxy(context(req, background))
+    const output = await response.text(); await Promise.all(background)
+    expect(response.status).toBe(fail ? 502 : 200)
+    expect(prepare).toHaveBeenCalledOnce(); expect(cleanup).toHaveBeenCalledOnce()
+    expect(upstream).toHaveLength(fail ? 0 : 1)
+    expect(JSON.stringify(upstream)).not.toContain('private injected history')
+    expect(JSON.stringify(upstream)).not.toContain('google_search')
+    expect(output).not.toContain('sensitive')
+    const quota = await h.db.prepare('SELECT count FROM quota_model WHERE email = ?1 AND model = ?2').bind(EMAIL, 'gemini-3.8-flash').first<{ count: number }>()
+    expect(quota?.count ?? 0).toBe(fail ? 0 : 1)
+  })
+
+  it('TikTok never retrieves without identity or after the trial is exhausted', async () => {
+    const prepare = vi.spyOn(tiktok, 'prepareTikTokForGemini')
+    const body = JSON.stringify({ model: 'gemini-3.8-flash', stream: false, tiktokVideoUrl: 'https://vm.tiktok.com/ZN8jJBpVS/' })
+    global.fetch = vi.fn(async (input: RequestInfo | URL) => authResponse(String(input)) ?? success()) as typeof fetch
+    const background: Promise<unknown>[] = []
+    const anonymous = await geminiProxy(context(new Request('https://tryarty.com/api/ai/gemini-proxy', { method: 'POST', body }), background))
+    expect(anonymous.status).toBe(401)
+    await grantTrial()
+    await h.db.prepare('INSERT INTO trial_usage (email, used, updated_at) VALUES (?1, 30, 0)').bind(EMAIL).run()
+    const trial = await geminiProxy(context(new Request('https://tryarty.com/api/ai/gemini-proxy', { method: 'POST', body, headers: { 'x-google-token': TOKEN } }), background))
+    expect(trial.status).toBe(403)
+    await Promise.all(background)
+    expect(prepare).not.toHaveBeenCalled()
+    const count = await h.db.prepare('SELECT used FROM trial_usage WHERE email = ?1').bind(EMAIL).first<{ used: number }>()
+    expect(count?.used).toBe(30)
+  })
   it.each([
     { status: 401, afterCommit: true }, { status: 200, afterCommit: true },
     { status: 503, afterCommit: true }, { status: 401, afterCommit: false },
