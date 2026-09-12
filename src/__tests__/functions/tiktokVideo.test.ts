@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
-import { normalizeTikTokUrl, extractTikTokUrls, TIKTOK_MAX_BYTES } from '../../services/tiktokVideoTypes'
+import { normalizeTikTokUrl, extractTikTokUrls, TIKTOK_MAX_BYTES, TIKTOK_MAX_SECONDS } from '../../services/tiktokVideoTypes'
 import { retrieveTikTokVideo, prepareTikTokForGemini, readVideoResponse, tikTokAnalysisBody } from '../../../functions/api/_lib/tiktokVideo'
 import { estimateInputTokens } from '../../../functions/api/_lib/walletBilling'
 
@@ -13,7 +13,7 @@ function page(overrides: Record<string, unknown> = {}, media = mediaUrl, cookies
 }
 const mp4 = () => new Response(bytes, { headers: { 'content-type': 'video/mp4', 'content-length': String(bytes.length) } })
 const activeFile = { name: 'files/a-00000000-0000-4000-8000-000000000000', uri: 'https://generativelanguage.googleapis.com/v1beta/files/a-00000000-0000-4000-8000-000000000000', state: 'ACTIVE', mimeType: 'video/mp4', videoMetadata: { videoDuration: '178s' } }
-beforeEach(() => { vi.spyOn(crypto, 'randomUUID').mockReturnValue('00000000-0000-4000-8000-000000000000') })
+beforeEach(() => { vi.stubGlobal('FixedLengthStream', class extends TransformStream { constructor(_length: number) { super() } }); vi.spyOn(crypto, 'randomUUID').mockReturnValue('00000000-0000-4000-8000-000000000000') })
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks() })
 
 describe('TikTok public video retrieval', () => {
@@ -44,7 +44,7 @@ describe('TikTok public video retrieval', () => {
     expect(fetcher.mock.calls[2]![1].headers.Cookie).toBeUndefined()
   })
   it('rejects a malicious media address and a mismatched/private/long video', async () => {
-    for (const fixture of [page({}, 'https://evil.test/video'), page({ id: '9999999999999999999' }), page({ privateItem: true }), page({ video: { duration: 181, playAddr: mediaUrl } })]) {
+    for (const fixture of [page({}, 'https://evil.test/video'), page({ id: '9999999999999999999' }), page({ privateItem: true }), page({ video: { duration: TIKTOK_MAX_SECONDS + 1, playAddr: mediaUrl } })]) {
       const fetcher = vi.fn().mockResolvedValue(fixture); vi.stubGlobal('fetch', fetcher)
       await expect(retrieveTikTokVideo(url, new AbortController().signal)).rejects.toThrow(/tiktok_video_/)
       expect(fetcher).toHaveBeenCalledOnce()
@@ -57,8 +57,8 @@ describe('TikTok public video retrieval', () => {
       expect(fetcher).toHaveBeenCalledTimes(2)
     }
   })
-  it('refuses the reported 274-second case before downloading media or calling Gemini', async () => {
-    const fetcher = vi.fn().mockResolvedValue(page({ video: { duration: 274, playAddr: mediaUrl } }))
+  it('refuses a duration beyond ten minutes before downloading media or calling Gemini', async () => {
+    const fetcher = vi.fn().mockResolvedValue(page({ video: { duration: TIKTOK_MAX_SECONDS + 1, playAddr: mediaUrl } }))
     vi.stubGlobal('fetch', fetcher)
     await expect(prepareTikTokForGemini(url, 'synthetic-key', new AbortController().signal, vi.fn())).rejects.toThrow('tiktok_video_limit')
     expect(fetcher).toHaveBeenCalledOnce()
@@ -83,7 +83,7 @@ describe('Gemini video preparation and cleanup', () => {
   function setup(file = activeFile, uploadUrl = 'https://generativelanguage.googleapis.com/upload/v1beta/files?upload_id=test') {
     const fetcher = vi.fn().mockResolvedValueOnce(page()).mockResolvedValueOnce(mp4())
       .mockResolvedValueOnce(new Response(null, { headers: { 'x-goog-upload-url': uploadUrl } }))
-      .mockResolvedValueOnce(Response.json({ file })).mockResolvedValueOnce(new Response(null))
+      .mockImplementationOnce(async (_url, init) => { expect(new Uint8Array(await new Response(init.body).arrayBuffer())).toEqual(bytes); return Response.json({ file }) }).mockResolvedValueOnce(new Response(null))
     vi.stubGlobal('fetch', fetcher)
     return fetcher
   }
@@ -94,7 +94,7 @@ describe('Gemini video preparation and cleanup', () => {
     expect(estimateInputTokens('gemini', body)).toBeLessThanOrEqual(estimateInputTokens('gemini', tikTokAnalysisBody(url)) + 100)
     expect(JSON.stringify(body)).not.toContain('public-session')
     expect(JSON.stringify(body)).not.toContain('synthetic-key')
-    expect(fetcher.mock.calls[3]![1].body).toEqual(bytes)
+    expect(fetcher.mock.calls[3]![1].body).toBeInstanceOf(ReadableStream)
     expect(body).not.toHaveProperty('tools')
     expect(fetcher.mock.calls[2]![1].headers.Cookie).toBeUndefined()
     await cleanup!()
@@ -115,7 +115,7 @@ describe('Gemini video preparation and cleanup', () => {
       const fetcher = setup(); const registered = vi.fn()
       fetcher.mockReset().mockResolvedValueOnce(page()).mockResolvedValueOnce(mp4())
         .mockResolvedValueOnce(new Response(null, { headers: { 'x-goog-upload-url': 'https://generativelanguage.googleapis.com/upload/v1beta/files?upload_id=test' } }))
-      if (malformed) fetcher.mockResolvedValueOnce(new Response('{broken'))
+      if (malformed) fetcher.mockImplementationOnce(async (_url, init) => { await new Response(init.body).arrayBuffer(); return new Response('{broken') })
       else fetcher.mockRejectedValueOnce(new Error('Network lost'))
       await expect(prepareTikTokForGemini(url, 'synthetic-key', new AbortController().signal, registered)).rejects.toThrow()
       expect(registered).toHaveBeenCalledOnce()

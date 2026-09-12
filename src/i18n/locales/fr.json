@@ -6,7 +6,7 @@
     "euUnavailable": "La lecture TikTok utilise Gemini et n’est pas disponible dans une conversation limitée à l’Europe.",
     "documentUnavailable": "Pour analyser ce TikTok, ouvre une conversation ordinaire, en dehors du travail sur les documents du projet.",
     "planRequired": "La lecture vidéo nécessite un accès Gemini disponible et un quota suffisant. Vérifie ta formule, tes crédits ou ta clé Gemini.",
-    "tooLarge": "Cette vidéo dépasse la limite de 3 minutes ou de 24 Mo. Essaie une vidéo plus courte.",
+    "tooLarge": "Cette vidéo dépasse la limite de 10 minutes ou de 128 Mio. Essaie une vidéo plus courte.",
     "unavailable": "La vidéo TikTok n’a pas pu être lue. Aucun résumé de son contenu n’a été produit. Tu peux partager sa transcription ou des captures d’écran.",
     "incomplete": "L’analyse de la vidéo est incomplète. Arty ne dispose pas d’observations suffisantes pour répondre.",
     "timeout": "La lecture de la vidéo a pris trop de temps. Réessaie plus tard.",

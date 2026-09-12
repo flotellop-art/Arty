@@ -1,8 +1,8 @@
 import type { Env } from '../../env'
 import { createStreamBudget } from '../_lib/streamBudget'
 import { isAdmissionUnavailable, admissionUnavailableResponse } from '../_lib/admission'
-import { normalizeTikTokUrl, TIKTOK_ANALYSIS_MODEL } from '../../../src/services/tiktokVideoTypes'
-import { prepareTikTokForGemini, tikTokAnalysisBody, TikTokVideoError } from '../_lib/tiktokVideo'
+import { normalizeTikTokUrl, TIKTOK_ANALYSIS_MODEL, TIKTOK_SERVER_TIMEOUT_MS, TIKTOK_PREPARATION_TIMEOUT_MS, TIKTOK_GENERATION_TIMEOUT_MS } from '../../../src/services/tiktokVideoTypes'
+import { TIKTOK_RESERVE_INPUT_TOKENS, prepareTikTokForGemini, tikTokAnalysisBody, TikTokVideoError } from '../_lib/tiktokVideo'
 import { classifyUpstreamBilling } from '../_lib/upstreamBilling'
 import {
   checkAllowedVerifiedUser,
@@ -197,6 +197,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
         model,
         provider: 'gemini',
         body,
+        minimumInputTokens: tikTokMode ? TIKTOK_RESERVE_INPUT_TOKENS : undefined,
         // 3.5 est légèrement plus cher en output que 3.6 : la réserve couvre
         // donc aussi un éventuel fallback serveur, puis le settle rend l'écart.
         // The video reserve also covers a request straddling the end of the
@@ -249,15 +250,15 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
       if (cap.debited) capConsumed = cap
     }
 
-    const videoSignal = tikTokMode ? AbortSignal.any([request.signal, AbortSignal.timeout(90_000)]) : undefined
+    const videoSignal = tikTokMode ? AbortSignal.any([request.signal, AbortSignal.timeout(TIKTOK_SERVER_TIMEOUT_MS)]) : undefined
     if (videoUrl && tikTokMode) {
       body = await prepareTikTokForGemini(videoUrl, apiKey,
-        AbortSignal.any([videoSignal!, AbortSignal.timeout(40_000)]),
+        AbortSignal.any([videoSignal!, AbortSignal.timeout(TIKTOK_PREPARATION_TIMEOUT_MS)]),
         cleanup => { cleanupVideo = cleanup })
     }
     const action = stream ? 'streamGenerateContent' : 'generateContent'
     const suffix = stream ? '?alt=sse' : ''
-    streamBudget = createStreamBudget(GEMINI_UPSTREAM_BUDGET_MS, 90_000, videoSignal)
+    streamBudget = createStreamBudget(tikTokMode ? TIKTOK_GENERATION_TIMEOUT_MS : GEMINI_UPSTREAM_BUDGET_MS, 90_000, videoSignal)
     const upstreamSignal = streamBudget.signal
     const callModel = (candidateModel: string) =>
       fetch(

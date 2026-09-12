@@ -54,7 +54,7 @@ describe('TikTok conversation preparation', () => {
   })
   it('preserves the video length refusal instead of calling it a network error', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => Response.json({ error: 'tiktok_video_limit' }, { status: 502 })))
-    await expect(prepareTikTokTurn(options())).rejects.toThrow('3 minutes')
+    await expect(prepareTikTokTurn(options())).rejects.toThrow('10 minutes')
   })
   it('reflects an exhausted trial and a terminal wallet refusal using the shared funding contract', async () => {
     setTrialRemaining(5)
@@ -93,7 +93,7 @@ describe('TikTok conversation preparation', () => {
   it('preserves validated video observations through sync projection and rejects malformed fields', () => {
     const conv = { id: 'c1', title: 'Video', createdAt: 1, updatedAt: 1, messages: [message] }
     expect(projectLocalSyncConversationShape(conv).messages[0]!.videoAnalysis).toEqual(analysis)
-    expect(() => projectLocalSyncConversationShape({ ...conv, messages: [{ ...message, videoAnalysis: { ...analysis, text: 'x'.repeat(16001) } }] })).toThrow()
+    expect(() => projectLocalSyncConversationShape({ ...conv, messages: [{ ...message, videoAnalysis: { ...analysis, text: 'x'.repeat(24001) } }] })).toThrow()
     expect(() => projectLocalSyncConversationShape({ ...conv, messages: [{ ...message, role: 'assistant' }] })).toThrow()
   })
 })

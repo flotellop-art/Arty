@@ -6,7 +6,7 @@
     "euUnavailable": "TikTok analysis uses Gemini and is unavailable in an Europe-only conversation.",
     "documentUnavailable": "To analyze this TikTok, open an ordinary conversation outside the project document workflow.",
     "planRequired": "Video analysis requires Gemini access and sufficient quota. Check your plan, credits or Gemini key.",
-    "tooLarge": "This video exceeds the 3 minute or 24 MB limit. Try a shorter video.",
+    "tooLarge": "This video exceeds the 10 minute or 128 MiB limit. Try a shorter video.",
     "unavailable": "The TikTok video could not be read. No summary of its contents was produced. You can share its transcript or screenshots.",
     "incomplete": "The video analysis is incomplete. Arty does not have enough observations to answer.",
     "timeout": "Reading the video took too long. Try again later.",

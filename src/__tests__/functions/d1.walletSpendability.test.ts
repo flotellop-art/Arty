@@ -5,6 +5,8 @@ import { creditWallet, drainWalletReversalsForUser, ensureWalletTables, getWalle
   readWalletBalance, registerWalletReversalClaim, reserveCredits, resolveWalletReversalsForTopup } from '../../../functions/api/_lib/wallet'
 import { onRequestGet } from '../../../functions/api/wallet/balance'
 import { beginWalletBilling } from '../../../functions/api/_lib/walletBilling'
+import { estimateReserveMicro } from '../../../functions/api/_lib/creditPricing'
+import { tikTokAnalysisBody, TIKTOK_RESERVE_INPUT_TOKENS } from '../../../functions/api/_lib/tiktokVideo'
 import { readFileSync } from 'node:fs'
 import { fetchWalletBalance, clearWalletCache, creditsCoverPremium, getWalletSnapshot } from '../../services/walletClient'
 
@@ -68,6 +70,34 @@ async function reserve(id = 'new-reservation', email = OWNER) {
 }
 
 describe('wallet spendability is not the accounting balance', () => {
+  it('raises the TikTok hold using trusted policy without charging that estimate', async () => {
+    await topup()
+    const background: Promise<unknown>[] = []
+    const start = await beginWalletBilling(h.env, p => { background.push(p) }, {
+      email: OWNER, provider: 'gemini', model: 'gemini-3.8-flash', reservePricingModel: 'gemini-3.5-flash',
+      body: tikTokAnalysisBody('https://vm.tiktok.com/ZN8jShEjq/'), minimumInputTokens: TIKTOK_RESERVE_INPUT_TOKENS,
+    })
+    await Promise.allSettled(background)
+    expect(start.mode).toBe('wallet')
+    expect(await getWalletBalance(h.env, OWNER)).toMatchObject({ balanceMicro: 10_000_000,
+      reservedMicro: estimateReserveMicro('gemini-3.5-flash', 8192, TIKTOK_RESERVE_INPUT_TOKENS) })
+  })
+  it('cannot reduce an existing estimate with a smaller minimum', async () => {
+    await topup()
+    const background: Promise<unknown>[] = []
+    for (const minimumInputTokens of [undefined, 1]) {
+      expect((await beginWalletBilling(h.env, p => { background.push(p) }, {
+        email: OWNER, provider: 'gemini', model: 'gemini-3.8-flash', body: tikTokAnalysisBody('https://vm.tiktok.com/ZN8jShEjq/'), minimumInputTokens,
+      })).mode).toBe('wallet')
+    }
+    await Promise.allSettled(background)
+    const rows = (await h.db.prepare('SELECT reserved_micro FROM reservation').all<{ reserved_micro: number }>()).results
+    expect(rows).toHaveLength(2); expect(rows[0]!.reserved_micro).toBe(rows[1]!.reserved_micro)
+  })
+  it.each([-1, 0.5, NaN, Infinity, 1_000_001])('rejects invalid policy minimum %s before accounting', async minimumInputTokens => {
+    await expect(beginWalletBilling(h.env, () => {}, { email: OWNER, provider: 'gemini', model: 'gemini-3.8-flash', body: {}, minimumInputTokens })).rejects.toThrow('invalid_minimum_input_tokens')
+    expect(await h.db.prepare('SELECT COUNT(*) AS count FROM reservation').first()).toEqual({ count: 0 })
+  })
   it('applies only the non-unique lookup index twice on a legacy schema without changing any financial row', async () => {
     await topup(); await claim()
     await h.db.prepare('DROP INDEX IF EXISTS idx_webhook_event_order_topup').run()

@@ -5,6 +5,7 @@ import { makeD1Harness, type D1Harness } from './d1Harness'
 import { checkAllowedVerifiedUser } from '../../../functions/api/_lib/checkAllowedUser'
 import { consumeEmailTrialMessage } from '../../../functions/api/_lib/emailTrial'
 import * as tiktok from '../../../functions/api/_lib/tiktokVideo'
+import { creditWallet, getWalletBalance } from '../../../functions/api/_lib/wallet'
 
 const EMAIL = 'gemini-fallback@example.test'
 const TOKEN = 'google-access-token'
@@ -124,6 +125,25 @@ function holdTrialResponse(table: 'trial_usage' | 'email_trial_usage', afterComm
 }
 
 describe('Gemini proxy — fallback 3.6 compté une seule fois', () => {
+  it.each([500_000, 2_000_000])('uses the trusted long-video hold before retrieval and refunds failed preparation, credits=%s', async amountMicro => {
+    await grantTrial()
+    await h.db.prepare('INSERT INTO trial_usage (email, used, updated_at) VALUES (?1, 30, 0)').bind(EMAIL).run()
+    await creditWallet(h.env, { provider: 'creem', eventId: 'long-video-credit', orderId: 'long-video-order', email: EMAIL, amountMicro })
+    const prepare = vi.spyOn(tiktok, 'prepareTikTokForGemini').mockRejectedValue(new tiktok.TikTokVideoError('tiktok_video_limit'))
+    global.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const auth = authResponse(String(input)); if (auth) return auth
+      throw new Error('No generation after admission/preparation refusal')
+    }) as typeof fetch
+    const background: Promise<unknown>[] = []
+    const response = await geminiProxy(context(new Request('https://tryarty.com/api/ai/gemini-proxy', {
+      method: 'POST', headers: { 'content-type': 'application/json', 'x-google-token': TOKEN },
+      body: JSON.stringify({ model: 'gemini-3.8-flash', stream: false, tiktokVideoUrl: 'https://vm.tiktok.com/ZN8jShEjq/', minimumInputTokens: 1, generationConfig: { maxOutputTokens: 1 } }),
+    }), background))
+    await response.text(); await Promise.all(background)
+    expect(response.status).toBe(amountMicro === 500_000 ? 402 : 422)
+    expect(prepare).toHaveBeenCalledTimes(amountMicro === 500_000 ? 0 : 1)
+    expect(await getWalletBalance(h.env, EMAIL)).toMatchObject({ balanceMicro: amountMicro, reservedMicro: 0 })
+  })
   it('returns a structured input refusal and refunds quota when a TikTok exceeds its limit', async () => {
     await h.db.prepare(`INSERT INTO subscriptions (user_email, status, plan_type) VALUES (?1, 'active', 'subscription')`).bind(EMAIL).run()
     vi.spyOn(tiktok, 'prepareTikTokForGemini').mockRejectedValue(new tiktok.TikTokVideoError('tiktok_video_limit'))
