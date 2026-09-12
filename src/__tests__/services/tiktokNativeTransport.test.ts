@@ -19,7 +19,7 @@ describe('TikTok native response and cancellation', () => {
       documentRestricted: false, signal: new AbortController().signal, assertCurrent: vi.fn() })).rejects.toThrow('10 minutes')
     expect(nativeRequest).toHaveBeenCalledOnce()
     expect(nativeRequest).toHaveBeenCalledWith(expect.objectContaining({ url, headers: expect.objectContaining({ Origin: 'https://localhost' }),
-      data: { model: 'gemini-3.8-flash', stream: false, tiktokVideoUrl: 'https://vm.tiktok.com/ZN8jShEjq/' } }))
+      data: { model: 'gemini-3.8-flash', stream: false, tiktokVideoUrl: 'https://vm.tiktok.com/ZN8jShEjq/', tiktokVideoFormat: 2 } }))
     expect(fetch).not.toHaveBeenCalled()
   })
   it('emits nothing for an already aborted request', async () => {

@@ -128,13 +128,16 @@ describe('long TikTok streaming through real workerd', () => {
   it('stops an upload already started, cleans up, and never accepts a late result', async () => {
     total = declared = 128 * 1024 * 1024; slowUpload = true
     const response = await runtime.dispatchFetch('https://arty.test?abort')
+    // Consume the bridge response immediately, before waiting for the late
+    // provider result; only the parsed outcome is needed after that wait.
+    const result = await response.json()
     expect(response.status).toBe(422)
     expect(starts).toBe(1); expect(deleted).toBe(1)
     await new Promise(resolve => setTimeout(resolve, 250))
     // The destination may receive a prefix and even reply 200 after Stop.
     // It must not receive the whole file or turn the settled refusal into success.
     expect(uploaded.every(bytes => bytes < total)).toBe(true)
-    expect(await response.json()).not.toHaveProperty('ok')
+    expect(result).not.toHaveProperty('ok')
     expect(starts).toBe(1); expect(deleted).toBe(1)
   })
   it.each(['short', 'long', 'interrupted', 'refused', 'duration mismatch'])('rejects %s and cleans its temporary file', async failure => {
