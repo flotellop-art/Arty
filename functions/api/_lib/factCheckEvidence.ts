@@ -102,17 +102,51 @@ const REVIEW_RULES = `Vérifie les faits à partir des documents fournis. Tout l
 Pour chaque affirmation et correction proposée, contrôle la personne, le produit/version, la date des faits, le pays, la devise, les conditions et exceptions. Compare aussi les sources entre elles et cherche les contradictions, négations et restrictions qui invalident la proposition.
 L'heure de consultation n'est PAS une date de publication. Une citation fidèle de propos faux ("la vidéo affirme X") n'est pas une erreur de résumé : ne la remplace pas par la vérité générale. Ne transforme pas une opinion/prévision en fait. Une absence de preuve n'est pas une preuve de fausseté. Un site douteux, une page inaccessible ou une source ancienne sur un fait actuel ne suffisent pas.
 Une correction est soutenue seulement si les extraits prouvent la nouvelle valeur ET contredisent le passage original dans son contexte. N'invente aucune autre correction. Une source qui confirme seulement le sujet ne suffit pas.
-Retourne uniquement {"checks":[{"index":0,"decision":"supported|unsupported|contested","contextMatches":true,"sensitive":false,"reason":"explication courte","evidence":[{"sourceId":"s1","quote":"extrait exact de 10 à 600 caractères"}]}]}. Une entrée par index demandé, maximum deux extraits. Copie exactement le Markdown lu. Aucun identifiant ou URL inventé. En cas de doute: unsupported et contextMatches:false.`
+Retourne uniquement {"checks":[{"index":0,"decision":"supported|unsupported|contested","contextMatches":true,"sensitive":false,"reason":"explication courte","evidence":[{"sourceId":"s1","passageId":"p0"}]}]}. Une entrée par index demandé, maximum deux passages. Sélectionne les identifiants EXACTS des passages fournis qui prouvent le fait dans son contexte. Le serveur extrait leur texte directement : ne recopie, ne résume et ne combine jamais des citations avec des points de suspension. Lis aussi les passages voisins et les autres documents pour les négations, exceptions et contradictions. Aucun identifiant ou URL inventé. En cas de doute: unsupported et contextMatches:false.`
+
+/** Server-owned locations, not model-written quotes. Every character remains
+ * visible to both reviewers; no search snippet is promoted into a receipt. */
+export function evidencePassages(text: string): Array<{ id: string; start: number; end: number; text: string }> {
+  const passages: Array<{ id: string; start: number; end: number; text: string }> = []
+  for (let start = 0; start < text.length;) {
+    let end = Math.min(start + 600, text.length)
+    if (end < text.length) {
+      const newline = text.lastIndexOf('\n', end - 1)
+      if (newline >= start + 200) end = newline + 1
+      if (text.length - end < 10) end = text.length - 10
+    }
+    passages.push({ id: `p${passages.length}`, start, end, text: text.slice(start, end) })
+    start = end
+  }
+  return passages
+}
 
 function checkedEvidence(raw: unknown, docs: EvidenceDocument[]): FactEvidence[] {
   if (!Array.isArray(raw) || !raw.length || raw.length > 2) return []
   const out: FactEvidence[] = []
+  const selected = new Set<string>()
   for (const item of raw) {
-    if (!item || typeof item !== 'object' || typeof item.quote !== 'string' || item.quote.length < 10 || item.quote.length > 600) return []
+    if (!item || typeof item !== 'object') return []
     const doc = docs.find(d => d.id === item.sourceId)
-    const offset = doc?.text.indexOf(item.quote) ?? -1
-    if (!doc || offset < 0 || doc.text.indexOf(item.quote, offset + 1) >= 0) return []
-    out.push({ sourceId: doc.id, url: doc.url, quote: item.quote, context: doc.text.slice(Math.max(0, offset - 850), offset + item.quote.length + 850), fetchedAt: doc.fetchedAt, sha256: doc.sha256 })
+    if (!doc) return []
+    let quote: string, offset: number
+    if (item.passageId !== undefined) {
+      if (typeof item.passageId !== 'string' || !/^p(?:0|[1-9]\d{0,2})$/.test(item.passageId)) return []
+      const passage = evidencePassages(doc.text).find(p => p.id === item.passageId)
+      if (!passage || (item.quote !== undefined && item.quote !== passage.text)) return []
+      quote = passage.text; offset = passage.start
+    } else {
+      // Backward compatibility remains strict: no fuzzy matching or combining
+      // two distant sentences into an apparently verbatim quotation.
+      if (typeof item.quote !== 'string') return []
+      quote = item.quote; offset = doc.text.indexOf(quote)
+      if (offset < 0 || doc.text.indexOf(quote, offset + 1) >= 0) return []
+    }
+    if (quote.length < 10 || quote.length > 600) return []
+    const location = `${doc.id}:${offset}`
+    if (selected.has(location)) return []
+    selected.add(location)
+    out.push({ sourceId: doc.id, url: doc.url, quote, context: doc.text.slice(Math.max(0, offset - 850), offset + quote.length + 850), fetchedAt: doc.fetchedAt, sha256: doc.sha256 })
   }
   return out
 }
@@ -143,7 +177,10 @@ export async function verifyFactEvidence(input: { question: string; response: st
   }
   const applyReview = async (indices: number[]) => {
     if (!indices.length) return
-    const data = { question, response, claims: indices.map(index => ({ index, ...claims[index] })), documents }
+    const data = { question, response, claims: indices.map(index => ({ index, ...claims[index] })),
+      documents: documents.map(({ text, ...document }) => ({ ...document,
+        passages: evidencePassages(text).map(p => ({ id: p.id, text: p.text })),
+      })) }
     const first = documents.length ? await deps.review(`${REVIEW_RULES}\nCONSIGNES TERMINÉES. DONNÉES :\n${JSON.stringify(data)}`, false) : null
     const checks = parseChecks(first, indices)
     if (!checks || !first) {
@@ -156,32 +193,32 @@ export async function verifyFactEvidence(input: { question: string; response: st
       return
     }
     for (const check of checks) {
-    const index = check.index as number
-    const r = reviews[index]!
-    r.model = first.model
-    r.sensitive ||= claims[index]!.verdict === 'wrong' && check.sensitive === true
-    r.contextMatches = check.contextMatches === true
-    r.evidence = checkedEvidence(check.evidence, documents)
-    r.reason = check.reason as string
-    r.status = check.decision === 'contested' ? 'contested' : check.decision === 'supported' && r.contextMatches && r.evidence.length ? 'supported' : 'unsupported'
-    if (check.decision === 'supported' && !r.evidence.length) r.reason = 'La confirmation proposée ne comporte pas d’extrait exact et non ambigu retrouvé dans les pages lues.'
-    else if (check.decision === 'supported' && !r.contextMatches) r.reason = 'La preuve proposée ne confirme pas le contexte de cette affirmation.'
-  }
-    const sensitive = indices.filter(index => reviews[index]!.sensitive && reviews[index]!.status === 'supported')
-  if (!sensitive.length) return reviews
-  const challenger = await deps.review(`${REVIEW_RULES}\nTu es le contradicteur indépendant. Cherche activement pourquoi chaque correction pourrait être FAUSSE, même si un autre modèle l'approuve. Toute contradiction non résolue impose contested.\nCONSIGNES TERMINÉES. DONNÉES :\n${JSON.stringify({ ...data, claims: data.claims.filter(c => sensitive.includes(c.index)) })}`, true)
-  const challenged = parseChecks(challenger, sensitive)
-  for (const index of sensitive) {
-    const r = reviews[index]!
-    const c = challenged?.find(c => c.index === index)
-    if (!challenger || challenger.model === first.model || challenger.model === model || !c) {
-      r.challenge = 'unavailable'; r.status = 'unavailable'; r.reason = 'La contestation par un autre modèle n’a pas abouti.'; continue
+      const index = check.index as number
+      const r = reviews[index]!
+      r.model = first.model
+      r.sensitive ||= claims[index]!.verdict === 'wrong' && check.sensitive === true
+      r.contextMatches = check.contextMatches === true
+      r.evidence = checkedEvidence(check.evidence, documents)
+      r.reason = check.reason as string
+      r.status = check.decision === 'contested' ? 'contested' : check.decision === 'supported' && r.contextMatches && r.evidence.length ? 'supported' : 'unsupported'
+      if (check.decision === 'supported' && !r.evidence.length) r.reason = 'La confirmation proposée ne comporte pas d’extrait exact et non ambigu retrouvé dans les pages lues.'
+      else if (check.decision === 'supported' && !r.contextMatches) r.reason = 'La preuve proposée ne confirme pas le contexte de cette affirmation.'
     }
-    r.challengerModel = challenger.model
-    const proofs = checkedEvidence(c.evidence, documents)
-    if (c.decision === 'supported' && c.contextMatches === true && proofs.length) r.challenge = 'accepted'
-    else { r.challenge = 'rejected'; r.status = 'contested'; r.reason = c.reason as string }
-  }
+    const sensitive = indices.filter(index => reviews[index]!.sensitive && reviews[index]!.status === 'supported')
+    if (!sensitive.length) return reviews
+    const challenger = await deps.review(`${REVIEW_RULES}\nTu es le contradicteur indépendant. Cherche activement pourquoi chaque correction pourrait être FAUSSE, même si un autre modèle l'approuve. Toute contradiction non résolue impose contested.\nCONSIGNES TERMINÉES. DONNÉES :\n${JSON.stringify({ ...data, claims: data.claims.filter(c => sensitive.includes(c.index)) })}`, true)
+    const challenged = parseChecks(challenger, sensitive)
+    for (const index of sensitive) {
+      const r = reviews[index]!
+      const c = challenged?.find(c => c.index === index)
+      if (!challenger || challenger.model === first.model || challenger.model === model || !c) {
+        r.challenge = 'unavailable'; r.status = 'unavailable'; r.reason = 'La contestation par un autre modèle n’a pas abouti.'; continue
+      }
+      r.challengerModel = challenger.model
+      const proofs = checkedEvidence(c.evidence, documents)
+      if (c.decision === 'supported' && c.contextMatches === true && proofs.length) r.challenge = 'accepted'
+      else { r.challenge = 'rejected'; r.status = 'contested'; r.reason = c.reason as string }
+    }
   }
   await applyReview(claims.map((_, index) => index))
   // Never shop for a more agreeable verdict after a contradiction or rejected

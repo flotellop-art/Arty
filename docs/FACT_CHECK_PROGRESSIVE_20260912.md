@@ -25,8 +25,10 @@ La vérification documentaire d'une réponse parlant d'une vidéo ne certifie pa
 
 ## Validation avant livraison
 
-212 tests ciblés passent sur 13 fichiers, ainsi que le typecheck client et Functions. Deux revues indépendantes ont challengé le code ; leurs objections sur le verrou par message et la reprise après perte de réponse ont été corrigées et testées.
+226 tests ciblés passent sur 14 fichiers, ainsi que le typecheck client et Functions. Deux revues indépendantes ont challengé le code ; leurs objections sur le verrou par message et la reprise après perte de réponse ont été corrigées et testées.
 
 Cas couverts : preuve récupérée depuis une nouvelle page, indices non consécutifs et anciens documents conservés, recherche sans page exploitable, contradiction inchangée, correctif sensible récupéré mais refusé par le contradicteur, contexte multi-lots, citation traversant deux lots, arrêt au budget, perte d'une réponse profonde, deux messages concurrents, couverture partielle et aller-retour sauvegarde/synchronisation.
 
 Les reçus de CI, de déploiement, de signature Android et les tests réels sont conservés dans le rapport de livraison local. Les simulations valident les décisions de contrôle ; elles ne mesurent pas la justesse générale des modèles.
+
+Un essai réel a révélé des citations recomposées avec des points de suspension. Les documents sont maintenant présentés en passages numérotés : le modèle sélectionne les passages et le serveur extrait leur texte exact. Tous les passages restent visibles pour examiner les négations et contradictions. Les anciens extraits restent acceptés uniquement lorsqu'ils sont exacts et uniques. Sur le cas public Eiffel, la reprise a finalement obtenu une preuve acceptée en 19,838 secondes (sources initiales préchargées ; découverte et nouvelles lectures réseau réelles). Cette observation isolée ne constitue pas une précision générale ni un délai garanti.
