@@ -9,7 +9,9 @@
     "tooLarge": "Cette vidéo dépasse la limite de 3 minutes ou de 24 Mo. Essaie une vidéo plus courte.",
     "unavailable": "La vidéo TikTok n’a pas pu être lue. Aucun résumé de son contenu n’a été produit. Tu peux partager sa transcription ou des captures d’écran.",
     "incomplete": "L’analyse de la vidéo est incomplète. Arty ne dispose pas d’observations suffisantes pour répondre.",
-    "timeout": "La lecture de la vidéo a pris trop de temps. Réessaie plus tard."
+    "timeout": "La lecture de la vidéo a pris trop de temps. Réessaie plus tard.",
+    "rateLimited": "Une limite de demandes ou de quota empêche la lecture TikTok. Réessaie plus tard ou vérifie ton quota.",
+    "networkError": "Arty n’a pas reçu le résultat de la lecture TikTok. Vérifie ta connexion avant de réessayer. Cette erreur ne permet pas de savoir si la vidéo a été lue par le serveur."
   },
   "workspaceUpgrade": {
     "title": "Préparation du stockage local",
@@ -963,6 +965,7 @@
     "backgroundGenerationExpired": "La génération en arrière-plan a été interrompue. Vous pouvez réessayer depuis Arty.",
     "backgroundGenerationUnavailable": "Arty ne peut pas démarrer la réponse en arrière-plan. Revenez dans Arty et réessayez.",
     "streamStalled": "Connexion au serveur interrompue (réseau instable). La réponse déjà reçue est conservée.",
+    "networkRequestFailed": "Arty n’a pas reçu la réponse du serveur. Vérifie ta connexion avant de réessayer. Le résultat de cette demande reste inconnu.",
     "responseIncomplete": "Réponse incomplète, réessaie ta question.",
     "promptEnhancementFailed": "Impossible d'améliorer le prompt — réessaie.",
     "tooManyConcurrentStreams": "Trop de conversations en cours en parallèle. Attends qu'une réponse se termine.",
