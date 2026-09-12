@@ -233,22 +233,28 @@ function anthropicBody(
   maxTokens: number,
   webSearch: boolean,
   system = SYSTEM_PROMPT + EVIDENCE_INSTRUCTIONS,
+  effort: 'medium' | 'high' = 'medium',
 ): string {
   return JSON.stringify({
     model,
     max_tokens: maxTokens,
     system,
     messages: [{ role: 'user', content: userContent }],
+    // Sonnet 5 otherwise spends this bounded verdict budget at high effort.
+    // Keep the independent sensitive challenge strong; ordinary checks use medium.
+    ...(model === FACT_CHECK_FALLBACK_MODEL
+      ? { thinking: { type: 'adaptive' }, output_config: { effort } }
+      : {}),
     ...(webSearch
       ? {
           tools: [{
-            // Version courante Anthropic (juin 2026) : filtrage dynamique des
-            // résultats et suppression des blocs bruts déjà consommés. Les
-            // citations du dernier bloc texte restent présentes.
+            // Direct search avoids the slow intermediate filtering loop.
+            // Direct result blocks remain available for source normalization.
             type: 'web_search_20260318',
             name: 'web_search',
             max_uses: 3,
             response_inclusion: 'excluded',
+            allowed_callers: ['direct'],
           }],
         }
       : {}),
@@ -620,7 +626,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
               reviewUsage.push({ model: result.model, usage: result.usage })
               return { text: result.content.map(c => c.text).join(''), model: result.model, complete: result.completion === 'complete' && result.modelAttested && result.model.startsWith('gemini-') }
             }
-            const res = await fetchAnthropicWithRetry(anthropicBody('claude-sonnet-5', prompt, 4000, false, reviewSystem), env.ANTHROPIC_API_KEY!, 35_000, 1, deadline)
+            const res = await fetchAnthropicWithRetry(anthropicBody('claude-sonnet-5', prompt, 4000, false, reviewSystem, independent ? 'high' : 'medium'), env.ANTHROPIC_API_KEY!, 35_000, 1, deadline)
             if (!res.ok) { await res.body?.cancel(); return null }
             const result = normalizeAnthropic(await readBoundedJSON(res, 160_000) as AnthropicResult, 'claude-sonnet-5')
             await track(result)
@@ -681,13 +687,20 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
 
       fallback = tier === 'haiku' ? 'model' : 'without_web_search'
       servedModel = FACT_CHECK_FALLBACK_MODEL
-      res = await fetchAnthropicWithRetry(
-        anthropicBody(servedModel, userContent, cfg.maxTokens, false),
-        env.ANTHROPIC_API_KEY,
-        tier === 'haiku' ? 20_000 : 25_000,
-        2,
-        deadline,
-      )
+      res = null
+      try {
+        res = await fetchAnthropicWithRetry(
+          anthropicBody(servedModel, userContent, cfg.maxTokens, false),
+          env.ANTHROPIC_API_KEY,
+          tier === 'haiku' ? 20_000 : 25_000,
+          2,
+          deadline,
+        )
+      } catch (err) {
+        // An unavailable same-provider fallback must not bypass Gemini.
+        // Its helper still observes the original shared deadline.
+        console.error('[fact-check] fallback request failed', err instanceof Error ? err.name : 'unknown')
+      }
     }
 
     if (!res || !res.ok) {
