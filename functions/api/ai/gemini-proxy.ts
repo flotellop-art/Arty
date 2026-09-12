@@ -1,4 +1,5 @@
 import type { Env } from '../../env'
+import { createStreamBudget } from '../_lib/streamBudget'
 import { isAdmissionUnavailable, admissionUnavailableResponse } from '../_lib/admission'
 import { normalizeTikTokUrl, TIKTOK_ANALYSIS_MODEL } from '../../../src/services/tiktokVideoTypes'
 import { prepareTikTokForGemini, tikTokAnalysisBody, TikTokVideoError } from '../_lib/tiktokVideo'
@@ -77,6 +78,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
   let trialConsumedBy: 'google' | 'email-trial' | undefined
   let tikTokMode = false
   let cleanupVideo: (() => Promise<void>) | undefined
+  let streamBudget: ReturnType<typeof createStreamBudget> | undefined
 
   const scheduleTrialRefund = () => {
     if (trialConsumedBy === 'google') waitUntil(voidTrialMessage(env, identity.email))
@@ -255,9 +257,8 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
     }
     const action = stream ? 'streamGenerateContent' : 'generateContent'
     const suffix = stream ? '?alt=sse' : ''
-    const upstreamSignal = videoSignal
-      ? AbortSignal.any([videoSignal, AbortSignal.timeout(GEMINI_UPSTREAM_BUDGET_MS)])
-      : AbortSignal.timeout(GEMINI_UPSTREAM_BUDGET_MS)
+    streamBudget = createStreamBudget(GEMINI_UPSTREAM_BUDGET_MS, 90_000, videoSignal)
+    const upstreamSignal = streamBudget.signal
     const callModel = (candidateModel: string) =>
       fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/${candidateModel}:${action}${suffix}`,
@@ -277,7 +278,8 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
     // Un seul fallback, dans la même requête proxy et sous le même débit
     // trial/wallet. Jamais sur 400/401/403/429 : ces erreurs ne deviennent pas
     // valides en changeant de modèle. Le signal commun borne les deux appels à
-    // 50 s au total.
+    // 50 s au total pour les en-têtes. Un flux accepté a ensuite une limite
+    // d'inactivité, pas un couperet sur la durée de sa génération.
     const shouldFallback =
       model === GEMINI_36_MODEL &&
       (response.status === 404 || (response.status >= 500 && response.status < 600))
@@ -353,6 +355,8 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
       })
     }
 
+    response = streamBudget.accept(response)
+
     // Tracking tokens réels côté serveur — un seul tee, deux consommateurs
     // (analytics + débit wallet sur le chemin wallet).
     if (usingServerKey && response.body) {
@@ -393,6 +397,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
       { status: 502 }
     )
   } finally {
+    streamBudget?.dispose()
     if (cleanupVideo) waitUntil(cleanupVideo())
   }
 }

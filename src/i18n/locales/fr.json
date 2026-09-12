@@ -960,6 +960,8 @@
     "accountChangedDuringRequest": "Le compte a changé pendant l’opération. Elle a été arrêtée avant l’étape suivante ; recommence depuis ce compte.",
     "streamInterrupted": "Réponse interrompue",
     "streamStopped": "Réponse arrêtée",
+    "backgroundGenerationExpired": "La génération en arrière-plan a été interrompue. Vous pouvez réessayer depuis Arty.",
+    "backgroundGenerationUnavailable": "Arty ne peut pas démarrer la réponse en arrière-plan. Revenez dans Arty et réessayez.",
     "streamStalled": "Connexion au serveur interrompue (réseau instable). La réponse déjà reçue est conservée.",
     "responseIncomplete": "Réponse incomplète, réessaie ta question.",
     "promptEnhancementFailed": "Impossible d'améliorer le prompt — réessaie.",

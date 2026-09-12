@@ -74,6 +74,7 @@ import {
   prepareVisionAutoCrop,
 } from '../../services/visionAutoCrop'
 import { useConversation } from '../../hooks/useConversation'
+import * as backgroundGeneration from '../../services/native/generation'
 
 const source: FileAttachment = {
   id: 'source-photo',
@@ -231,6 +232,27 @@ describe('useConversation — séquences auto-crop', () => {
       }),
     }))
 
+    act(() => result.current.stopStreaming(conv.id))
+  })
+
+  it('une ancienne acquisition native ne stoppe pas la nouvelle réponse après Stop', async () => {
+    const nativeReady = deferred<void>()
+    const acquisition = vi.spyOn(backgroundGeneration, 'acquireGeneration')
+      .mockReturnValueOnce({ ready: nativeReady.promise, release: vi.fn() })
+    const { result } = renderHook(() => useConversation())
+    act(() => result.current.selectConversation(conv.id))
+    let oldSend!: Promise<boolean>
+    act(() => { oldSend = result.current.sendMessage('Lis le cadre à gauche', conv.id) })
+    await waitFor(() => expect(acquisition).toHaveBeenCalledTimes(1))
+    expect(prepareVisionAutoCrop).not.toHaveBeenCalled()
+    act(() => result.current.stopStreaming(conv.id))
+    await act(async () => { await result.current.sendMessage('Décris cette photo', conv.id, [source]) })
+    expect(sendMessageStream).toHaveBeenCalledTimes(1)
+    const newController = vi.mocked(sendMessageStream).mock.results[0]!.value as AbortController
+    await act(async () => { nativeReady.resolve(); await oldSend })
+    expect(newController.signal.aborted).toBe(false)
+    expect(result.current.isStreaming).toBe(true)
+    expect(prepareVisionAutoCrop).not.toHaveBeenCalled()
     act(() => result.current.stopStreaming(conv.id))
   })
 })

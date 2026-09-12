@@ -9,6 +9,8 @@ import { onLocalDataInvalidated } from '../services/localDataInvalidation'
 import { PROJECT_ERASURE_FENCE_KEY } from '../services/userSession'
 import { beginConversationWork } from '../services/conversationWork'
 import { onceWorkflowObservation, type WorkflowObservation, type WorkflowOutcome } from '../services/workflows/outcome'
+import { acquireGeneration, type GenerationLease } from '../services/native/generation'
+import i18n from '../i18n'
 
 // Cap de streams concurrents — protège des coûts d'abus (8 convs ouvertes en
 // même temps = 8 appels LLM en // sur le compte du proprio). 3 suffit largement
@@ -21,11 +23,13 @@ export interface ExternalStreamLifecycle {
 }
 export interface ExternalStreamLease {
   invocationId: string
+  ready(): Promise<void>
   isCurrent(): boolean
   release(): void
 }
 
 type StreamState = {
+  generation?: GenerationLease
   terminal?: boolean
   observation?: WorkflowObservation
   finishWork(): void
@@ -71,6 +75,7 @@ function settleObservation(state: StreamState, outcome: WorkflowOutcome, committ
 
 export function useStreaming(deps: {
   refreshConversations: () => void
+  onBackgroundError?: (message: string, targetId: string) => void
 }) {
   // H2 (audit frontend) — `deps` est un objet littéral recréé à chaque render
   // par l'appelant. S'il entrait dans les deps de `finalize`, toute la chaîne
@@ -94,6 +99,7 @@ export function useStreaming(deps: {
   // l'interval de savePartial et l'AbortController par conv.
   // Hors React state pour éviter un re-render de toute l'app à chaque token.
   const streamsRef = useRef<Map<string, StreamState>>(new Map())
+  const finishingGenerations = useRef(new Set<() => void>())
 
   // Conv actuellement affichée. Synchronisée par setActiveStream depuis
   // selectConversation/clearActive. Indique quel stream rendre dans l'UI live.
@@ -221,6 +227,7 @@ export function useStreaming(deps: {
     if (expected && s !== expected) return
     if (s) { s.terminal = true; discardObservation(s) }
     s?.finishWork()
+    s?.generation?.release()
     if (s?.saveInterval) {
       clearInterval(s.saveInterval)
       s.saveInterval = null
@@ -328,6 +335,19 @@ export function useStreaming(deps: {
       },
     }
     streamsRef.current.set(targetId, s)
+    s.generation = acquireGeneration(() => {
+      if (streamsRef.current.get(targetId) !== s || s.terminal) return
+      s.terminal = true
+      settleObservation(s, 'error')
+      try {
+        if (s.external) s.external.cancel('stop')
+        else if (s.accumulated || s.generatedImages.length) finalize(s, s.accumulated, true)
+      } finally {
+        s.abortController?.abort()
+        teardownStream(targetId, s)
+        depsRef.current.onBackgroundError?.(i18n.t('errors.backgroundGenerationExpired'), targetId)
+      }
+    })
     setStreamingConvIds((prev) => {
       const next = new Set(prev)
       next.add(targetId)
@@ -339,7 +359,28 @@ export function useStreaming(deps: {
       setStreamingImages(EMPTY_GENERATED_IMAGES)
     }
     return true
-  }, [savePartialFor, teardownStream])
+  }, [savePartialFor, teardownStream, finalize])
+
+  const awaitStreamReady = useCallback(async (targetId: string) => {
+    const state = streamsRef.current.get(targetId)
+    if (!state || state.terminal) throw new DOMException('Generation cancelled', 'AbortError')
+    state.assertCurrent?.()
+    await state.generation?.ready
+    if (streamsRef.current.get(targetId) !== state || state.terminal) throw new DOMException('Generation cancelled', 'AbortError')
+    state.assertCurrent?.()
+  }, [])
+
+  // Transfer network protection to final verification without starting a new
+  // foreground service from the background or keeping the chat spinner active.
+  const retainGeneration = useCallback((targetId: string): (() => void) => {
+    const state = streamsRef.current.get(targetId)
+    state?.assertCurrent?.()
+    const release = state?.generation?.retain()
+    if (!release) return () => {}
+    const finish = () => { if (finishingGenerations.current.delete(finish)) release() }
+    finishingGenerations.current.add(finish)
+    return finish
+  }, [])
 
   /** Exact invocation, not a conversation marker read from imported history. */
   const observeStreamCompletion = useCallback((targetId: string, invocationId: string, observation: WorkflowObservation): boolean => {
@@ -362,10 +403,13 @@ export function useStreaming(deps: {
     return entries.map(entry => {
       startStream(entry.id, entry.assertCurrent, entry.lifecycle)
       const state = streamsRef.current.get(entry.id)!
-      return { invocationId: state.invocationId, isCurrent: () => streamsRef.current.get(entry.id) === state,
+      return { invocationId: state.invocationId, ready: () => {
+        if (streamsRef.current.get(entry.id) !== state) return Promise.reject(new DOMException('Generation cancelled', 'AbortError'))
+        return awaitStreamReady(entry.id)
+      }, isCurrent: () => streamsRef.current.get(entry.id) === state,
         release: () => { if (streamsRef.current.get(entry.id) === state) teardownStream(entry.id) } }
     })
-  }, [startStream, teardownStream])
+  }, [startStream, teardownStream, awaitStreamReady])
 
   const setProjectTurn = useCallback((targetId: string, turn: ProjectTurn) => {
     const state = streamsRef.current.get(targetId)
@@ -487,8 +531,9 @@ export function useStreaming(deps: {
 
   useEffect(() => {
     const invalidate = () => {
+      for (const finish of finishingGenerations.current) finish()
       for (const state of streamsRef.current.values()) {
-        if (state.generatedImages.length || state.external) discardStream(state.targetId)
+        discardStream(state.targetId)
       }
     }
     const unsubscribe = onLocalDataInvalidated(invalidate)
@@ -536,9 +581,11 @@ export function useStreaming(deps: {
   }, [])
 
   useEffect(() => () => {
+    for (const finish of finishingGenerations.current) finish()
     for (const stream of streamsRef.current.values()) {
       stream.terminal = true; discardObservation(stream)
       stream.finishWork()
+      stream.generation?.release()
       if (stream.saveInterval) clearInterval(stream.saveInterval)
       try { stream.external?.cancel('unmount') } catch { /* Keep cleaning up siblings. */ }
       try { stream.abortController?.abort() } catch { /* Keep cleaning up siblings. */ }
@@ -565,6 +612,8 @@ export function useStreaming(deps: {
     canStart,
     // Lifecycle d'un stream
     startStream,
+    awaitStreamReady,
+    retainGeneration,
     observeStreamCompletion,
     reserveExternalStreams,
     setProjectTurn,
@@ -587,7 +636,7 @@ export function useStreaming(deps: {
     savePartialAll,
   }), [
     isStreaming, streamingContent, streamingImages, streamingConvIds, isStreamingFor, hasStream,
-    canStart, startStream, observeStreamCompletion, reserveExternalStreams, setProjectTurn, adoptGeneratedImage, getInvocationId, onToken, onDone, onError,
+    canStart, startStream, awaitStreamReady, retainGeneration, observeStreamCompletion, reserveExternalStreams, setProjectTurn, adoptGeneratedImage, getInvocationId, onToken, onDone, onError,
     stopStreaming, discardStream, setActiveStream, isActive,
     setProgressContent, setAbortController, resetAccumulated, finalize,
     savePartialAll,

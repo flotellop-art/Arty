@@ -119,7 +119,7 @@ export function startContextualComparison(prepared: Prepared, registry: Registry
     const options = { documentReadOnly: true, comparisonTextOnly: true, maxOutputTokens: 8192, background: true, systemPrompt: request.systemPrompt,
       model: request.config.modelId, tools: [], euOnly: request.provider === 'mistral', webSearch: false,
       assertRequestCurrent: () => current(index),
-      beforeDocumentRequest: async () => { current(index); await request.beforeRequest(); current(index); p.engaged = true },
+      beforeDocumentRequest: async () => { current(index); await p.lease!.ready(); current(index); await request.beforeRequest(); current(index); p.engaged = true },
       onModelUsed: (event: ModelUsedEvent) => {
         try { current(index) } catch { return }
         if (!validModelId(event.model) || !['requested', 'proxy', 'provider'].includes(event.source ?? '')) return

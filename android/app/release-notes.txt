@@ -1,6 +1,6 @@
-Arty 1.0.101 — Vérification progressive des faits
+Arty 1.0.102 — Réponses en arrière-plan
 
-• Reprise ciblée des affirmations qui manquent de preuves documentaires.
-• Traitement des longues réponses par parties, avec contexte conservé.
-• Progression distincte du nombre de preuves acceptées et raisons de blocage plus claires.
-• Citations, recopies exactes et corrections sensibles protégées.
+• La réponse continue lorsque vous passez dans une autre application Android.
+• La réponse est enregistrée à la fin du traitement, avec une notification discrète pendant la génération.
+• Le bouton Arrêter annule correctement la réponse en cours.
+• Les améliorations récentes de lecture TikTok et de vérification progressive des faits sont incluses.
