@@ -17,6 +17,7 @@ export const EUR_PER_USD = 0.92
 // $ par 1M tokens (input / output)
 export const MODEL_COSTS: Record<string, { input: number; output: number }> = {
   get 'gemini-3.8-flash'() { const { input, output } = gemini38Pricing(); return { input, output } },
+  get 'gemini-flash-3.8'() { const { input, output } = gemini38Pricing(); return { input, output } },
   'claude-haiku-4-5':  { input: 1.00,  output: 5.00 },
   'claude-sonnet-4-6': { input: 3.00,  output: 15.00 }, // legacy — conservé pour les coûts historiques
   // Sonnet 5 : tarif durable $3/$15 (l'intro $2/$10 court jusqu'au 31/08/2026 —
@@ -83,6 +84,7 @@ const ALERT_KEY = 'cost_alert'
 // trace du coût quand un nouveau modèle sort.
 
 const MODEL_ALIASES: Record<string, string> = {
+  'gemini-3.8-flash': 'gemini-flash-3.8',
   'mistral-large-latest': 'mistral-large',
   'mistral-medium-latest': 'mistral-medium',
   'mistral-medium-3.5': 'mistral-medium',

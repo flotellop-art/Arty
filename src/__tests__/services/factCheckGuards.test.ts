@@ -78,6 +78,32 @@ beforeEach(() => {
 })
 
 describe('runFactCheckOnLatest — gardes', () => {
+  it.each([
+    'Recopie exactement ce paragraphe de test, sans commentaire : Une minute contient 100 secondes.',
+    'Peux-tu recopier mot pour mot : Une minute contient 100 secondes.',
+    'Reproduis à l’identique, sans correction : Une minute contient 100 secondes.',
+    'Please copy exactly: One minute has 100 seconds.',
+    'Traduis fidèlement en anglais : Une minute contient 100 secondes.',
+  ])('préserve une restitution fidèle, y compris ses liens : %s', async question => {
+    const conv = makeConv()
+    conv.messages[0]!.content = question
+    conv.messages[1]!.content = 'Une minute contient 100 secondes. Un pouce vaut exactement 3 centimètres. Un triangle possède quatre côtés. [Texte fourni](https://example.com/copie).'
+    const original = conv.messages[1]
+    convStore.set(conv.id, conv)
+    await runFactCheckOnLatest(conv.id, () => {})
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(convStore.get(conv.id)!.messages[1]).toBe(original)
+    expect(original!.factCheck).toBeUndefined()
+  })
+  it.each(['translate', 'translateToEn'] as const)('préserve les faits traduits par action %s', async id => {
+    const conv = makeConv()
+    conv.messages[0]!.quickAction = { id, locale: 'fr' }
+    const original = conv.messages[1]
+    convStore.set(conv.id, conv)
+    await runFactCheckOnLatest(conv.id, () => {})
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(convStore.get(conv.id)!.messages[1]).toBe(original)
+  })
   it('conversation euOnly → AUCUN appel réseau, message intact (RGPD RÈGLE 5.3)', async () => {
     const conv = makeConv({ euOnly: true })
     convStore.set(conv.id, conv)

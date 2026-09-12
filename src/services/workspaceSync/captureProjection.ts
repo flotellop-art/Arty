@@ -1,4 +1,5 @@
 import type { Conversation } from '../../types'
+import { validTikTokAnalysis } from '../tiktokVideoTypes'
 import { isGeneratedImageId, MAX_GENERATED_IMAGES_PER_TURN } from '../generatedImages'
 import { envelopeFail as fail } from './envelopeFormat'
 import { SYNC_LIMITS } from './types'
@@ -101,7 +102,8 @@ function projectConversationShape(input: unknown, limits: { nodes: number; chars
   const message = shape({ id, role: one('user', 'assistant'), content: text, timestamp: integer }, { restoredArchive: one(true),
     files: list(64, file), generatedImages: list(MAX_GENERATED_IMAGES_PER_TURN, id), pinned: bool, interrupted: bool, factCheck: fact,
     quickAction: shape({ id: one('brief', 'writeEmail', 'summarizeText', 'translateToEn', 'summarize', 'write', 'translate', 'explain'), locale: one('fr', 'en') }),
-    model: text, requestedModel: text, modelSource: one('requested', 'proxy', 'provider'), reasonCode: text, subModelReasonCode: text, projectTurn: turn })
+    model: text, requestedModel: text, modelSource: one('requested', 'proxy', 'provider'), reasonCode: text, subModelReasonCode: text, projectTurn: turn,
+    videoAnalysis: v => { const result = shape({ url: text, text, model: text, analyzedAt: integer })(v); if (!validTikTokAnalysis(result)) return fail('format'); return result } })
   const result = shape({ id, title: text, messages: list(5000, message), createdAt: integer, updatedAt: integer }, { comparison,
     outputRestriction: one('client-reply-draft-v1'), usedModels: list(100, text), tags: list(100, text), euOnly: bool,
     hasGoogleData: bool, hasTrailContext: bool, hasProjectContext: bool, projectId: id })(input) as Conversation
@@ -110,6 +112,7 @@ function projectConversationShape(input: unknown, limits: { nodes: number; chars
   for (const m of result.messages) {
     const coverage = m.factCheck?.coverage
     if (coverage && (coverage.submittedChars > 6000 || coverage.submittedChars > coverage.inputChars)) fail('format')
+    if (m.videoAnalysis && m.role !== 'user') fail('format')
     if (m.id === 'streaming' || messages.has(m.id)) fail('format')
     messages.add(m.id)
     if (m.generatedImages !== undefined && (m.role !== 'assistant' || !m.generatedImages.every(isGeneratedImageId) || new Set(m.generatedImages).size !== m.generatedImages.length)) fail('format')

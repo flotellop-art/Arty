@@ -4,7 +4,6 @@
 // officielles restent Anthropic Console / OpenAI Platform / Mistral / Google AI.
 //
 // Mettre à jour quand les providers changent leurs tarifs.
-
 import { gemini38Pricing } from '../../../shared/gemini38Pricing'
 
 export interface ModelPricing {

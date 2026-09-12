@@ -87,6 +87,12 @@ const MessageItem = memo(function MessageItem({ msg, index, outputRestriction, o
       )}
       {msg.id === 'streaming' && generatedImageIds(msg.generatedImages).length > 0 && <p role="status" className="text-xs text-theme-muted">{t('image.galleryUnavailable')}</p>}
       {msg.projectTurn && <ProjectSources turn={msg.projectTurn} prepared={msg.role === 'user'} />}
+      {msg.role === 'user' && msg.videoAnalysis && (
+        <details className="my-2 rounded-lg border border-theme px-3 py-2 text-sm">
+          <summary className="cursor-pointer text-theme-muted">{t('video.saved')}</summary>
+          <p className="mt-2 whitespace-pre-wrap">{msg.videoAnalysis.text}</p>
+        </details>
+      )}
     </div>
   )
 })

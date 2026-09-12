@@ -126,6 +126,15 @@ describe('fact-check integrity through the real client', () => {
 })
 const correction = (originalText: string, corrected = 'une valeur corrigée'): FactCheckClaim => ({ ...claim('wrong'), verdict: 'wrong', originalText, correction: corrected })
 describe('safe correction spans', () => {
+  it.each(['> Une minute contient 100 secondes.', 'Il dit « Une minute contient 100 secondes. »', 'Il dit “Une minute contient 100 secondes.”', 'Il dit "Une minute contient 100 secondes."'])('préserve les citations attribuées : %s', text => {
+    expect(applyClaimCorrections(text, [correction('Une minute contient 100 secondes.', 'Une minute contient 60 secondes.')]))
+      .toEqual({ correctedContent: text, appliedCount: 0 })
+  })
+  it('corrige une assertion hors citation sans modifier la citation', () => {
+    const text = 'Il dit « Une minute contient 100 secondes. » Mais un pouce vaut 3 centimètres.'
+    expect(applyClaimCorrections(text, [correction('Une minute contient 100 secondes.', 'Une minute contient 60 secondes.'), correction('un pouce vaut 3 centimètres.', 'un pouce vaut 2,54 centimètres.')]))
+      .toEqual({ correctedContent: 'Il dit « Une minute contient 100 secondes. » Mais un pouce vaut 2,54 centimètres.', appliedCount: 1 })
+  })
   it.each([
     ['Le chiffre 5 apparaît aussi dans 50.', '5'],
     ['valeur de 2025 puis valeur de 2025', 'valeur de 2025'],

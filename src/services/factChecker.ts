@@ -22,6 +22,7 @@ import * as storage from './storage'
 import { recordUsage } from './costTracker'
 import type { FactCheckResult, FactCheckClaim, Message } from '../types'
 import { getMessageTextForModel } from './quickActions'
+import { requiresFaithfulText } from './faithfulText'
 import { isDocumentConversation } from './projects/chatPolicy'
 import { unified } from 'unified'
 import remarkParse from 'remark-parse'
@@ -1447,7 +1448,7 @@ export function applyClaimCorrections(
   type Node = { type: string; position?: { start: { offset?: number }; end: { offset?: number } }; children?: Node[] }
   const prose: Array<{ start: number; end: number }> = []
   const visit = (node: Node) => {
-    if (['link', 'linkReference', 'image', 'imageReference', 'definition', 'code', 'inlineCode', 'html'].includes(node.type)) return
+    if (['blockquote', 'link', 'linkReference', 'image', 'imageReference', 'definition', 'code', 'inlineCode', 'html'].includes(node.type)) return
     if (node.type === 'text' && node.position?.start.offset !== undefined && node.position.end.offset !== undefined)
       prose.push({ start: node.position.start.offset, end: node.position.end.offset })
     node.children?.forEach(visit)
@@ -1457,6 +1458,9 @@ export function applyClaimCorrections(
   const structure = (node: Node): string => `${node.type}[${node.children?.map(structure).join(',') ?? ''}]`
   visit(originalTree)
   const urls = [...content.matchAll(/(?:https?:\/\/|www\.)[^\s<>]+/gi)].map(m => ({ start: m.index!, end: m.index! + m[0].length }))
+  // Paired quotation marks delimit attributed text; apostrophes do not.
+  const quotations = [...content.matchAll(/«[^»]*»|“[^”]*”|"[^"\n]*"/g)]
+    .map(m => ({ start: m.index!, end: m.index! + m[0].length }))
   const { norm, map } = normalizeForMatch(content)
   const edits: Array<{ start: number; end: number; claim: FactCheckClaim }> = []
   for (const c of claims) {
@@ -1478,7 +1482,7 @@ export function applyClaimCorrections(
     const before = content.slice(0, start).match(/.$/u)?.[0] ?? ''
     const after = content.slice(end).match(/^./u)?.[0] ?? ''
     if ((word(firstChar) && word(before)) || (word(lastChar) && word(after))) continue
-    if (!prose.some(p => start >= p.start && end <= p.end) || urls.some(u => start < u.end && end > u.start)) continue
+    if (!prose.some(p => start >= p.start && end <= p.end) || [...urls, ...quotations].some(u => start < u.end && end > u.start)) continue
     edits.push({ start, end, claim: c })
   }
   const safe = edits.filter(e => !edits.some(other => other !== e && e.start < other.end && e.end > other.start))
@@ -1604,6 +1608,13 @@ export async function runFactCheckOnLatest(
 
   const originalContent = assistantMsg.content
   const question = getMessageTextForModel(userMsg)
+  // A faithful reproduction is not an assertion by the assistant. Preserve
+  // the whole body, including supplied URLs, before ANY source rewriting.
+  // No verification badge is added: preserving a quote does not certify it.
+  if (requiresFaithfulText(userMsg)) {
+    clearSearchContext(conversationId)
+    return
+  }
   const initialPrepared = prepareAssistantContent(question, originalContent, conversationId)
   let prepared = initialPrepared
   let contentWasPrepared = prepared.content !== originalContent

@@ -43,6 +43,8 @@ export interface QuickActionSelection {
 }
 
 export interface ChatSendOptions {
+  /** Retry of the same public URL: reuse saved observations, never re-charge. */
+  videoAnalysis?: import('../services/tiktokVideoTypes').TikTokAnalysis
   quickAction?: QuickActionSelection
   /** Interne : une édition du texte doit recalculer le crop, pas réutiliser
    * silencieusement les coordonnées choisies pour l'ancien prompt. */
@@ -96,6 +98,8 @@ export interface FactCheckResult {
 }
 
 export interface Message {
+  /** Saved source observations; never user instructions or routing authority. */
+  videoAnalysis?: import('../services/tiktokVideoTypes').TikTokAnalysis
   id: string
   role: 'user' | 'assistant'
   content: string
