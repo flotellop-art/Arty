@@ -5,6 +5,18 @@ import i18n from '../../i18n'
 import { proof } from '../fixtures/factEvidence'
 afterEach(cleanup)
 describe('partial fact-check display', () => {
+  it('distinguishes analysis finished from full confirmation and retains accepted claim icons', async () => {
+    await i18n.changeLanguage('fr')
+    const { container } = render(<FactCheckBadge result={{ overallConfidence: 'medium', modelLabel: 'Sonnet', checkedAt: 1, status: 'partial', limitations: ['evidence_missing'],
+      coverage: { inputChars: 500, submittedChars: 500, claimLimitReached: false },
+      progress: { phase: 'complete', batchesDone: 1, batchesTotal: 1, accepted: 1, identified: 2 },
+      claims: [{ claim: 'Un fait prouvé', verdict: 'verified', explanation: '', review: proof() }, { claim: 'Un point sans preuve', verdict: 'uncertain', explanation: '' }] }} />)
+    expect(screen.getByRole('status').textContent).toContain('Analyse terminée')
+    expect(screen.getByRole('status').textContent).toContain('1/2')
+    expect(screen.getByRole('button').textContent).toContain('partielle')
+    fireEvent.click(screen.getByRole('button'))
+    expect(container.querySelector('.text-emerald-700')?.textContent).toContain('Un fait prouvé')
+  })
   it('shows the exact evidence, its context and the independent objection', async () => {
     await i18n.changeLanguage('fr')
     render(<FactCheckBadge result={{ overallConfidence: 'low', modelLabel: 'Sonnet', checkedAt: 1, status: 'partial', limitations: ['evidence_missing'],

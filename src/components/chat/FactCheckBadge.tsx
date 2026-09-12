@@ -17,6 +17,7 @@
 import { memo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { FactCheckResult } from '../../types'
+import { hasAcceptedFactProof, validFactCheckProgressForResult } from '../../../shared/factCheckEvidence'
 
 interface Props {
   result: FactCheckResult
@@ -77,6 +78,7 @@ export const FactCheckBadge = memo(function FactCheckBadge({ result, historical 
   }
 
   const status = deriveStatus(result)
+  const progress = validFactCheckProgressForResult(result) ? result.progress : undefined
 
   const wrongCount = result.claims.filter((c) => c.verdict === 'wrong').length
   const uncertainCount = result.claims.filter((c) => c.verdict === 'uncertain').length
@@ -95,6 +97,7 @@ export const FactCheckBadge = memo(function FactCheckBadge({ result, historical 
       case 'partial':
         return `⚠️ ${t('chat.factCheck.partial')}`
       case 'success-empty':
+        if (progress && !progress.identified) return t('chat.factCheck.noClaimsIdentified')
         return verifiedCount > 0
           ? `✓ ${plural(verifiedCount, 'chat.factCheck.verifiedOne', 'chat.factCheck.verifiedMany')}`
           : `✓ ${t('chat.factCheck.noRisky')}`
@@ -127,7 +130,7 @@ export const FactCheckBadge = memo(function FactCheckBadge({ result, historical 
       case 'partial':
         return 'text-amber-700 dark:text-amber-400'
       case 'success-empty':
-        return 'text-emerald-700 dark:text-emerald-400'
+        return progress && !progress.identified ? 'text-theme-muted' : 'text-emerald-700 dark:text-emerald-400'
       case 'success-with-claims':
         return corrected > 0
           ? 'text-blue-700 dark:text-blue-400'
@@ -153,6 +156,11 @@ export const FactCheckBadge = memo(function FactCheckBadge({ result, historical 
         <span>{summary}</span>
         <span className="opacity-60 text-[10px]">{expanded ? '▲' : '▼'}</span>
       </button>
+      {progress && <p role="status" className="mt-1 text-theme-muted">
+        {t(status === 'pending' ? 'chat.factCheck.workChecking' : progress.phase === 'complete' ? 'chat.factCheck.workComplete' : 'chat.factCheck.workStopped',
+          { done: progress.batchesDone, total: progress.batchesTotal })}
+        {' · '}{t('chat.factCheck.proofProgress', { accepted: progress.accepted, identified: progress.identified })}
+      </p>}
       {expanded && (
         <div className="mt-2 pl-3 border-l-2 border-theme-border space-y-2">
           {status !== 'pending' && (
@@ -180,7 +188,7 @@ export const FactCheckBadge = memo(function FactCheckBadge({ result, historical 
           ) : status === 'failed' ? (
             <p className="text-theme-muted italic">{t('chat.factCheck.unavailableDetail')}</p>
           ) : result.claims.length === 0 ? (
-            status === 'partial' ? null : <p className="text-theme-muted italic">{t('chat.factCheck.noRiskyDetail')}</p>
+            status === 'partial' ? null : <p className="text-theme-muted italic">{t(progress ? 'chat.factCheck.noClaimsIdentified' : 'chat.factCheck.noRiskyDetail')}</p>
           ) : (
             result.claims.map((c, i) => {
               const hasCorrection = c.verdict === 'wrong' && !!c.originalText && !!c.correction
@@ -191,8 +199,8 @@ export const FactCheckBadge = memo(function FactCheckBadge({ result, historical 
               const wasCorrected = hasCorrection && (status === 'partial' ? c.applied === true : c.applied !== false)
               return (
                 <div key={i} className="text-theme-ink/80">
-                  <div className={`flex items-start gap-1.5 ${status === 'partial' && c.verdict === 'verified' ? VERDICT_STYLE.uncertain : VERDICT_STYLE[c.verdict] || ''}`}>
-                    <span className="shrink-0 mt-px">{wasCorrected ? '✏️' : status === 'partial' && c.verdict === 'verified' ? '⚠️' : VERDICT_ICON[c.verdict] || '•'}</span>
+                  <div className={`flex items-start gap-1.5 ${status === 'partial' && c.verdict === 'verified' && !hasAcceptedFactProof(c.review) ? VERDICT_STYLE.uncertain : VERDICT_STYLE[c.verdict] || ''}`}>
+                    <span className="shrink-0 mt-px">{wasCorrected ? '✏️' : status === 'partial' && c.verdict === 'verified' && !hasAcceptedFactProof(c.review) ? '⚠️' : VERDICT_ICON[c.verdict] || '•'}</span>
                     <span className="font-medium">{c.claim}</span>
                   </div>
                   {wasCorrected && (

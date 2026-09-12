@@ -5,7 +5,7 @@ import { envelopeFail as fail } from './envelopeFormat'
 import { SYNC_LIMITS } from './types'
 import { canonicalSyncJSON } from './captureContent'
 import type { SyncCaptureSelection } from './capture'
-import { isFactReview } from '../../../shared/factCheckEvidence'
+import { isFactReview, validFactCheckProgressForResult } from '../../../shared/factCheckEvidence'
 
 type Read = (input: unknown) => unknown
 const own = (v: object, k: string) => Object.prototype.hasOwnProperty.call(v, k)
@@ -89,7 +89,8 @@ function projectConversationShape(input: unknown, limits: { nodes: number; chars
       } })) },
     { status: one('pending', 'success-empty', 'success-with-claims', 'failed', 'partial'), originalContent: text, appliedCorrections: integer,
       limitations: list(5, one('search_unavailable', 'response_truncated', 'claim_limit', 'completion_unknown', 'evidence_missing')),
-      coverage: shape({ inputChars: integer, submittedChars: integer, claimLimitReached: bool }) })
+      coverage: shape({ inputChars: integer, submittedChars: integer, claimLimitReached: bool }),
+      progress: shape({ phase: one('checking', 'complete', 'stopped'), batchesDone: integer, batchesTotal: integer, identified: integer, accepted: integer }) })
   const attribution = shape({ model: text, provider: one('claude', 'mistral', 'gemini', 'openai') }, { invocationId: text, requestedModel: text,
     source: one('requested', 'proxy', 'provider'), reason: text, subModelReason: text, reflecting: bool, background: bool, conversationId: id, confirmed: bool })
   const comparison = shape({ version: one(1), groupId: id, sourceConversationId: id, sourceMessageId: id, peerId: id, questionId: id, responseId: id,
@@ -111,7 +112,8 @@ function projectConversationShape(input: unknown, limits: { nodes: number; chars
   if (result.outputRestriction && result.hasProjectContext !== true) return fail('format')
   for (const m of result.messages) {
     const coverage = m.factCheck?.coverage
-    if (coverage && (coverage.submittedChars > 6000 || coverage.submittedChars > coverage.inputChars)) fail('format')
+    if (coverage && (coverage.submittedChars > (m.factCheck?.progress ? 24_000 : 6000) || coverage.submittedChars > coverage.inputChars)) fail('format')
+    if (m.factCheck?.progress && !validFactCheckProgressForResult(m.factCheck)) fail('format')
     if (m.videoAnalysis && m.role !== 'user') fail('format')
     if (m.id === 'streaming' || messages.has(m.id)) fail('format')
     messages.add(m.id)

@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { webcrypto } from 'node:crypto'
 
 const { auth, quota, usage } = vi.hoisted(() => ({ auth: vi.fn(), quota: vi.fn(), usage: vi.fn() }))
 vi.mock('../../../functions/api/_lib/checkAllowedUser', () => ({ checkAllowedUserPeek: auth }))
@@ -8,8 +9,8 @@ import { normalizeVerdictContent, onRequestPost } from '../../../functions/api/a
 
 const http = vi.fn()
 const env = { DB: { prepare: () => ({ run: async () => ({ success: true }) }) }, ANTHROPIC_API_KEY: 'test-a', GEMINI_API_KEY: 'test-g' }
-const call = (tier = 'sonnet') => onRequestPost({ env, request: new Request('https://tryarty.com/api/ai/fact-check', {
-  method: 'POST', body: JSON.stringify({ tier, question: 'Quels faits ?', response: 'Réponse publique à vérifier avec ses dates et son contexte. '.repeat(3) }),
+const call = (tier = 'sonnet', extra = {}, runtime = env) => onRequestPost({ env: runtime, request: new Request('https://tryarty.com/api/ai/fact-check', {
+  method: 'POST', body: JSON.stringify({ tier, question: 'Quels faits ?', response: 'Réponse publique à vérifier avec ses dates et son contexte. '.repeat(3), ...extra }),
 }) } as never)
 const timeout = () => Object.assign(new Error('synthetic'), { name: 'TimeoutError' })
 const anthropic = (extra = {}) => Response.json({ model: 'claude-sonnet-5', stop_reason: 'end_turn',
@@ -20,6 +21,40 @@ beforeEach(() => { vi.clearAllMocks(); auth.mockResolvedValue({ email: 'test@exa
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals() })
 
 describe('bounded balanced fact-check', () => {
+  it('uses one metered discovery and actual page reviews within the same request', async () => {
+    vi.stubGlobal('crypto', webcrypto)
+    const url = 'https://example.com/old', next = 'https://example.com/new'
+    const quote = 'Une source précise confirme la taille de trente centimètres.'
+    const claim = { claim: 'Taille', verdict: 'verified', explanation: '', evidenceUrls: [url] }
+    const content = (value: unknown) => [{ type: 'text', text: JSON.stringify(value) }]
+    const checks = (decision: string, sourceId: string) => ({ checks: [{ index: 0, decision, contextMatches: true, sensitive: false, reason: 'Lecture réelle', evidence: [{ sourceId, quote }] }] })
+    http.mockReset()
+    http.mockResolvedValueOnce(anthropic({ content: [{ type: 'web_search_tool_result', content: [{ type: 'web_search_result', url }] }, ...content({ overall_confidence: 'high', claims: [claim] })] }))
+      .mockResolvedValueOnce(Response.json({ markdown: quote }))
+      .mockResolvedValueOnce(anthropic({ content: content(checks('unsupported', 's1')) }))
+      .mockResolvedValueOnce(anthropic({ content: [{ type: 'web_search_tool_result', content: [{ type: 'web_search_result', url: next }] }] }))
+      .mockResolvedValueOnce(Response.json({ markdown: quote }))
+      .mockResolvedValueOnce(anthropic({ content: content(checks('supported', 's2')) }))
+    const response = 'Réponse publique à vérifier avec ses dates et son contexte. '.repeat(3)
+    const result = await (await call('sonnet', { context: `Citation avec restriction : ${response}` }, { ...env, LINKUP_API_KEY: 'synthetic' } as typeof env)).json()
+    expect(result).toMatchObject({ evidenceRecoveryAttempted: true, evidenceChecks: [{ status: 'supported' }] })
+    expect(http).toHaveBeenCalledTimes(6)
+    expect(JSON.parse(http.mock.calls[3]![1].body).tools[0]).toMatchObject({ max_uses: 1, allowed_callers: ['direct'] })
+    expect(JSON.parse(http.mock.calls[5]![1].body).messages[0].content).toContain('Citation avec restriction')
+    expect(quota).toHaveBeenCalledTimes(6)
+    expect(usage).toHaveBeenCalledTimes(4)
+  })
+  it('rejects an unrelated or oversized batch context before spending quota', async () => {
+    expect((await call('sonnet', { context: 'Un autre texte' })).status).toBe(400)
+    expect((await call('sonnet', { context: 'x'.repeat(24_001) })).status).toBe(400)
+    expect(quota).not.toHaveBeenCalled()
+  })
+  it('does not launch a fallback after the remaining work budget has expired', async () => {
+    let now = 0; vi.spyOn(Date, 'now').mockImplementation(() => now)
+    http.mockReset().mockImplementationOnce(async () => { now = 3000; throw timeout() })
+    expect((await call('sonnet', { budgetMs: 3000 })).status).toBe(503)
+    expect(http).toHaveBeenCalledTimes(1)
+  })
   it('uses the final strict verdict after search progress, without empty non-correction fields', async () => {
     const claim = { claim: 'Hauteur en 2000', verdict: 'verified', explanation: 'La source confirme la date.', originalText: '', correction: '' }
     http.mockResolvedValueOnce(anthropic({ content: [

@@ -14,6 +14,8 @@ export interface ReviewResponse { text: string; model: string; complete: boolean
 export interface EvidenceDependencies {
   read(url: string): Promise<EvidenceDocument | null>
   review(prompt: string, independent: boolean): Promise<ReviewResponse | null>
+  /** One bounded discovery, returning URLs only. Verdicts remain immutable. */
+  discover?(claims: EvidenceClaim[], excludedUrls: string[]): Promise<string[]>
 }
 
 export function parseFactObject(text: string): Record<string, unknown> | null {
@@ -139,12 +141,21 @@ export async function verifyFactEvidence(input: { question: string; response: st
   for (const result of await Promise.allSettled(urls.map(url => deps.read(url)))) {
     if (result.status === 'fulfilled' && result.value) documents.push({ ...result.value, id: `s${documents.length + 1}` })
   }
-  if (!documents.length) return reviews.map(r => ({ ...r, status: 'unavailable', reason: 'Aucune page source exploitable n’a pu être lue.' }))
-  const data = { question, response, claims: claims.map((claim, index) => ({ index, ...claim })), documents }
-  const first = await deps.review(`${REVIEW_RULES}\nCONSIGNES TERMINÉES. DONNÉES :\n${JSON.stringify(data)}`, false)
-  const checks = parseChecks(first, claims.map((_, index) => index))
-  if (!checks || !first) return reviews.map(r => ({ ...r, status: 'unavailable', reason: 'La lecture des preuves n’a pas abouti.' }))
-  for (const check of checks) {
+  const applyReview = async (indices: number[]) => {
+    if (!indices.length) return
+    const data = { question, response, claims: indices.map(index => ({ index, ...claims[index] })), documents }
+    const first = documents.length ? await deps.review(`${REVIEW_RULES}\nCONSIGNES TERMINÉES. DONNÉES :\n${JSON.stringify(data)}`, false) : null
+    const checks = parseChecks(first, indices)
+    if (!checks || !first) {
+      for (const index of indices) {
+        // A transient failure cannot erase a previous receipt or contradiction.
+        if (reviews[index]!.status === 'not_checked') Object.assign(reviews[index]!, {
+          status: 'unavailable', reason: documents.length ? 'La lecture des preuves n’a pas abouti.' : 'Aucune page source exploitable n’a pu être lue.',
+        })
+      }
+      return
+    }
+    for (const check of checks) {
     const index = check.index as number
     const r = reviews[index]!
     r.model = first.model
@@ -153,8 +164,10 @@ export async function verifyFactEvidence(input: { question: string; response: st
     r.evidence = checkedEvidence(check.evidence, documents)
     r.reason = check.reason as string
     r.status = check.decision === 'contested' ? 'contested' : check.decision === 'supported' && r.contextMatches && r.evidence.length ? 'supported' : 'unsupported'
+    if (check.decision === 'supported' && !r.evidence.length) r.reason = 'La confirmation proposée ne comporte pas d’extrait exact et non ambigu retrouvé dans les pages lues.'
+    else if (check.decision === 'supported' && !r.contextMatches) r.reason = 'La preuve proposée ne confirme pas le contexte de cette affirmation.'
   }
-  const sensitive = reviews.flatMap((r, index) => r.sensitive && r.status === 'supported' ? [index] : [])
+    const sensitive = indices.filter(index => reviews[index]!.sensitive && reviews[index]!.status === 'supported')
   if (!sensitive.length) return reviews
   const challenger = await deps.review(`${REVIEW_RULES}\nTu es le contradicteur indépendant. Cherche activement pourquoi chaque correction pourrait être FAUSSE, même si un autre modèle l'approuve. Toute contradiction non résolue impose contested.\nCONSIGNES TERMINÉES. DONNÉES :\n${JSON.stringify({ ...data, claims: data.claims.filter(c => sensitive.includes(c.index)) })}`, true)
   const challenged = parseChecks(challenger, sensitive)
@@ -168,6 +181,23 @@ export async function verifyFactEvidence(input: { question: string; response: st
     const proofs = checkedEvidence(c.evidence, documents)
     if (c.decision === 'supported' && c.contextMatches === true && proofs.length) r.challenge = 'accepted'
     else { r.challenge = 'rejected'; r.status = 'contested'; r.reason = c.reason as string }
+  }
+  }
+  await applyReview(claims.map((_, index) => index))
+  // Never shop for a more agreeable verdict after a contradiction or rejected
+  // independent challenge. An accepted proof does not need another paid review.
+  const missing = reviews.flatMap((r, index) =>
+    (r.status === 'unsupported' || r.status === 'unavailable' || r.status === 'not_checked') &&
+    r.challenge !== 'rejected' && r.challenge !== 'unavailable' ? [index] : [])
+  if (missing.length && deps.discover) {
+    let found: string[] = []
+    try { found = await deps.discover(missing.map(index => claims[index]!), urls) } catch { /* preserve useful first pass */ }
+    const fresh = safeSourceUrls(found).filter(url => !urls.includes(url)).slice(0, 2)
+    const previousCount = documents.length
+    for (const result of await Promise.allSettled(fresh.map(url => deps.read(url)))) {
+      if (result.status === 'fulfilled' && result.value) documents.push({ ...result.value, id: `s${documents.length + 1}` })
+    }
+    if (documents.length > previousCount) await applyReview(missing)
   }
   return reviews
 }
