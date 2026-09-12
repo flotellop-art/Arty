@@ -152,16 +152,36 @@ describe('legacy API transport through the real middleware chain', () => {
   it('keeps the existing shared API rate limiter', async () => {
     const results: number[] = []
     let terminalCalls = 0
+    let limited: Response | undefined
     for (let count = 0; count < 61; count++) {
       const req = request('/api/transport-test', { headers: { Origin: 'https://localhost' } })
       req.headers.set('cf-connecting-ip', '198.51.100.254')
       const { response } = await run(req, async () => { terminalCalls++; return new Response('ok') })
       results.push(response.status)
+      if (response.status === 429) limited = response
     }
     expect(results.slice(0, 60).every((status) => status === 200)).toBe(true)
     expect(results[60]).toBe(429)
     expect(terminalCalls).toBe(60)
+    expect(limited!.headers.get('access-control-allow-origin')).toBe('https://localhost')
+    expect(limited!.headers.get('retry-after')).toBe('60')
+    expect(await limited!.json()).toEqual({ error: 'Too many requests' })
     expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('never grants CORS to a forbidden origin on a rate-limited request', async () => {
+    const next = vi.fn(async () => new Response('ok'))
+    for (let count = 0; count < 60; count++) {
+      await apiMiddleware({ request: new Request('https://tryarty.com/api/transport-test', {
+        headers: { Origin: 'https://localhost', 'cf-connecting-ip': '198.51.100.253' },
+      }), next } as never)
+    }
+    const response = await apiMiddleware({ request: new Request('https://tryarty.com/api/ai/gemini-proxy', {
+      method: 'POST', headers: { Origin: 'https://attacker.example', 'cf-connecting-ip': '198.51.100.253' }, body: '{}',
+    }), next } as never)
+    expect(response.status).toBe(429)
+    expect(response.headers.get('access-control-allow-origin')).toBeNull()
+    expect(next).toHaveBeenCalledTimes(60)
   })
 })
 

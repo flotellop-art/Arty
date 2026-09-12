@@ -1,11 +1,13 @@
 import type { Message } from '../types'
+import { Capacitor } from '@capacitor/core'
 import i18n from '../i18n'
 import { apiUrl } from './apiBase'
 import { getGeminiKey } from './activeApiKey'
-import { buildAiHeaders } from './aiHttp'
+import { buildAiHeaders, postJsonNativeWithFallback } from './aiHttp'
 import { recordUsage } from './costTracker'
 import { captureAiEntitlementReceipt } from './aiEntitlementReceipt'
 import { admissionUnavailableError } from './admissionFailure'
+import { isFetchNetworkError } from './networkError'
 import { extractTikTokUrls, TIKTOK_ANALYSIS_MODEL, TIKTOK_MAX_ANALYSIS_CHARS, validTikTokAnalysis, type TikTokAnalysis } from './tiktokVideoTypes'
 
 export function videoAnalysisContext(analysis: TikTokAnalysis): string {
@@ -51,8 +53,14 @@ export async function prepareTikTokTurn(options: TikTokTurnOptions): Promise<Tik
   options.signal.addEventListener('abort', abort, { once: true })
   const timer = setTimeout(abort, 100_000)
   try {
-    const response = await fetch(apiUrl('/api/ai/gemini-proxy'), { method: 'POST', headers,
-      signal: controller.signal, body: JSON.stringify({ model: TIKTOK_ANALYSIS_MODEL, stream: false, tiktokVideoUrl: url }) })
+    const endpoint = apiUrl('/api/ai/gemini-proxy')
+    const payload = { model: TIKTOK_ANALYSIS_MODEL, stream: false, tiktokVideoUrl: url }
+    const response = Capacitor.isNativePlatform()
+      ? await postJsonNativeWithFallback(endpoint, headers, payload, {
+        connectTimeoutMs: 15_000, readTimeoutMs: 100_000, deadline: Date.now() + 100_000,
+        signal: controller.signal, assertRequestCurrent: check,
+      })
+      : await fetch(endpoint, { method: 'POST', headers, signal: controller.signal, body: JSON.stringify(payload) })
     check()
     receipt.updateTrial(response)
     if (!response.ok) {
@@ -63,7 +71,8 @@ export async function prepareTikTokTurn(options: TikTokTurnOptions): Promise<Tik
       let error: { error?: string } = {}
       try { error = JSON.parse(body) ?? {} } catch { /* opaque upstream failure */ }
       const key = error.error === 'tiktok_video_limit' ? 'video.tooLarge'
-        : [401, 402, 403, 429].includes(response.status) ? 'video.planRequired' : 'video.unavailable'
+        : response.status === 429 ? 'video.rateLimited'
+        : [401, 402, 403].includes(response.status) ? 'video.planRequired' : 'video.unavailable'
       throw new Error(i18n.t(key))
     }
     const data = await response.json()
@@ -82,6 +91,7 @@ export async function prepareTikTokTurn(options: TikTokTurnOptions): Promise<Tik
   } catch (error) {
     check()
     if (controller.signal.aborted) throw new Error(i18n.t('video.timeout'))
+    if (isFetchNetworkError(error)) throw new Error(i18n.t('video.networkError'))
     throw error instanceof Error ? error : new Error(i18n.t('video.unavailable'))
   } finally {
     clearTimeout(timer)

@@ -124,6 +124,24 @@ function holdTrialResponse(table: 'trial_usage' | 'email_trial_usage', afterComm
 }
 
 describe('Gemini proxy — fallback 3.6 compté une seule fois', () => {
+  it('returns a structured input refusal and refunds quota when a TikTok exceeds its limit', async () => {
+    await h.db.prepare(`INSERT INTO subscriptions (user_email, status, plan_type) VALUES (?1, 'active', 'subscription')`).bind(EMAIL).run()
+    vi.spyOn(tiktok, 'prepareTikTokForGemini').mockRejectedValue(new tiktok.TikTokVideoError('tiktok_video_limit'))
+    global.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const auth = authResponse(String(input)); if (auth) return auth
+      throw new Error('No Gemini call for a refused video')
+    }) as typeof fetch
+    const background: Promise<unknown>[] = []
+    const req = new Request('https://tryarty.com/api/ai/gemini-proxy', { method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-google-token': TOKEN },
+      body: JSON.stringify({ model: 'gemini-3.8-flash', stream: false, tiktokVideoUrl: 'https://vm.tiktok.com/ZN8jShEjq/' }) })
+    const response = await geminiProxy(context(req, background))
+    expect(response.status).toBe(422)
+    expect(await response.json()).toEqual({ error: 'tiktok_video_limit' })
+    await Promise.all(background)
+    const quota = await h.db.prepare('SELECT count FROM quota_model WHERE email = ?1 AND model = ?2').bind(EMAIL, 'gemini-3.8-flash').first<{ count: number }>()
+    expect(quota?.count ?? 0).toBe(0)
+  })
   it.each([false, true])('TikTok preserves quota/refund and cleanup, failure=%s', async fail => {
     await h.db.prepare(`INSERT INTO subscriptions (user_email, status, plan_type) VALUES (?1, 'active', 'subscription')`).bind(EMAIL).run()
     const cleanup = vi.fn(async () => undefined)

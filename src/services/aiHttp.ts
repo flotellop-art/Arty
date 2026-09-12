@@ -216,12 +216,30 @@ export function isPreEmissionNetworkError(err: unknown): boolean {
 export interface NativePostBudget {
   connectTimeoutMs: number
   readTimeoutMs: number
+  signal?: AbortSignal
+  assertRequestCurrent?: () => void
   /**
    * Deadline ABSOLU (Date.now() + budget du palier). Le repli reçoit le
    * temps restant — le timeout n'est jamais ré-armé, le pire cas total du
    * palier ne bouge pas (le badge fact-check en dépend, STALE_PENDING_MS).
    */
   deadline: number
+}
+
+// CapacitorHttp has no cancellation handle. Stop abandons this wait and any
+// late result; the native request already emitted retains its own timeouts.
+function awaitNativePost<T>(start: () => Promise<T>, deadline: number, signal?: AbortSignal): Promise<T> {
+  signal?.throwIfAborted()
+  return new Promise<T>((resolve, reject) => {
+    const cleanup = () => { clearTimeout(timer); signal?.removeEventListener('abort', abort) }
+    const abort = () => { cleanup(); reject(signal?.reason ?? new DOMException('Request cancelled', 'AbortError')) }
+    const timer = setTimeout(() => { cleanup(); reject(new DOMException('Request timed out', 'TimeoutError')) }, Math.max(0, deadline - Date.now()))
+    signal?.addEventListener('abort', abort, { once: true })
+    Promise.resolve().then(() => { signal?.throwIfAborted(); return start() }).then(
+      result => { cleanup(); resolve(result) },
+      error => { cleanup(); reject(error) },
+    )
+  })
 }
 
 /**
@@ -234,8 +252,17 @@ export async function postJsonNativeWithFallback(
   payload: unknown,
   budget: NativePostBudget,
 ): Promise<Response> {
+  const check = () => {
+    budget.signal?.throwIfAborted()
+    budget.assertRequestCurrent?.()
+    if (Date.now() >= budget.deadline) throw new DOMException('Request timed out', 'TimeoutError')
+  }
+  check()
   try {
-    const nativeResponse = await CapacitorHttp.request({
+    const nativeResponse = await awaitNativePost(() => {
+      check()
+      const remainingMs = budget.deadline - Date.now()
+      return CapacitorHttp.request({
       url,
       method: 'POST',
       // Origin exigé par le middleware Cloudflare. Injecté UNIQUEMENT sur la
@@ -243,10 +270,11 @@ export async function postJsonNativeWithFallback(
       // silencieusement ignoré — et la WebView pose déjà https://localhost.
       headers: { ...headers, Origin: 'https://localhost' },
       data: payload,
-      connectTimeout: budget.connectTimeoutMs,
-      readTimeout: budget.readTimeoutMs,
+      connectTimeout: Math.min(budget.connectTimeoutMs, remainingMs),
+      readTimeout: Math.min(budget.readTimeoutMs, remainingMs),
       responseType: 'json',
-    })
+    }) }, budget.deadline, budget.signal)
+    check()
     const body = typeof nativeResponse.data === 'string'
       ? nativeResponse.data
       : JSON.stringify(nativeResponse.data ?? {})
@@ -255,6 +283,7 @@ export async function postJsonNativeWithFallback(
       headers: nativeResponse.headers,
     })
   } catch (err) {
+    check()
     if (!isPreEmissionNetworkError(err)) throw err
     const remainingMs = budget.deadline - Date.now()
     if (remainingMs < 5_000) throw err
@@ -265,6 +294,6 @@ export async function postJsonNativeWithFallback(
       method: 'POST',
       headers,
       body: JSON.stringify(payload),
-    }, remainingMs)
+    }, remainingMs, budget.signal)
   }
 }

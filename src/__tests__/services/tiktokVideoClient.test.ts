@@ -42,6 +42,20 @@ describe('TikTok conversation preparation', () => {
       await expect(prepareTikTokTurn(options())).rejects.toThrow()
     }
   })
+  it.each(['Failed to fetch', 'NetworkError when attempting to fetch resource.', 'Load failed'])('explains an opaque network error without retrying: %s', async message => {
+    const fetcher = vi.fn().mockRejectedValue(new TypeError(message)); vi.stubGlobal('fetch', fetcher)
+    await expect(prepareTikTokTurn(options())).rejects.toThrow('n’a pas reçu le résultat de la lecture TikTok')
+    expect(fetcher).toHaveBeenCalledOnce()
+  })
+  it.each(['Too many requests', 'Daily AI request limit reached', 'premium_cap_reached'])('does not promise a minute or a plan upgrade for a 429: %s', async error => {
+    const fetcher = vi.fn(async () => Response.json({ error }, { status: 429 })); vi.stubGlobal('fetch', fetcher)
+    await expect(prepareTikTokTurn(options())).rejects.toThrow('limite de demandes ou de quota')
+    expect(fetcher).toHaveBeenCalledOnce()
+  })
+  it('preserves the video length refusal instead of calling it a network error', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json({ error: 'tiktok_video_limit' }, { status: 502 })))
+    await expect(prepareTikTokTurn(options())).rejects.toThrow('3 minutes')
+  })
   it('reflects an exhausted trial and a terminal wallet refusal using the shared funding contract', async () => {
     setTrialRemaining(5)
     vi.stubGlobal('fetch', vi.fn(async () => Response.json({ error: 'trial_expired' }, { status: 403 })))

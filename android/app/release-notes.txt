@@ -1,4 +1,8 @@
-Arty 1.0.102 — Réponses en arrière-plan
+Arty 1.0.103 — Erreurs de lecture TikTok
+
+• La lecture TikTok utilise le transport natif Android pour recevoir les résultats et les refus du serveur.
+• Les erreurs de connexion et de quota sont expliquées ; les limites de durée et de taille restent affichées explicitement.
+• Aucune relance automatique après une erreur réseau ambiguë.
 
 • La réponse continue lorsque vous passez dans une autre application Android.
 • La réponse est enregistrée à la fin du traitement, avec une notification discrète pendant la génération.

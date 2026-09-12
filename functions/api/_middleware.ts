@@ -96,7 +96,13 @@ export const onRequest: PagesFunction = async (context) => {
   // allowlisted add-on routes enforce their own post-OIDC limit by user `sub`;
   // applying this pre-auth IP bucket would let one tenant starve another.
   if (!isWorkspaceAddonPost && !checkRateLimit(ip)) {
-    return Response.json({ error: 'Too many requests' }, { status: 429 })
+    // Keep a valid browser origin able to read this refusal. Otherwise a
+    // normal 429 is surfaced as an opaque "Failed to fetch" by the WebView.
+    return Response.json({ error: 'Too many requests' }, { status: 429, headers: {
+      'Retry-After': '60',
+      'Vary': 'Origin',
+      ...(hasValidOrigin ? { 'Access-Control-Allow-Origin': origin } : {}),
+    } })
   }
 
   // CSRF: non-GET requests must carry a whitelisted Origin header.

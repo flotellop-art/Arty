@@ -57,6 +57,13 @@ describe('TikTok public video retrieval', () => {
       expect(fetcher).toHaveBeenCalledTimes(2)
     }
   })
+  it('refuses the reported 274-second case before downloading media or calling Gemini', async () => {
+    const fetcher = vi.fn().mockResolvedValue(page({ video: { duration: 274, playAddr: mediaUrl } }))
+    vi.stubGlobal('fetch', fetcher)
+    await expect(prepareTikTokForGemini(url, 'synthetic-key', new AbortController().signal, vi.fn())).rejects.toThrow('tiktok_video_limit')
+    expect(fetcher).toHaveBeenCalledOnce()
+    expect(fetcher.mock.calls[0]![0]).toBe(url)
+  })
   it('enforces streamed limits even with no length header and cancels the reader', async () => {
     const cancel = vi.fn()
     const stream = new ReadableStream({ pull(controller) { controller.enqueue(new Uint8Array(5)) }, cancel })

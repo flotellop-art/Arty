@@ -13,6 +13,7 @@ import { notifyRouteOverrides } from '../services/router/notifyRouteOverrides'
 import { fetchPdfMarkdowns, fetchUrlMarkdowns } from '../services/pdfUrlFetch'
 import { extractTikTokUrls, validTikTokAnalysis } from '../services/tiktokVideoTypes'
 import { prepareTikTokTurn, videoAnalysisContext, withTikTokAnalyses } from '../services/tiktokVideoClient'
+import { isFetchNetworkError } from '../services/networkError'
 import * as storage from '../services/storage'
 import { maybeExtractMemory } from '../services/autoMemory'
 import { bootstrapLocalMemory } from '../services/localMemoryService'
@@ -938,7 +939,7 @@ export function useConversation(options?: { onNavigate?: (id: string) => void })
           return
         }
         if (isActive(targetId)) {
-          setError(err.message)
+          setError(isFetchNetworkError(err) ? i18n.t('errors.networkRequestFailed') : err.message)
         }
       }
 

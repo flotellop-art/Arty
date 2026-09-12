@@ -9,7 +9,9 @@
     "tooLarge": "This video exceeds the 3 minute or 24 MB limit. Try a shorter video.",
     "unavailable": "The TikTok video could not be read. No summary of its contents was produced. You can share its transcript or screenshots.",
     "incomplete": "The video analysis is incomplete. Arty does not have enough observations to answer.",
-    "timeout": "Reading the video took too long. Try again later."
+    "timeout": "Reading the video took too long. Try again later.",
+    "rateLimited": "A request or quota limit prevents TikTok analysis. Try again later or check your quota.",
+    "networkError": "Arty did not receive the TikTok analysis result. Check your connection before trying again. This error does not tell us whether the server read the video."
   },
   "workspaceUpgrade": {
     "title": "Local storage preparation",
@@ -963,6 +965,7 @@
     "backgroundGenerationExpired": "The background response was interrupted. You can try again from Arty.",
     "backgroundGenerationUnavailable": "Arty could not start the background response. Return to Arty and try again.",
     "streamStalled": "Server connection stalled (unstable network). The answer received so far was kept.",
+    "networkRequestFailed": "Arty did not receive the server response. Check your connection before trying again. The outcome of this request remains unknown.",
     "responseIncomplete": "Incomplete response, please retry.",
     "promptEnhancementFailed": "Couldn't enhance the prompt — try again.",
     "tooManyConcurrentStreams": "Too many conversations streaming at once. Wait for one to finish.",
