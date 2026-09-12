@@ -156,7 +156,8 @@ describe('buildAiHeaders — trio factorisé (C9/F-20)', () => {
 })
 
 describe('fetchWithTimeout (C9/F-20)', () => {
-  it('Stop still cancels the active response body after headers have arrived', async () => {
+  it.each([true, false])('Stop still cancels the active response body after headers (AbortSignal.any supported: %s)', async (supportsAny) => {
+    if (!supportsAny) vi.stubGlobal('AbortSignal', { any: undefined })
     const ext = new AbortController()
     vi.stubGlobal('fetch', vi.fn(async (_url: string, init: RequestInit) => new Response(new ReadableStream({
       start(controller) { init.signal!.addEventListener('abort', () => controller.error(init.signal!.reason)) },
