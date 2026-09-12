@@ -1,8 +1,12 @@
 // Shared with the server. No browser state or credentials in this module.
-export const TIKTOK_MAX_SECONDS = 180
+export const TIKTOK_MAX_SECONDS = 600
 export const TIKTOK_ANALYSIS_MODEL = 'gemini-3.8-flash'
-export const TIKTOK_MAX_BYTES = 24 * 1024 * 1024
-export const TIKTOK_MAX_ANALYSIS_CHARS = 16_000
+export const TIKTOK_MAX_BYTES = 128 * 1024 * 1024
+export const TIKTOK_CLIENT_TIMEOUT_MS = 195_000
+export const TIKTOK_SERVER_TIMEOUT_MS = 180_000
+export const TIKTOK_PREPARATION_TIMEOUT_MS = 90_000
+export const TIKTOK_GENERATION_TIMEOUT_MS = 80_000
+export const TIKTOK_MAX_ANALYSIS_CHARS = 24_000
 export interface TikTokAnalysis {
   url: string
   text: string

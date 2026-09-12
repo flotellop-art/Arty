@@ -294,6 +294,8 @@ export async function beginWalletBilling(
     validatedImageTokens?: number
     validatedImageCount?: number
     validatedInputTokens?: number
+    /** Trusted server policy: may only increase the estimated input hold. */
+    minimumInputTokens?: number
     /** Modèle plus conservateur utilisé uniquement pour dimensionner le hold.
      * Le modèle réel reste inscrit dans la réservation et utilisé au settle. */
     reservePricingModel?: string
@@ -307,8 +309,13 @@ export async function beginWalletBilling(
     validatedImageTokens,
     validatedImageCount,
     validatedInputTokens,
+    minimumInputTokens,
     reservePricingModel,
   } = params
+  if (minimumInputTokens !== undefined &&
+    (!Number.isSafeInteger(minimumInputTokens) || minimumInputTokens < 0 || minimumInputTokens > 1_000_000)) {
+    throw new Error('invalid_minimum_input_tokens')
+  }
 
   // Auto-soin (pas de Cron sur Pages) : libère MES réservations orphelines d'un
   // settle/void raté précédent. En arrière-plan → hors chemin de latence ; le
@@ -344,8 +351,8 @@ export async function beginWalletBilling(
       validatedImageCount !== undefined
     )
   ) throw new Error('invalid_validated_input_tokens')
-  const estInputTokens = validatedInputTokens ??
-    estimateInputTokens(provider, body, { validatedImageTokens, validatedImageCount })
+  const estInputTokens = Math.max(minimumInputTokens ?? 0, validatedInputTokens ??
+    estimateInputTokens(provider, body, { validatedImageTokens, validatedImageCount }))
   const estMicro = estimateReserveMicro(
     reservePricingModel ?? model,
     maxOutputTokens,

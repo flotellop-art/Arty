@@ -5,6 +5,7 @@ import { makeD1Harness, type D1Harness } from './d1Harness'
 import { checkAllowedVerifiedUser } from '../../../functions/api/_lib/checkAllowedUser'
 import { consumeEmailTrialMessage } from '../../../functions/api/_lib/emailTrial'
 import * as tiktok from '../../../functions/api/_lib/tiktokVideo'
+import { creditWallet, getWalletBalance } from '../../../functions/api/_lib/wallet'
 
 const EMAIL = 'gemini-fallback@example.test'
 const TOKEN = 'google-access-token'
@@ -124,6 +125,25 @@ function holdTrialResponse(table: 'trial_usage' | 'email_trial_usage', afterComm
 }
 
 describe('Gemini proxy — fallback 3.6 compté une seule fois', () => {
+  it.each([500_000, 2_000_000])('uses the trusted long-video hold before retrieval and refunds failed preparation, credits=%s', async amountMicro => {
+    await grantTrial()
+    await h.db.prepare('INSERT INTO trial_usage (email, used, updated_at) VALUES (?1, 30, 0)').bind(EMAIL).run()
+    await creditWallet(h.env, { provider: 'creem', eventId: 'long-video-credit', orderId: 'long-video-order', email: EMAIL, amountMicro })
+    const prepare = vi.spyOn(tiktok, 'prepareTikTokForGemini').mockRejectedValue(new tiktok.TikTokVideoError('tiktok_video_limit'))
+    global.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const auth = authResponse(String(input)); if (auth) return auth
+      throw new Error('No generation after admission/preparation refusal')
+    }) as typeof fetch
+    const background: Promise<unknown>[] = []
+    const response = await geminiProxy(context(new Request('https://tryarty.com/api/ai/gemini-proxy', {
+      method: 'POST', headers: { 'content-type': 'application/json', 'x-google-token': TOKEN },
+      body: JSON.stringify({ model: 'gemini-3.8-flash', stream: false, tiktokVideoUrl: 'https://vm.tiktok.com/ZN8jShEjq/', tiktokVideoFormat: 2, minimumInputTokens: 1, generationConfig: { maxOutputTokens: 1 } }),
+    }), background))
+    await response.text(); await Promise.all(background)
+    expect(response.status).toBe(amountMicro === 500_000 ? 402 : 422)
+    expect(prepare).toHaveBeenCalledTimes(amountMicro === 500_000 ? 0 : 1)
+    expect(await getWalletBalance(h.env, EMAIL)).toMatchObject({ balanceMicro: amountMicro, reservedMicro: 0 })
+  })
   it('returns a structured input refusal and refunds quota when a TikTok exceeds its limit', async () => {
     await h.db.prepare(`INSERT INTO subscriptions (user_email, status, plan_type) VALUES (?1, 'active', 'subscription')`).bind(EMAIL).run()
     vi.spyOn(tiktok, 'prepareTikTokForGemini').mockRejectedValue(new tiktok.TikTokVideoError('tiktok_video_limit'))
@@ -142,13 +162,13 @@ describe('Gemini proxy — fallback 3.6 compté une seule fois', () => {
     const quota = await h.db.prepare('SELECT count FROM quota_model WHERE email = ?1 AND model = ?2').bind(EMAIL, 'gemini-3.8-flash').first<{ count: number }>()
     expect(quota?.count ?? 0).toBe(0)
   })
-  it.each([false, true])('TikTok preserves quota/refund and cleanup, failure=%s', async fail => {
+  it.each([{fail:false,format:undefined},{fail:false,format:2},{fail:false,format:'2'},{fail:true,format:2}])('TikTok preserves quota/refund and cleanup, failure=$fail, format=$format', async ({fail,format}) => {
     await h.db.prepare(`INSERT INTO subscriptions (user_email, status, plan_type) VALUES (?1, 'active', 'subscription')`).bind(EMAIL).run()
     const cleanup = vi.fn(async () => undefined)
-    const prepare = vi.spyOn(tiktok, 'prepareTikTokForGemini').mockImplementation(async (_url, _key, _signal, register) => {
+    const prepare = vi.spyOn(tiktok, 'prepareTikTokForGemini').mockImplementation(async (_url, _key, _signal, register, extended) => {
       register(cleanup)
       if (fail) throw new Error('sensitive signed address must not escape')
-      return tiktok.tikTokAnalysisBody('https://generativelanguage.googleapis.com/v1beta/files/test123')
+      return tiktok.tikTokAnalysisBody('https://generativelanguage.googleapis.com/v1beta/files/test123', extended)
     })
     const upstream: Record<string, unknown>[] = []
     global.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -158,12 +178,14 @@ describe('Gemini proxy — fallback 3.6 compté une seule fois', () => {
     const background: Promise<unknown>[] = []
     const req = new Request('https://tryarty.com/api/ai/gemini-proxy', { method: 'POST',
       headers: { 'content-type': 'application/json', 'x-google-token': TOKEN },
-      body: JSON.stringify({ model: 'gemini-3.8-flash', stream: false, tiktokVideoUrl: 'https://vm.tiktok.com/ZN8jJBpVS/', contents: [{ text: 'private injected history' }], tools: [{ google_search: {} }] }) })
+      body: JSON.stringify({ model: 'gemini-3.8-flash', stream: false, tiktokVideoUrl: 'https://vm.tiktok.com/ZN8jJBpVS/', tiktokVideoFormat: format, contents: [{ text: 'private injected history' }], tools: [{ google_search: {} }] }) })
     const response = await geminiProxy(context(req, background))
     const output = await response.text(); await Promise.all(background)
     expect(response.status).toBe(fail ? 502 : 200)
     expect(prepare).toHaveBeenCalledOnce(); expect(cleanup).toHaveBeenCalledOnce()
     expect(upstream).toHaveLength(fail ? 0 : 1)
+    expect(prepare.mock.calls[0]?.[4]).toBe(format === 2)
+    if (!fail) expect(upstream[0]).toMatchObject({generationConfig:{maxOutputTokens:format === 2 ? 8192 : 4096}})
     expect(JSON.stringify(upstream)).not.toContain('private injected history')
     expect(JSON.stringify(upstream)).not.toContain('google_search')
     expect(output).not.toContain('sensitive')

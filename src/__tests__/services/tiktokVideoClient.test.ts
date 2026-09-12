@@ -20,7 +20,7 @@ describe('TikTok conversation preparation', () => {
     const fetcher = vi.fn(async () => success()); vi.stubGlobal('fetch', fetcher)
     const result = await prepareTikTokTurn(options({ text: `Mon secret médical. ${url}`, messages: [{ ...message, content: 'Private mail', videoAnalysis: undefined }] }))
     expect(result).toMatchObject({ ...analysis, analyzedAt: expect.any(Number) })
-    expect(JSON.parse(fetcher.mock.calls[0]![1].body)).toEqual({ model: 'gemini-3.8-flash', stream: false, tiktokVideoUrl: url })
+    expect(JSON.parse(fetcher.mock.calls[0]![1].body)).toEqual({ model: 'gemini-3.8-flash', stream: false, tiktokVideoUrl: url, tiktokVideoFormat: 2 })
   })
   it.each([{ euOnly: true }, { available: false }, { documentRestricted: true }, { text: `${url} https://vt.tiktok.com/ABCD1234/` }])('blocks unsupported scope before network: %j', async extra => {
     const fetcher = vi.fn(); vi.stubGlobal('fetch', fetcher)
@@ -54,7 +54,7 @@ describe('TikTok conversation preparation', () => {
   })
   it('preserves the video length refusal instead of calling it a network error', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => Response.json({ error: 'tiktok_video_limit' }, { status: 502 })))
-    await expect(prepareTikTokTurn(options())).rejects.toThrow('3 minutes')
+    await expect(prepareTikTokTurn(options())).rejects.toThrow('10 minutes')
   })
   it('reflects an exhausted trial and a terminal wallet refusal using the shared funding contract', async () => {
     setTrialRemaining(5)
@@ -93,7 +93,7 @@ describe('TikTok conversation preparation', () => {
   it('preserves validated video observations through sync projection and rejects malformed fields', () => {
     const conv = { id: 'c1', title: 'Video', createdAt: 1, updatedAt: 1, messages: [message] }
     expect(projectLocalSyncConversationShape(conv).messages[0]!.videoAnalysis).toEqual(analysis)
-    expect(() => projectLocalSyncConversationShape({ ...conv, messages: [{ ...message, videoAnalysis: { ...analysis, text: 'x'.repeat(16001) } }] })).toThrow()
+    expect(() => projectLocalSyncConversationShape({ ...conv, messages: [{ ...message, videoAnalysis: { ...analysis, text: 'x'.repeat(24001) } }] })).toThrow()
     expect(() => projectLocalSyncConversationShape({ ...conv, messages: [{ ...message, role: 'assistant' }] })).toThrow()
   })
 })
