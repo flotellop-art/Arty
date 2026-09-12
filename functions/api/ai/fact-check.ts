@@ -3,6 +3,7 @@ import { isAdmissionUnavailable, admissionUnavailableResponse } from '../_lib/ad
 import { checkAllowedUserPeek } from '../_lib/checkAllowedUser'
 import { consumeCapAtomic } from '../_lib/atomicQuota'
 import { recordUsage } from '../_lib/quota'
+import { isFactReview } from '../../../shared/factCheckEvidence'
 import { admitEvidenceWork, evidenceClaims, initialReviews, readEvidencePage, safeSourceUrls, verifyFactEvidence, readBoundedJSON, parseFactObject } from '../_lib/factCheckEvidence'
 
 /**
@@ -100,7 +101,14 @@ interface FactCheckProviderPayload {
  * truncated object or synthesize missing corrections for a wrong claim. */
 export function normalizeVerdictContent(blocks: Array<{ type: 'text'; text: string }>): Array<{ type: 'text'; text: string }> {
   const final = blocks.filter(b => b.text.trim()).at(-1)
-  const object = final ? parseFactObject(final.text) : null
+  let object = final ? parseFactObject(final.text) : null
+  if (!object && final) {
+    // A model may put its preamble and verdict in the SAME text block. Accept
+    // only a complete terminal root object; never extract an older object from
+    // arrays, several JSON values or a subsequently truncated response.
+    const first = final.text.search(/[\[{]/)
+    if (first >= 0 && final.text[first] === '{') object = parseFactObject(final.text.slice(first))
+  }
   if (!object || !Array.isArray(object.claims)) return blocks
   object.claims = object.claims.map(claim => {
     if (!claim || typeof claim !== 'object' || Array.isArray(claim) ||
@@ -634,6 +642,10 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     const reviewUsage: Array<{ model: string; usage: FactCheckUsagePayload }> = []
     let evidenceRecoveryAttempted = false
     const claims = evidenceClaims(data.content.map(c => c.text).join(''))
+    if (claims === null && data.completion === 'complete') {
+      console.info('[fact-check] invalid verdict', -1)
+      return Response.json({ error: 'fact_check_failed' }, { status: 502 })
+    }
     let reviews = claims ? initialReviews(claims, question, context, data.model) : []
     if (claims?.length && tier !== 'haiku' && data.completion === 'complete') {
       const isGemini = data.model.startsWith('gemini-')
@@ -682,6 +694,9 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
         },
       })
     }
+    // Counts only: no prompt, quote, URL, email or credential in diagnostics.
+    console.info('[fact-check] evidence summary', claims?.length ?? -1, reviews.length,
+      reviews.filter(isFactReview).length, reviews.filter(r => r.status === 'supported').length, evidenceRecoveryAttempted ? 1 : 0)
     return Response.json({ content: data.content, completion: data.completion, webEvidence: data.webEvidence,
       usage: data.usage, reviewUsage, model: data.model, ...(fallback ? { fallback } : {}), evidenceVersion: 1, evidenceChecks: reviews, evidenceRecoveryAttempted })
   }

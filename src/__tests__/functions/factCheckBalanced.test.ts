@@ -21,6 +21,24 @@ beforeEach(() => { vi.clearAllMocks(); auth.mockResolvedValue({ email: 'test@exa
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals() })
 
 describe('bounded balanced fact-check', () => {
+  it('attaches receipts to a complete verdict after a preamble in the same text block', async () => {
+    http.mockResolvedValueOnce(anthropic({ content: [{ type: 'text', text: 'Voici le résultat demandé :\n```json\n' + JSON.stringify({ overall_confidence: 'high', claims: [{ claim: 'Fait', verdict: 'verified', explanation: 'À vérifier.' }] }) + '\n```' }] }))
+    const result = await (await call('haiku')).json()
+    expect(result.content[0].text).toBe('{"overall_confidence":"high","claims":[{"claim":"Fait","verdict":"verified","explanation":"À vérifier."}]}')
+    expect(result.evidenceChecks).toHaveLength(1)
+    expect(result.evidenceChecks[0].target).toBe('["Fait","verified",null,null]')
+  })
+  it.each([
+    '[{"overall_confidence":"high","claims":[]}]',
+    '{"overall_confidence":"high","claims":[]} {"claims":[]}',
+    '{"overall_confidence":"high","claims":[]} {"claims":[',
+    '{"overall_confidence":"high","claims":[]} puis un commentaire',
+  ])('rejects an invalid terminal verdict at the endpoint instead of allowing client salvage: %s', async text => {
+    http.mockResolvedValueOnce(anthropic({ content: [{ type: 'text', text }] }))
+    const response = await call('haiku')
+    expect(response.status).toBe(502)
+    expect(await response.json()).toEqual({ error: 'fact_check_failed' })
+  })
   it('uses one metered discovery and actual page reviews within the same request', async () => {
     vi.stubGlobal('crypto', webcrypto)
     const url = 'https://example.com/old', next = 'https://example.com/new'
