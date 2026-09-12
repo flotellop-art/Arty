@@ -960,6 +960,8 @@
     "accountChangedDuringRequest": "The account changed during the operation. It was stopped before the next step; start again from this account.",
     "streamInterrupted": "Response interrupted",
     "streamStopped": "Response stopped",
+    "backgroundGenerationExpired": "The background response was interrupted. You can try again from Arty.",
+    "backgroundGenerationUnavailable": "Arty could not start the background response. Return to Arty and try again.",
     "streamStalled": "Server connection stalled (unstable network). The answer received so far was kept.",
     "responseIncomplete": "Incomplete response, please retry.",
     "promptEnhancementFailed": "Couldn't enhance the prompt — try again.",

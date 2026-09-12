@@ -149,16 +149,12 @@ export async function fetchWithTimeout(
 ): Promise<Response> {
   const ctrl = new AbortController()
   const timeoutId = setTimeout(() => ctrl.abort(new DOMException('Timeout', 'AbortError')), timeoutMs)
-  const onExternalAbort = () => ctrl.abort(externalSignal?.reason)
-  if (externalSignal) {
-    if (externalSignal.aborted) ctrl.abort(externalSignal.reason)
-    else externalSignal.addEventListener('abort', onExternalAbort)
-  }
+  // Stop must remain wired after headers, while the response body is streaming.
+  const signal = externalSignal ? AbortSignal.any([ctrl.signal, externalSignal]) : ctrl.signal
   try {
-    return await fetch(url, { ...init, signal: ctrl.signal })
+    return await fetch(url, { ...init, signal })
   } finally {
     clearTimeout(timeoutId)
-    if (externalSignal) externalSignal.removeEventListener('abort', onExternalAbort)
   }
 }
 

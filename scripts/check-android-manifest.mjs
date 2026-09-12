@@ -41,6 +41,8 @@ if (!input) {
 // est préfixée par l'applicationId (com.arty.app).
 const MERGED_ALLOWLIST = new Set([
   'android.permission.INTERNET',
+  'android.permission.FOREGROUND_SERVICE',
+  'android.permission.FOREGROUND_SERVICE_DATA_SYNC',
   'android.permission.CAMERA',
   'android.permission.MODIFY_AUDIO_SETTINGS',
   'android.permission.RECORD_AUDIO',
@@ -126,7 +128,7 @@ if (extra.length > 0 || gone.length > 0) {
   if (extra.length > 0) console.error(`  ✗ permissions HORS allowlist gelée : ${extra.join(', ')}`)
   if (gone.length > 0) console.error(`  ✗ permissions de l'allowlist DISPARUES : ${gone.join(', ')}`)
 } else {
-  console.log('  ✓ allowlist stricte respectée (13 permissions gelées)')
+  console.log(`  ✓ allowlist stricte respectée (${MERGED_ALLOWLIST.size} permissions gelées)`)
 }
 
 console.log(`  ℹ permissions mergées (${merged.size}) : ${[...merged].sort().join(', ')}`)

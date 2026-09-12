@@ -156,6 +156,16 @@ describe('buildAiHeaders — trio factorisé (C9/F-20)', () => {
 })
 
 describe('fetchWithTimeout (C9/F-20)', () => {
+  it('Stop still cancels the active response body after headers have arrived', async () => {
+    const ext = new AbortController()
+    vi.stubGlobal('fetch', vi.fn(async (_url: string, init: RequestInit) => new Response(new ReadableStream({
+      start(controller) { init.signal!.addEventListener('abort', () => controller.error(init.signal!.reason)) },
+    }))))
+    const response = await fetchWithTimeout('https://x', {}, 5000, ext.signal)
+    const pending = expect(response.body!.getReader().read()).rejects.toMatchObject({ name: 'AbortError' })
+    ext.abort(new DOMException('Stopped', 'AbortError'))
+    await pending
+  })
   it('retourne la réponse quand le fetch aboutit avant le timeout', async () => {
     const resp = new Response('ok', { status: 200 })
     vi.stubGlobal('fetch', vi.fn(async () => resp))

@@ -18,6 +18,7 @@ import { maybeExtractMemory } from '../services/autoMemory'
 import { bootstrapLocalMemory } from '../services/localMemoryService'
 import { bootstrapCustomInstructions } from '../services/customInstructions'
 import { useStreaming } from './useStreaming'
+import { BackgroundGenerationError } from '../services/native/generation'
 import { useFileAttachments, buildApiMessages, buildContentBlocks, buildTextOnlyMessages, buildMistralMessages, buildMistralContentBlocks } from './useFileAttachments'
 import { buildOpenAIRouteMessages } from './openaiRouteMessages'
 import { getReflectionLevel } from '../services/reflectionLevel'
@@ -111,7 +112,10 @@ export function useConversation(options?: { onNavigate?: (id: string) => void })
     setConversations([...storage.getConversations()])
   }, [])
 
-  const streaming = useStreaming({ refreshConversations })
+  const streaming = useStreaming({ refreshConversations, onBackgroundError: (message, targetId) => {
+    if (targetId === activeId) { setError(message); setErrorRetryable(true) }
+    else toast(message, 'error')
+  } })
   const comparisons = useContextualComparisons(streaming, refreshConversations, reviewProjectRequest)
   const fileAttachments = useFileAttachments()
   // H2 (audit frontend) — identités stables extraites une fois. L'objet
@@ -120,7 +124,7 @@ export function useConversation(options?: { onNavigate?: (id: string) => void })
   // 60 fps et casserait les memo de MessageItem/Sidebar. Les fonctions,
   // elles, sont stables (useCallback à deps stables dans useStreaming).
   const {
-    canStart, startStream, getInvocationId, observeStreamCompletion, setActiveStream, onToken: streamToken,
+    canStart, startStream, awaitStreamReady, retainGeneration, getInvocationId, observeStreamCompletion, setActiveStream, onToken: streamToken,
     onDone: streamDone, onError: streamError, setProgressContent,
     setAbortController, resetAccumulated, hasStream, isActive, stopStreaming, discardStream, setProjectTurn, adoptGeneratedImage,
   } = streaming
@@ -459,6 +463,7 @@ export function useConversation(options?: { onNavigate?: (id: string) => void })
         setAbortController(targetId, officeController!)
         setProgressContent(i18n.t(projectRequest ? 'chat.input.projectPreparing' : 'chat.input.officePreparing'), targetId)
         try {
+          await awaitStreamReady(targetId)
           synthesis?.bindCancellation(() => {
             if (getInvocationId(targetId) === documentInvocation) discardStream(targetId)
             officeController!.abort()
@@ -480,7 +485,9 @@ export function useConversation(options?: { onNavigate?: (id: string) => void })
         } catch (err) {
           if (officeStillCurrent()) {
             discardStream(targetId)
-            if (projectRequest) {
+            if (err instanceof BackgroundGenerationError) {
+              setError(err.message)
+            } else if (projectRequest) {
               if (!(err instanceof ProjectError && err.code === 'cancelled')) setError(err instanceof ProjectError ? i18n.t(`projects.errors.${err.code}`) : err instanceof Error ? err.message : i18n.t('projects.errors.unavailable'))
             } else {
               const issue = err instanceof OfficeReadError ? err : new OfficeReadError('corrupt')
@@ -497,6 +504,8 @@ export function useConversation(options?: { onNavigate?: (id: string) => void })
       let visionAutoCropSessionEpoch: number | undefined
       let visionAutoCropLockHeld = false
       let visionStreamReserved = officeRequest
+      let visionInvocationId = documentInvocation
+      const ownsVisionStream = () => !!visionInvocationId && getInvocationId(targetId) === visionInvocationId
       let visionAutoCropPrepared = false
       let lockedVisionRouteDecision: ReturnType<typeof resolveRoute> | null = projectRoute ?? null
       const releaseVisionAutoCropLock = () => {
@@ -566,7 +575,9 @@ export function useConversation(options?: { onNavigate?: (id: string) => void })
             return false
           }
           visionStreamReserved = true
+          visionInvocationId = getInvocationId(targetId)
           try {
+            await awaitStreamReady(targetId)
             effectiveFiles = [await prepareVisionAutoCrop(
               autoCropSources,
               text,
@@ -575,17 +586,19 @@ export function useConversation(options?: { onNavigate?: (id: string) => void })
                 expectedUserId: visionAutoCropOwnerId,
                 expectedSessionEpoch: visionAutoCropSessionEpoch,
                 onLocatorController: (locatorController) => {
-                  if (hasStream(targetId)) setAbortController(targetId, locatorController)
+                  if (ownsVisionStream()) setAbortController(targetId, locatorController)
                   else locatorController.abort()
                 },
               },
             )]
             visionAutoCropPrepared = true
           } catch (error) {
-            const wasCancelled = visionStreamReserved && !hasStream(targetId)
-            if (visionStreamReserved && hasStream(targetId)) stopStreaming(targetId)
+            const wasCancelled = visionStreamReserved && !ownsVisionStream()
+            if (visionStreamReserved && ownsVisionStream()) stopStreaming(targetId)
             const code = error instanceof VisionAutoCropError ? error.code : 'locator_failed'
-            if (!wasCancelled) {
+            if (!wasCancelled && error instanceof BackgroundGenerationError) {
+              setError(error.message)
+            } else if (!wasCancelled) {
               setError(i18n.t(
                 code === 'region_not_found'
                   ? 'errors.visionAutoCropRegionNotFound'
@@ -608,12 +621,12 @@ export function useConversation(options?: { onNavigate?: (id: string) => void })
         }
       }
 
-      if (visionStreamReserved && !hasStream(targetId)) {
+      if (visionStreamReserved && !ownsVisionStream()) {
         releaseVisionAutoCropLock()
         return false
       }
       if (visionOwnerChanged()) {
-        if (visionStreamReserved && hasStream(targetId)) stopStreaming(targetId)
+        if (visionStreamReserved && ownsVisionStream()) stopStreaming(targetId)
         setError(i18n.t('errors.accountChangedDuringRequest'))
         releaseVisionAutoCropLock()
         return false
@@ -690,7 +703,7 @@ export function useConversation(options?: { onNavigate?: (id: string) => void })
           await deleteOwnedFiles(persistedNewIds, documentContext!.owner)
           return false
         }
-        if (visionStreamReserved && !hasStream(targetId)) {
+        if (visionStreamReserved && !ownsVisionStream()) {
           if (visionAutoCropOwnerId !== undefined) {
             await deleteOwnedFiles(persistedNewIds, visionAutoCropOwnerId)
           }
@@ -702,7 +715,7 @@ export function useConversation(options?: { onNavigate?: (id: string) => void })
             await deleteOwnedFiles(persistedNewIds, visionAutoCropOwnerId)
           }
           setError(i18n.t('errors.accountChangedDuringRequest'))
-          if (visionStreamReserved && hasStream(targetId)) stopStreaming(targetId)
+          if (visionStreamReserved && ownsVisionStream()) stopStreaming(targetId)
           releaseVisionAutoCropLock()
           return false
         }
@@ -716,7 +729,7 @@ export function useConversation(options?: { onNavigate?: (id: string) => void })
             await Promise.allSettled(persistedNewIds.map((id) => deleteFile(id)))
           }
           setError(i18n.t('errors.fileStorageFailed'))
-          if (visionStreamReserved && hasStream(targetId)) stopStreaming(targetId)
+          if (visionStreamReserved && ownsVisionStream()) stopStreaming(targetId)
           releaseVisionAutoCropLock()
           return false
         }
@@ -742,7 +755,7 @@ export function useConversation(options?: { onNavigate?: (id: string) => void })
           } else {
             await Promise.allSettled(persistedNewIds.map((id) => deleteFile(id)))
           }
-          if (visionStreamReserved && hasStream(targetId)) stopStreaming(targetId)
+          if (visionStreamReserved && ownsVisionStream()) stopStreaming(targetId)
           releaseVisionAutoCropLock()
           return false
         }
@@ -855,6 +868,7 @@ export function useConversation(options?: { onNavigate?: (id: string) => void })
         if (calendarUsed) calendarScope!.assertCurrent()
       }
       const beforeOwnedRequest = async () => {
+        await awaitStreamReady(targetId)
         await preparedProject?.beforeFirstRequest()
         if (calendarUsed) await calendarScope!.validateReadOnly()
         assertInvocationCurrent()
@@ -875,7 +889,8 @@ export function useConversation(options?: { onNavigate?: (id: string) => void })
         if (!officeRequest) void maybeExtractMemory(storage.getConversation(targetId))
 
         // Publication immédiate dans tous les cas.
-        streamDone(targetId)
+        const releaseVerification = !officeRequest ? retainGeneration(targetId) : () => {}
+        try { streamDone(targetId) } catch (error) { releaseVerification(); throw error }
         toolController.abort()
         officeController?.abort()
 
@@ -883,8 +898,14 @@ export function useConversation(options?: { onNavigate?: (id: string) => void })
         // fines (mode off, euOnly, réponse courte, quota) vivent dans le service.
         if (!officeRequest) {
           const finishBackground = beginConversationWork(targetId)
-          void Promise.resolve(runFactCheckOnLatest(targetId, refreshConversations))
-            .finally(finishBackground).catch(() => { console.warn('[factChecker] background check failed') })
+          try {
+            void Promise.resolve(runFactCheckOnLatest(targetId, refreshConversations))
+              .finally(() => { finishBackground(); releaseVerification() })
+              .catch(() => { console.warn('[factChecker] background check failed') })
+          } catch {
+            finishBackground(); releaseVerification()
+            console.warn('[factChecker] background check failed')
+          }
         }
       }
 
@@ -1067,6 +1088,9 @@ export function useConversation(options?: { onNavigate?: (id: string) => void })
       // stream fantôme dans streamsRef : bouton Stop permanent, textarea
       // bloquée, quota de streams consommé jusqu'au reload.
       try {
+
+      await awaitStreamReady(targetId)
+      assertInvocationCurrent()
 
       // This message has already been durably adopted. Cancellation here is
       // handled by the same dispatch catch and still resolves sendMessage=true.
@@ -1260,12 +1284,12 @@ export function useConversation(options?: { onNavigate?: (id: string) => void })
         assertInvocationCurrent()
         // Stop ou changement de session pendant un await de préparation :
         // aucun appel final zombie/facturable ne doit encore pouvoir partir.
-        if (visionStreamReserved && !hasStream(targetId)) {
+        if (visionStreamReserved && !ownsVisionStream()) {
           releaseVisionAutoCropLock()
           return true
         }
         if (visionOwnerChanged()) {
-          if (visionStreamReserved && hasStream(targetId)) stopStreaming(targetId)
+          if (visionStreamReserved && ownsVisionStream()) stopStreaming(targetId)
           setError(i18n.t('errors.accountChangedDuringRequest'))
           releaseVisionAutoCropLock()
           return true
@@ -1355,7 +1379,7 @@ export function useConversation(options?: { onNavigate?: (id: string) => void })
       } finally { synthesis?.dispose(); finishPreparation() }
     },
     [
-      activeId, refreshConversations, canStart, startStream, getInvocationId, observeStreamCompletion, setActiveStream, reviewProjectRequest, setProjectTurn, adoptGeneratedImage,
+      activeId, refreshConversations, canStart, startStream, awaitStreamReady, retainGeneration, getInvocationId, observeStreamCompletion, setActiveStream, reviewProjectRequest, setProjectTurn, adoptGeneratedImage,
       streamToken, streamDone, streamError, setProgressContent,
       setAbortController, resetAccumulated, hasStream, isActive,
       setPendingFiles, pendingFilesRef, stopStreaming, discardStream,

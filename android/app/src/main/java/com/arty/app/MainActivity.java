@@ -13,6 +13,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(AudioBeepMutePlugin.class);
         registerPlugin(ShareTargetPlugin.class);
         registerPlugin(MailImapPlugin.class);
+        registerPlugin(BackgroundGenerationPlugin.class);
         super.onCreate(savedInstanceState);
 
         // Edge-to-edge — fait passer la WebView sous les system bars (status
