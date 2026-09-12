@@ -43,6 +43,8 @@ export interface QuickActionSelection {
 }
 
 export interface ChatSendOptions {
+  /** Retry of the same public URL: reuse saved observations, never re-charge. */
+  videoAnalysis?: import('../services/tiktokVideoTypes').TikTokAnalysis
   quickAction?: QuickActionSelection
   /** Interne : une édition du texte doit recalculer le crop, pas réutiliser
    * silencieusement les coordonnées choisies pour l'ancien prompt. */
@@ -58,6 +60,7 @@ export type ChatSendHandler = (
 ) => void | boolean | Promise<void | boolean>
 
 export interface FactCheckClaim {
+  review?: import('../../shared/factCheckEvidence').FactReview
   claim: string
   verdict: 'verified' | 'uncertain' | 'wrong'
   explanation: string
@@ -83,7 +86,10 @@ export interface FactCheckResult {
   // Optionnel : les résultats persistés avant l'ajout de ce champ n'en ont
   // pas — l'UI dérive alors l'état des magic strings du modelLabel
   // (rétro-compat, voir deriveStatus dans FactCheckBadge).
-  status?: 'pending' | 'success-empty' | 'success-with-claims' | 'failed'
+  status?: 'pending' | 'success-empty' | 'success-with-claims' | 'failed' | 'partial'
+  limitations?: Array<'search_unavailable' | 'response_truncated' | 'claim_limit' | 'completion_unknown' | 'evidence_missing'>
+  /** Amount submitted, not a guarantee that every character was verified. */
+  coverage?: { inputChars: number; submittedChars: number; claimLimitReached: boolean }
   // Si au moins 1 claim a été corrigé, on stocke le texte original
   // ici pour permettre à l'UI d'afficher le diff dans le dropdown.
   // La réponse affichée (Message.content) est déjà le texte corrigé.
@@ -92,6 +98,8 @@ export interface FactCheckResult {
 }
 
 export interface Message {
+  /** Saved source observations; never user instructions or routing authority. */
+  videoAnalysis?: import('../services/tiktokVideoTypes').TikTokAnalysis
   id: string
   role: 'user' | 'assistant'
   content: string

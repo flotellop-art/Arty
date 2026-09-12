@@ -39,6 +39,8 @@ const STALE_PENDING_MS = 270_000
 // factChecker.ts (le skip-guard de runFactCheckOnLatest compare
 // 'Vérification en cours…') : ne pas les supprimer côté service.
 function deriveStatus(result: FactCheckResult): FactCheckStatus {
+  if (result.status !== 'pending' && result.status !== 'failed' && (result.limitations?.length ||
+    (result.coverage && (result.coverage.submittedChars < result.coverage.inputChars || result.coverage.claimLimitReached)))) return 'partial'
   const status: FactCheckStatus = result.status
     ?? (result.modelLabel === 'Vérification en cours…'
       ? 'pending'
@@ -90,6 +92,8 @@ export const FactCheckBadge = memo(function FactCheckBadge({ result, historical 
         return `◌ ${t('chat.factCheck.pending')}`
       case 'failed':
         return `❓ ${t('chat.factCheck.unavailable')}`
+      case 'partial':
+        return `⚠️ ${t('chat.factCheck.partial')}`
       case 'success-empty':
         return verifiedCount > 0
           ? `✓ ${plural(verifiedCount, 'chat.factCheck.verifiedOne', 'chat.factCheck.verifiedMany')}`
@@ -120,6 +124,8 @@ export const FactCheckBadge = memo(function FactCheckBadge({ result, historical 
         return 'text-theme-muted animate-pulse'
       case 'failed':
         return 'text-theme-muted border border-dashed border-theme-border rounded-full px-2 py-0.5'
+      case 'partial':
+        return 'text-amber-700 dark:text-amber-400'
       case 'success-empty':
         return 'text-emerald-700 dark:text-emerald-400'
       case 'success-with-claims':
@@ -141,7 +147,7 @@ export const FactCheckBadge = memo(function FactCheckBadge({ result, historical 
       <button
         onClick={() => setExpanded((e) => !e)}
         className={`inline-flex items-center gap-1.5 hover:opacity-80 transition-opacity ${summaryClass}`}
-        title={t('chat.factCheck.verifiedBy', { model: result.modelLabel })}
+        title={t(status === 'partial' ? 'chat.factCheck.reviewedBy' : 'chat.factCheck.verifiedBy', { model: result.modelLabel })}
         aria-expanded={expanded}
       >
         <span>{summary}</span>
@@ -151,7 +157,7 @@ export const FactCheckBadge = memo(function FactCheckBadge({ result, historical 
         <div className="mt-2 pl-3 border-l-2 border-theme-border space-y-2">
           {status !== 'pending' && (
             <p className="text-[10px] uppercase tracking-kicker text-theme-muted">
-              {t('chat.factCheck.verifiedBy', { model: result.modelLabel })}
+              {t(status === 'partial' ? 'chat.factCheck.reviewedBy' : 'chat.factCheck.verifiedBy', { model: result.modelLabel })}
               {corrected > 0 && (
                 <span className="ml-2 text-blue-700 dark:text-blue-400 normal-case tracking-normal">
                   · {plural(corrected, 'chat.factCheck.correctionOne', 'chat.factCheck.correctionMany')}{' '}
@@ -160,12 +166,21 @@ export const FactCheckBadge = memo(function FactCheckBadge({ result, historical 
               )}
             </p>
           )}
+          {status === 'partial' && <div role="note" className="text-amber-700 dark:text-amber-400 space-y-1">
+            <p>{t('chat.factCheck.partialDetail')}</p>
+            {result.limitations?.includes('search_unavailable') && <p>{t('chat.factCheck.searchUnavailable')}</p>}
+            {result.limitations?.includes('completion_unknown') && <p>{t('chat.factCheck.completionUnknown')}</p>}
+            {result.limitations?.includes('evidence_missing') && <p>{t('chat.factCheck.evidenceMissing')}</p>}
+            {result.coverage && result.coverage.submittedChars < result.coverage.inputChars &&
+              <p>{t('chat.factCheck.limitedText', { submitted: result.coverage.submittedChars, total: result.coverage.inputChars })}</p>}
+            {(result.coverage?.claimLimitReached || result.limitations?.includes('claim_limit')) && <p>{t('chat.factCheck.claimLimit')}</p>}
+          </div>}
           {status === 'pending' ? (
             <p className="text-theme-muted italic">{t('chat.factCheck.pendingDetail')}</p>
           ) : status === 'failed' ? (
             <p className="text-theme-muted italic">{t('chat.factCheck.unavailableDetail')}</p>
           ) : result.claims.length === 0 ? (
-            <p className="text-theme-muted italic">{t('chat.factCheck.noRiskyDetail')}</p>
+            status === 'partial' ? null : <p className="text-theme-muted italic">{t('chat.factCheck.noRiskyDetail')}</p>
           ) : (
             result.claims.map((c, i) => {
               const hasCorrection = c.verdict === 'wrong' && !!c.originalText && !!c.correction
@@ -173,11 +188,11 @@ export const FactCheckBadge = memo(function FactCheckBadge({ result, historical 
               // réponse. Rétro-compat : résultats persistés avant ce champ
               // (undefined) traités comme appliqués, sinon on dégraderait
               // rétroactivement les diffs des anciennes conversations.
-              const wasCorrected = hasCorrection && c.applied !== false
+              const wasCorrected = hasCorrection && (status === 'partial' ? c.applied === true : c.applied !== false)
               return (
                 <div key={i} className="text-theme-ink/80">
-                  <div className={`flex items-start gap-1.5 ${VERDICT_STYLE[c.verdict] || ''}`}>
-                    <span className="shrink-0 mt-px">{wasCorrected ? '✏️' : VERDICT_ICON[c.verdict] || '•'}</span>
+                  <div className={`flex items-start gap-1.5 ${status === 'partial' && c.verdict === 'verified' ? VERDICT_STYLE.uncertain : VERDICT_STYLE[c.verdict] || ''}`}>
+                    <span className="shrink-0 mt-px">{wasCorrected ? '✏️' : status === 'partial' && c.verdict === 'verified' ? '⚠️' : VERDICT_ICON[c.verdict] || '•'}</span>
                     <span className="font-medium">{c.claim}</span>
                   </div>
                   {wasCorrected && (
@@ -192,8 +207,8 @@ export const FactCheckBadge = memo(function FactCheckBadge({ result, historical 
                   )}
                   {hasCorrection && !wasCorrected && (
                     <div className="ml-5 mt-1 space-y-0.5">
-                      <p className="text-emerald-700 dark:text-emerald-400">
-                        → {t('chat.factCheck.correctValue')} {c.correction}
+                      <p className={status === 'partial' ? 'text-amber-700 dark:text-amber-400' : 'text-emerald-700 dark:text-emerald-400'}>
+                        → {t(status === 'partial' ? 'chat.factCheck.proposedValue' : 'chat.factCheck.correctValue')} {c.correction}
                       </p>
                       <p className="text-theme-muted italic text-[10px]">
                         {t('chat.factCheck.notAppliedHint')}
@@ -203,6 +218,18 @@ export const FactCheckBadge = memo(function FactCheckBadge({ result, historical 
                   {c.explanation && (
                     <p className="ml-5 mt-0.5 text-theme-muted">{c.explanation}</p>
                   )}
+                  {c.review && <div className="ml-5 mt-1 space-y-1">
+                    <p className="text-theme-muted">{c.review.reason}</p>
+                    {c.review.challengerModel && <p>{t(`chat.factCheck.challenge.${c.review.challenge}`, { model: c.review.challengerModel })}</p>}
+                    {c.review.sensitive && c.review.challenge === 'unavailable' && <p className="text-amber-700 dark:text-amber-400">{t('chat.factCheck.challenge.unavailable')}</p>}
+                    {c.review.evidence.map((e, index) => <details key={`${e.sourceId}-${index}`} className="border-l border-theme-border pl-2">
+                      <summary className="cursor-pointer">{t('chat.factCheck.evidenceSource', { count: index + 1 })}</summary>
+                      <a href={e.url} target="_blank" rel="noopener noreferrer" className="underline break-all">{e.url}</a>
+                      <blockquote className="mt-1">{e.quote}</blockquote>
+                      <p className="text-theme-muted whitespace-pre-wrap mt-1">{e.context}</p>
+                      <p className="text-theme-muted">{t('chat.factCheck.fetchedAt', { date: new Date(e.fetchedAt).toLocaleString() })}</p>
+                    </details>)}
+                  </div>}
                 </div>
               )
             })

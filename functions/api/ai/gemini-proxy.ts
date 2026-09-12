@@ -1,5 +1,7 @@
 import type { Env } from '../../env'
 import { isAdmissionUnavailable, admissionUnavailableResponse } from '../_lib/admission'
+import { normalizeTikTokUrl, TIKTOK_ANALYSIS_MODEL } from '../../../src/services/tiktokVideoTypes'
+import { prepareTikTokForGemini, tikTokAnalysisBody, TikTokVideoError } from '../_lib/tiktokVideo'
 import { classifyUpstreamBilling } from '../_lib/upstreamBilling'
 import {
   checkAllowedVerifiedUser,
@@ -73,6 +75,8 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
   let dailyConsumed: { model: string; debited: QuotaDebit } | undefined
   let capConsumed: PremiumCapResult | undefined
   let trialConsumedBy: 'google' | 'email-trial' | undefined
+  let tikTokMode = false
+  let cleanupVideo: (() => Promise<void>) | undefined
 
   const scheduleTrialRefund = () => {
     if (trialConsumedBy === 'google') waitUntil(voidTrialMessage(env, identity.email))
@@ -153,7 +157,19 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
   }
 
   try {
-    const { model: requestedModel, stream, ...body } = await request.json() as { model: string; stream: boolean; [key: string]: unknown }
+    const { model: requestedModel, stream, tiktokVideoUrl, ...inputBody } = await request.json() as { model: string; stream: boolean; [key: string]: unknown }
+    tikTokMode = tiktokVideoUrl !== undefined
+    let body = inputBody
+    const videoUrl = normalizeTikTokUrl(tiktokVideoUrl)
+    if (tikTokMode) {
+      if (!videoUrl || stream !== false || requestedModel !== TIKTOK_ANALYSIS_MODEL) {
+        scheduleUnservedRefunds()
+        return Response.json({ error: 'tiktok_video_unavailable' }, { status: 400 })
+      }
+      // Fixed descriptive prompt: no private history, tools or arbitrary client
+      // instructions. The media placeholder is reserved BEFORE network access.
+      body = tikTokAnalysisBody(videoUrl)
+    }
     // Audit F-22 (3 juil. 2026) — `model` (body client) est interpolé dans
     // l'URL Gemini : format strict avant interpolation (même baseline que les
     // IDs Gmail/Drive), sinon injection de segment/query-string possible.
@@ -181,7 +197,9 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
         body,
         // 3.5 est légèrement plus cher en output que 3.6 : la réserve couvre
         // donc aussi un éventuel fallback serveur, puis le settle rend l'écart.
-        reservePricingModel: model === GEMINI_36_MODEL ? GEMINI_36_FALLBACK_MODEL : undefined,
+        // The video reserve also covers a request straddling the end of the
+        // 3.8 introductory price. Settlement uses the actual 3.8 tariff.
+        reservePricingModel: model === GEMINI_36_MODEL || tikTokMode ? GEMINI_36_FALLBACK_MODEL : undefined,
       })
       if (start.mode === 'refuse') return start.response
       if (start.mode === 'wallet') {
@@ -229,9 +247,17 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
       if (cap.debited) capConsumed = cap
     }
 
+    const videoSignal = tikTokMode ? AbortSignal.any([request.signal, AbortSignal.timeout(90_000)]) : undefined
+    if (videoUrl && tikTokMode) {
+      body = await prepareTikTokForGemini(videoUrl, apiKey,
+        AbortSignal.any([videoSignal!, AbortSignal.timeout(40_000)]),
+        cleanup => { cleanupVideo = cleanup })
+    }
     const action = stream ? 'streamGenerateContent' : 'generateContent'
     const suffix = stream ? '?alt=sse' : ''
-    const upstreamSignal = AbortSignal.timeout(GEMINI_UPSTREAM_BUDGET_MS)
+    const upstreamSignal = videoSignal
+      ? AbortSignal.any([videoSignal, AbortSignal.timeout(GEMINI_UPSTREAM_BUDGET_MS)])
+      : AbortSignal.timeout(GEMINI_UPSTREAM_BUDGET_MS)
     const callModel = (candidateModel: string) =>
       fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/${candidateModel}:${action}${suffix}`,
@@ -303,6 +329,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
       const errorText = await response.text().catch(() => 'Unknown Gemini error')
       // Rien n'a été servi : rendre wallet, quota, cap et unité d'essai.
       scheduleUnservedRefunds()
+      if (tikTokMode) return Response.json({ error: 'tiktok_analysis_unavailable' }, { status: response.status, headers: responseHeaders() })
       // Leak d'info (N-2) : sur la clé serveur, ne JAMAIS renvoyer l'erreur
       // Gemini brute (elle révèle l'état de la clé owner : quota, projet,
       // modèles). Le status est préservé : le retry/backoff client (shouldRetry
@@ -362,8 +389,10 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
   } catch (err) {
     scheduleUnservedRefunds()
     return Response.json(
-      { error: err instanceof Error ? err.message : 'Gemini proxy error' },
+      { error: tikTokMode ? (err instanceof TikTokVideoError ? err.code : 'tiktok_video_unavailable') : err instanceof Error ? err.message : 'Gemini proxy error' },
       { status: 502 }
     )
+  } finally {
+    if (cleanupVideo) waitUntil(cleanupVideo())
   }
 }

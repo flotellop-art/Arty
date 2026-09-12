@@ -1,4 +1,16 @@
 {
+  "video": {
+    "reading": "Reading the TikTok video…",
+    "saved": "Video observations",
+    "oneAtATime": "Send one TikTok video at a time.",
+    "euUnavailable": "TikTok analysis uses Gemini and is unavailable in an Europe-only conversation.",
+    "documentUnavailable": "To analyze this TikTok, open an ordinary conversation outside the project document workflow.",
+    "planRequired": "Video analysis requires Gemini access and sufficient quota. Check your plan, credits or Gemini key.",
+    "tooLarge": "This video exceeds the 3 minute or 24 MB limit. Try a shorter video.",
+    "unavailable": "The TikTok video could not be read. No summary of its contents was produced. You can share its transcript or screenshots.",
+    "incomplete": "The video analysis is incomplete. Arty does not have enough observations to answer.",
+    "timeout": "Reading the video took too long. Try again later."
+  },
   "workspaceUpgrade": {
     "title": "Local storage preparation",
     "choose": "This step prepares local storage without uploading or replacing conversations or files. It does not activate sync yet.",
@@ -813,6 +825,21 @@
       "auto": "Auto"
     },
     "factCheck": {
+      "partial": "Partial verification",
+      "reviewedBy": "Reviewed by {{model}}",
+      "partialDetail": "This check cannot confirm the entire response. Proposed corrections were not applied automatically.",
+      "searchUnavailable": "Verification against sources could not be completed.",
+      "evidenceMissing": "Some claims lack checked evidence. Corrections remain proposals.",
+      "evidenceSource": "Evidence {{count}} and context",
+      "fetchedAt": "Page accessed on {{date}} (access date, not publication date).",
+      "challenge": {
+        "accepted": "Sensitive correction also accepted by {{model}}.",
+        "rejected": "Correction challenged by {{model}}: it is not applied.",
+        "unavailable": "Review by another model could not be completed. Correction not applied."
+      },
+      "completionUnknown": "Completion of this check could not be confirmed.",
+      "limitedText": "Only the first {{submitted}} of {{total}} characters were sent to the verifier. The rest was not checked.",
+      "claimLimit": "The limit of 10 displayed points has been reached. This result does not guarantee exhaustive verification.",
       "pending": "Checking…",
       "pendingDetail": "The answer is being fact-checked — the result will show up here.",
       "unavailable": "Fact-check unavailable",
@@ -831,7 +858,8 @@
       "toVerifyMany": "{{count}} points to verify",
       "toVerifySuffix": "{{count}} to verify",
       "correctValue": "correct value:",
-      "notAppliedHint": "The response could not be corrected automatically — the quoted passage no longer appears verbatim. Rely on the value above."
+      "proposedValue": "proposal to verify:",
+      "notAppliedHint": "This proposal was not applied automatically. Check it before editing the response."
     },
     "messageList": {
       "branch": "Branch from this message",
@@ -1266,9 +1294,9 @@
       "auto": "Auto (recommended)",
       "haiku": "Always fast (Haiku 4.5)",
       "sonnet": "Always strict (Sonnet 5)",
-      "costAuto": "Fast Haiku by default, strict Sonnet on sensitive topics (prices, quotes, medical, legal). ~$0.0005-0.0015/message.",
-      "costHaiku": "~$0.0005/message · adds 1-2s after each response",
-      "costSonnet": "~$0.0015/message · adds 3-5s · better for nuance"
+      "costAuto": "Quick initial check, then evidence reading when needed. Sensitive corrections require another model. Cost and duration vary.",
+      "costHaiku": "Initial check only: corrections without checked evidence remain proposals.",
+      "costSonnet": "Search and reading of up to three pages. Another model challenges sensitive corrections. Each review uses the verification allowance; cost and duration vary."
     },
     "upgrade": {
       "description": "Lifetime Pro, subscription, +100 messages pack"

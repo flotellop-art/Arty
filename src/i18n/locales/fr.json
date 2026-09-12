@@ -1,4 +1,16 @@
 {
+  "video": {
+    "reading": "Lecture de la vidéo TikTok…",
+    "saved": "Observations de la vidéo",
+    "oneAtATime": "Envoie une seule vidéo TikTok à la fois.",
+    "euUnavailable": "La lecture TikTok utilise Gemini et n’est pas disponible dans une conversation limitée à l’Europe.",
+    "documentUnavailable": "Pour analyser ce TikTok, ouvre une conversation ordinaire, en dehors du travail sur les documents du projet.",
+    "planRequired": "La lecture vidéo nécessite un accès Gemini disponible et un quota suffisant. Vérifie ta formule, tes crédits ou ta clé Gemini.",
+    "tooLarge": "Cette vidéo dépasse la limite de 3 minutes ou de 24 Mo. Essaie une vidéo plus courte.",
+    "unavailable": "La vidéo TikTok n’a pas pu être lue. Aucun résumé de son contenu n’a été produit. Tu peux partager sa transcription ou des captures d’écran.",
+    "incomplete": "L’analyse de la vidéo est incomplète. Arty ne dispose pas d’observations suffisantes pour répondre.",
+    "timeout": "La lecture de la vidéo a pris trop de temps. Réessaie plus tard."
+  },
   "workspaceUpgrade": {
     "title": "Préparation du stockage local",
     "choose": "Cette étape prépare le stockage local sans envoyer ni remplacer vos conversations ou fichiers. Elle n’active pas encore la synchronisation.",
@@ -813,6 +825,21 @@
       "auto": "Auto"
     },
     "factCheck": {
+      "partial": "Vérification partielle",
+      "reviewedBy": "Relu par {{model}}",
+      "partialDetail": "Ce contrôle ne permet pas de confirmer toute la réponse. Les corrections proposées n’ont pas été appliquées automatiquement.",
+      "searchUnavailable": "La vérification par des sources n’a pas pu être menée à terme.",
+      "evidenceMissing": "Certaines affirmations manquent de preuves contrôlées. Les corrections restent des propositions.",
+      "evidenceSource": "Preuve {{count}} et contexte",
+      "fetchedAt": "Page consultée le {{date}} (date de consultation, pas de publication).",
+      "challenge": {
+        "accepted": "Correction sensible également acceptée par {{model}}.",
+        "rejected": "Correction contestée par {{model}} : elle n’est pas appliquée.",
+        "unavailable": "La vérification par un autre modèle n’a pas abouti. Correction non appliquée."
+      },
+      "completionUnknown": "La fin du contrôle n’a pas pu être confirmée.",
+      "limitedText": "Seuls les {{submitted}} premiers caractères sur {{total}} ont été transmis au vérificateur. La suite n’a pas été contrôlée.",
+      "claimLimit": "La limite de 10 points affichés est atteinte. Ce résultat ne garantit pas une vérification exhaustive.",
       "pending": "Vérification…",
       "pendingDetail": "La réponse est en cours de vérification factuelle — le résultat s'affichera ici.",
       "unavailable": "Fact-check indisponible",
@@ -831,7 +858,8 @@
       "toVerifyMany": "{{count}} points à vérifier",
       "toVerifySuffix": "{{count}} à vérifier",
       "correctValue": "valeur correcte :",
-      "notAppliedHint": "La réponse n'a pas pu être corrigée automatiquement — le passage cité n'y figure pas tel quel. Tiens compte de la valeur ci-dessus."
+      "proposedValue": "proposition à vérifier :",
+      "notAppliedHint": "Cette proposition n’a pas été appliquée automatiquement. Vérifie-la avant de modifier la réponse."
     },
     "messageList": {
       "branch": "Créer une branche depuis ce message",
@@ -1266,9 +1294,9 @@
       "auto": "Auto (recommandé)",
       "haiku": "Toujours rapide (Haiku 4.5)",
       "sonnet": "Toujours strict (Sonnet 5)",
-      "costAuto": "Haiku rapide par défaut, Sonnet strict sur les sujets sensibles (prix, devis, médical, juridique). ~$0.0005-0.0015/message.",
-      "costHaiku": "~$0.0005/message · ajoute 1-2s après chaque réponse",
-      "costSonnet": "~$0.0015/message · ajoute 3-5s · meilleur sur les nuances"
+      "costAuto": "Premier contrôle rapide, puis lecture des preuves si nécessaire. Les corrections sensibles exigent un autre modèle. Coût et durée variables.",
+      "costHaiku": "Premier contrôle seulement : les corrections sans preuve contrôlée restent des propositions.",
+      "costSonnet": "Recherche et lecture de trois pages au maximum. Un autre modèle conteste les corrections sensibles. Chaque contrôle consomme le plafond de vérification ; coût et durée variables."
     },
     "upgrade": {
       "description": "Pro à vie, abonnement, pack +100 messages"

@@ -42,6 +42,7 @@ vi.mock('../../services/storage', () => {
 import { runFactCheckOnLatest } from '../../services/factChecker'
 import * as storage from '../../services/storage'
 import type { Conversation, Message } from '../../types'
+import { proof } from '../fixtures/factEvidence'
 
 const convStore = (storage as unknown as { __convs: Map<string, Conversation> }).__convs
 
@@ -77,6 +78,32 @@ beforeEach(() => {
 })
 
 describe('runFactCheckOnLatest — gardes', () => {
+  it.each([
+    'Recopie exactement ce paragraphe de test, sans commentaire : Une minute contient 100 secondes.',
+    'Peux-tu recopier mot pour mot : Une minute contient 100 secondes.',
+    'Reproduis à l’identique, sans correction : Une minute contient 100 secondes.',
+    'Please copy exactly: One minute has 100 seconds.',
+    'Traduis fidèlement en anglais : Une minute contient 100 secondes.',
+  ])('préserve une restitution fidèle, y compris ses liens : %s', async question => {
+    const conv = makeConv()
+    conv.messages[0]!.content = question
+    conv.messages[1]!.content = 'Une minute contient 100 secondes. Un pouce vaut exactement 3 centimètres. Un triangle possède quatre côtés. [Texte fourni](https://example.com/copie).'
+    const original = conv.messages[1]
+    convStore.set(conv.id, conv)
+    await runFactCheckOnLatest(conv.id, () => {})
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(convStore.get(conv.id)!.messages[1]).toBe(original)
+    expect(original!.factCheck).toBeUndefined()
+  })
+  it.each(['translate', 'translateToEn'] as const)('préserve les faits traduits par action %s', async id => {
+    const conv = makeConv()
+    conv.messages[0]!.quickAction = { id, locale: 'fr' }
+    const original = conv.messages[1]
+    convStore.set(conv.id, conv)
+    await runFactCheckOnLatest(conv.id, () => {})
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(convStore.get(conv.id)!.messages[1]).toBe(original)
+  })
   it('conversation euOnly → AUCUN appel réseau, message intact (RGPD RÈGLE 5.3)', async () => {
     const conv = makeConv({ euOnly: true })
     convStore.set(conv.id, conv)
@@ -121,6 +148,9 @@ describe('runFactCheckOnLatest — gardes', () => {
       new Response(
         JSON.stringify({
           content: [{ type: 'text', text: llmJson }],
+          completion: 'complete',
+          webEvidence: true,
+          evidenceVersion: 1, evidenceChecks: [proof({ target: JSON.stringify(['La tour Eiffel mesure 350 mètres', 'wrong', 'mesure 350 mètres', 'mesure 330 mètres']) })],
           usage: { input_tokens: 100, output_tokens: 50 },
         }),
         { status: 200 }
@@ -147,6 +177,23 @@ describe('runFactCheckOnLatest — gardes', () => {
     expect(refresh).toHaveBeenCalled()
   })
 
+  it('vérification partielle → proposition conservée sans modifier la réponse', async () => {
+    const conv = makeConv()
+    convStore.set(conv.id, conv)
+    const original = conv.messages[1]!.content
+    fetchMock.mockResolvedValue(Response.json({
+      completion: 'complete', webEvidence: false,
+      content: [{ type: 'text', text: JSON.stringify({ overall_confidence: 'low', claims: [{
+        claim: 'La hauteur', verdict: 'wrong', explanation: 'Une proposition à vérifier',
+        originalText: 'mesure 350 mètres', correction: 'mesure 330 mètres',
+      }] }) }],
+    }))
+    await runFactCheckOnLatest('conv-1', () => {})
+    const target = convStore.get('conv-1')!.messages[1]!
+    expect(target.content).toBe(original)
+    expect(target.factCheck).toMatchObject({ status: 'partial', appliedCorrections: 0, claims: [{ applied: false }] })
+  })
+
   it('échec réseau → badge failed posé en immuable, contenu préservé', async () => {
     const conv = makeConv()
     convStore.set(conv.id, conv)
@@ -160,5 +207,28 @@ describe('runFactCheckOnLatest — gardes', () => {
     expect(target.factCheck?.status).toBe('failed')
     expect(target.content).toBe(originalAssistant.content)
     expect(originalAssistant.factCheck).toBeUndefined()
+  })
+  it.each([200, 503, 429])('does not overwrite a response edited while checking (HTTP %s)', async status => {
+    const conv = makeConv(); convStore.set(conv.id, conv)
+    fetchMock.mockImplementation(async () => {
+      const current = convStore.get(conv.id)!
+      current.messages[1] = { ...current.messages[1]!, content: 'Nouvelle réponse écrite pendant le contrôle.', factCheck: undefined }
+      return status === 200 ? Response.json({ completion: 'complete', content: [{ type: 'text', text: '{"overall_confidence":"high","claims":[]}' }] }) : new Response('', { status })
+    })
+    await runFactCheckOnLatest(conv.id, () => {})
+    expect(convStore.get(conv.id)!.messages[1]).toMatchObject({ content: 'Nouvelle réponse écrite pendant le contrôle.', factCheck: undefined })
+  })
+  it('does not restore old content or launch a fact-check after editing during link recovery', async () => {
+    const conv = makeConv()
+    conv.messages[1]!.content += ' [Guide officiel](https://example.com/invente).'
+    convStore.set(conv.id, conv)
+    fetchMock.mockImplementation(async () => {
+      const current = convStore.get(conv.id)!
+      current.messages[1] = { ...current.messages[1]!, content: 'Réponse modifiée pendant la recherche du lien.', factCheck: undefined }
+      return Response.json({ results: [] })
+    })
+    await runFactCheckOnLatest(conv.id, () => {})
+    expect(convStore.get(conv.id)!.messages[1]).toMatchObject({ content: 'Réponse modifiée pendant la recherche du lien.', factCheck: undefined })
+    expect(fetchMock.mock.calls.every(c => !String(c[0]).includes('/ai/fact-check'))).toBe(true)
   })
 })

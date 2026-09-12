@@ -4,6 +4,7 @@
 // officielles restent Anthropic Console / OpenAI Platform / Mistral / Google AI.
 //
 // Mettre à jour quand les providers changent leurs tarifs.
+import { gemini38Pricing } from '../../../shared/gemini38Pricing'
 
 export interface ModelPricing {
   /** USD per 1M input tokens. */
@@ -38,6 +39,7 @@ export interface ModelPricing {
 // Toutes les valeurs sont vérifiées au 21 juillet 2026. À ajuster si les providers
 // publient de nouveaux tarifs.
 const PRICING: Record<string, ModelPricing> = {
+  get 'gemini-3.8-flash'() { return gemini38Pricing() },
   // Anthropic Claude
   'claude-sonnet-4-6': { input: 3, output: 15, cacheRead: 0.3, cacheCreation: 3.75 }, // legacy — conservé pour les coûts historiques
   // Sonnet 5 : tarif durable $3/$15 (l'intro $2/$10 court jusqu'au 31/08/2026 —
@@ -154,11 +156,12 @@ const FALLBACK_PRICING: ModelPricing = {
 }
 
 export function hasKnownPricing(model: string): boolean {
-  return Object.prototype.hasOwnProperty.call(PRICING, model)
+  return Object.prototype.hasOwnProperty.call(PRICING, model) || /^gemini-3\.8-flash-/.test(model)
 }
 
 export function getPricing(model: string): ModelPricing {
   if (PRICING[model]) return PRICING[model]
+  if (/^gemini-3\.8-flash-/.test(model)) return gemini38Pricing()
   return FALLBACK_PRICING
 }
 
@@ -213,7 +216,7 @@ export function computeCostMicroUsd(model: string, usage: UsageTokens): number {
  * constitue donc un plafond analytique, pas une facture.
  */
 export function groundingUpperBoundMicroUsd(model: string, groundingQueries: number): number {
-  const perQuery = PRICING[model]?.groundingPerQuery ?? 0
+  const perQuery = getPricing(model).groundingPerQuery ?? 0
   const n = Number.isFinite(groundingQueries) && groundingQueries > 0 ? groundingQueries : 0
   return Math.round(n * perQuery * 1_000_000)
 }

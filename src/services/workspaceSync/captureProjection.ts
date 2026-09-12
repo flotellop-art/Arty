@@ -1,9 +1,11 @@
 import type { Conversation } from '../../types'
+import { validTikTokAnalysis } from '../tiktokVideoTypes'
 import { isGeneratedImageId, MAX_GENERATED_IMAGES_PER_TURN } from '../generatedImages'
 import { envelopeFail as fail } from './envelopeFormat'
 import { SYNC_LIMITS } from './types'
 import { canonicalSyncJSON } from './captureContent'
 import type { SyncCaptureSelection } from './capture'
+import { isFactReview } from '../../../shared/factCheckEvidence'
 
 type Read = (input: unknown) => unknown
 const own = (v: object, k: string) => Object.prototype.hasOwnProperty.call(v, k)
@@ -78,8 +80,16 @@ function projectConversationShape(input: unknown, limits: { nodes: number; chars
   const turn = shape({ version: one(1), mode: one('search', 'overview', 'detached'), euOnly: bool, partial: bool, sources: list(100, source) },
     { projectId: id, projectRevision: integer, projectName: text })
   const fact = shape({ overallConfidence: one('high', 'medium', 'low'), modelLabel: text, checkedAt: integer,
-    claims: list(100, shape({ claim: text, verdict: one('verified', 'uncertain', 'wrong'), explanation: text }, { originalText: text, correction: text, applied: bool })) },
-    { status: one('pending', 'success-empty', 'success-with-claims', 'failed'), originalContent: text, appliedCorrections: integer })
+    claims: list(100, shape({ claim: text, verdict: one('verified', 'uncertain', 'wrong'), explanation: text }, { originalText: text, correction: text, applied: bool,
+      review: v => {
+        const copy = shape({ target: text, status: text, model: text, sensitive: bool, contextMatches: bool, reason: text, challenge: text,
+          evidence: list(2, shape({ sourceId: text, url: text, quote: text, context: text, fetchedAt: integer, sha256: text })) }, { challengerModel: text })(v)
+        if (!isFactReview(copy)) return fail('format')
+        return copy
+      } })) },
+    { status: one('pending', 'success-empty', 'success-with-claims', 'failed', 'partial'), originalContent: text, appliedCorrections: integer,
+      limitations: list(5, one('search_unavailable', 'response_truncated', 'claim_limit', 'completion_unknown', 'evidence_missing')),
+      coverage: shape({ inputChars: integer, submittedChars: integer, claimLimitReached: bool }) })
   const attribution = shape({ model: text, provider: one('claude', 'mistral', 'gemini', 'openai') }, { invocationId: text, requestedModel: text,
     source: one('requested', 'proxy', 'provider'), reason: text, subModelReason: text, reflecting: bool, background: bool, conversationId: id, confirmed: bool })
   const comparison = shape({ version: one(1), groupId: id, sourceConversationId: id, sourceMessageId: id, peerId: id, questionId: id, responseId: id,
@@ -92,13 +102,17 @@ function projectConversationShape(input: unknown, limits: { nodes: number; chars
   const message = shape({ id, role: one('user', 'assistant'), content: text, timestamp: integer }, { restoredArchive: one(true),
     files: list(64, file), generatedImages: list(MAX_GENERATED_IMAGES_PER_TURN, id), pinned: bool, interrupted: bool, factCheck: fact,
     quickAction: shape({ id: one('brief', 'writeEmail', 'summarizeText', 'translateToEn', 'summarize', 'write', 'translate', 'explain'), locale: one('fr', 'en') }),
-    model: text, requestedModel: text, modelSource: one('requested', 'proxy', 'provider'), reasonCode: text, subModelReasonCode: text, projectTurn: turn })
+    model: text, requestedModel: text, modelSource: one('requested', 'proxy', 'provider'), reasonCode: text, subModelReasonCode: text, projectTurn: turn,
+    videoAnalysis: v => { const result = shape({ url: text, text, model: text, analyzedAt: integer })(v); if (!validTikTokAnalysis(result)) return fail('format'); return result } })
   const result = shape({ id, title: text, messages: list(5000, message), createdAt: integer, updatedAt: integer }, { comparison,
     outputRestriction: one('client-reply-draft-v1'), usedModels: list(100, text), tags: list(100, text), euOnly: bool,
     hasGoogleData: bool, hasTrailContext: bool, hasProjectContext: bool, projectId: id })(input) as Conversation
   const messages = new Set<string>()
   if (result.outputRestriction && result.hasProjectContext !== true) return fail('format')
   for (const m of result.messages) {
+    const coverage = m.factCheck?.coverage
+    if (coverage && (coverage.submittedChars > 6000 || coverage.submittedChars > coverage.inputChars)) fail('format')
+    if (m.videoAnalysis && m.role !== 'user') fail('format')
     if (m.id === 'streaming' || messages.has(m.id)) fail('format')
     messages.add(m.id)
     if (m.generatedImages !== undefined && (m.role !== 'assistant' || !m.generatedImages.every(isGeneratedImageId) || new Set(m.generatedImages).size !== m.generatedImages.length)) fail('format')

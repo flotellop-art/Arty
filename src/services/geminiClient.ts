@@ -265,6 +265,8 @@ export function resolveGeminiResearchThinkingLevel(
 }
 
 interface GeminiStreamOptions extends ModelInvocationOptions {
+  /** User-authored text only; fetched reports must not authorize more video reads. */
+  videoSourceText?: string
   systemPrompt?: string
   // Force un modèle précis (utilisé par le comparateur multi-modèles).
   // Si absent, fallback sur geminiChatModel() (défaut Arty).
@@ -334,7 +336,7 @@ async function runGeminiStream(
     // que la page web, pas la vidéo). On normalise via extractYouTubeUrls
     // (watch?v=ID) et on injecte la/les part(s) vidéo sur le dernier message
     // user uniquement — la vidéo n'est facturée qu'au tour où elle est collée.
-    const youtubeUrls = options?.comparisonTextOnly ? [] : extractYouTubeUrls(lastMessage)
+    const youtubeUrls = options?.comparisonTextOnly ? [] : extractYouTubeUrls(options?.videoSourceText ?? lastMessage)
     const hasVideo = youtubeUrls.length > 0
     if (hasVideo) {
       const last = contents[contents.length - 1]

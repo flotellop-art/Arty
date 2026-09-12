@@ -34,6 +34,7 @@ describe('fact-check, transport Android natif', () => {
       status: 200,
       headers: { 'content-type': 'application/json' },
       data: {
+        completion: 'complete',
         content: [{
           type: 'text',
           text: JSON.stringify({
@@ -79,6 +80,8 @@ describe('fact-check, transport Android natif', () => {
       data: {
         model: 'claude-sonnet-5',
         fallback: 'model',
+        completion: 'complete',
+        webEvidence: false,
         content: [
           { type: 'text', text: 'Je vérifie. ' },
           { type: 'server_tool_use' },
@@ -96,8 +99,9 @@ describe('fact-check, transport Android natif', () => {
       null,
     )
 
-    expect(outcome.result?.status).toBe('success-empty')
+    expect(outcome.result?.status).toBe('partial')
     expect(outcome.result?.modelLabel).toBe('Sonnet 5 (secours)')
+    expect(outcome.result?.limitations).toContain('search_unavailable')
   })
 
   it('affiche le fournisseur de secours réellement servi', async () => {
@@ -107,6 +111,8 @@ describe('fact-check, transport Android natif', () => {
       data: {
         model: 'gemini-3.6-flash',
         fallback: 'provider',
+        completion: 'complete',
+        webEvidence: false,
         content: [{
           type: 'text',
           text: '{"overall_confidence":"high","claims":[]}',
@@ -122,7 +128,7 @@ describe('fact-check, transport Android natif', () => {
       null,
     )
 
-    expect(outcome.result?.status).toBe('success-empty')
+    expect(outcome.result?.status).toBe('partial')
     expect(outcome.result?.modelLabel).toBe('Gemini 3.6 Flash (secours)')
   })
 
@@ -285,7 +291,7 @@ describe('fact-check, transport Android natif', () => {
       null,
     )
 
-    expect(outcome.result?.status).toBe('success-empty')
+    expect(outcome.result?.status).toBe('partial')
     expect(nativeRequest).toHaveBeenCalledTimes(1)
     expect(fetchSpy).toHaveBeenCalledTimes(1)
     const [, init] = fetchSpy.mock.calls[0] as [string, RequestInit]

@@ -42,8 +42,13 @@ export function mapCapturedConversation(source: Conversation): BackupConversatio
   })
   const sourceRef: Mapper = v => shape(v, ['projectId', 'projectRevision', 'documentId', 'documentRevision', 'sourceHash', 'extractorVersion', 'name', 'format', 'startLine', 'endLine', 'partial'])
   const turn: Mapper = v => shape(v, ['version', 'mode', 'euOnly', 'partial', 'sources'], ['projectId', 'projectRevision', 'projectName'], { sources: list(100, sourceRef) })
-  const fact: Mapper = v => shape(v, ['overallConfidence', 'claims', 'modelLabel', 'checkedAt'], ['status', 'originalContent', 'appliedCorrections'], {
-    claims: list(100, c => shape(c, ['claim', 'verdict', 'explanation'], ['originalText', 'correction', 'applied'])),
+  const fact: Mapper = v => shape(v, ['overallConfidence', 'claims', 'modelLabel', 'checkedAt'], ['status', 'originalContent', 'appliedCorrections', 'limitations', 'coverage'], {
+    claims: list(100, c => shape(c, ['claim', 'verdict', 'explanation'], ['originalText', 'correction', 'applied', 'review'], {
+      review: r => shape(r, ['target', 'status', 'model', 'sensitive', 'contextMatches', 'reason', 'challenge', 'evidence'], ['challengerModel'], {
+        evidence: list(2, p => shape(p, ['sourceId', 'url', 'quote', 'context', 'fetchedAt', 'sha256'])),
+      }),
+    })),
+    limitations: list(5), coverage: c => shape(c, ['inputChars', 'submittedChars', 'claimLimitReached']),
   })
   const file: Mapper = v => {
     const ref = shape(v, ['id'], ['visionCrop'], { visionCrop: crop })
