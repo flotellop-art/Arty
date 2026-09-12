@@ -70,7 +70,10 @@ export async function retrieveTikTokVideo(raw: string, signal: AbortSignal): Pro
     let url = new URL(rawUrl)
     for (let hop = 0; hop <= 3; hop++) {
       signal.throwIfAborted()
-      if (media ? !isMediaUrl(url) : !normalizeTikTokUrl(url.href)) throw new TikTokVideoError()
+      if (media ? !isMediaUrl(url) : !normalizeTikTokUrl(url.href)) {
+        console.warn('[tiktok] URL refused', media ? 1 : 0)
+        throw new TikTokVideoError()
+      }
       const cookies = cookieHeader(url, jar)
       const response = await fetch(url.href, { redirect: 'manual', signal, headers: {
         Referer: 'https://www.tiktok.com/', ...(cookies ? { Cookie: cookies } : {}),
@@ -83,7 +86,10 @@ export async function retrieveTikTokVideo(raw: string, signal: AbortSignal): Pro
         url = new URL(location, url)
         continue
       }
-      if (response.status !== 200) { await response.body?.cancel(); throw new TikTokVideoError() }
+      if (response.status !== 200) {
+        console.warn('[tiktok] HTTP refused', media ? 1 : 0, response.status)
+        await response.body?.cancel(); throw new TikTokVideoError()
+      }
       return { response, url }
     }
     throw new TikTokVideoError()
@@ -94,13 +100,19 @@ export async function retrieveTikTokVideo(raw: string, signal: AbortSignal): Pro
   if (!canonical || !id) { await page.response.body?.cancel(); throw new TikTokVideoError() }
   const html = new TextDecoder().decode(await readVideoResponse(page.response, MAX_PAGE_BYTES))
   const json = html.match(/<script\b[^>]*\bid=["']__UNIVERSAL_DATA_FOR_REHYDRATION__["'][^>]*>([\s\S]*?)<\/script>/)?.[1]
-  if (!json) throw new TikTokVideoError()
+  if (!json) { console.warn('[tiktok] metadata missing'); throw new TikTokVideoError() }
   let detail
   try { detail = JSON.parse(json).__DEFAULT_SCOPE__?.['webapp.video-detail'] } catch { throw new TikTokVideoError() }
   const item = detail?.itemInfo?.itemStruct
-  if (detail?.statusCode !== 0 || item?.id !== id || item?.privateItem === true) throw new TikTokVideoError()
+  if (detail?.statusCode !== 0 || item?.id !== id || item?.privateItem === true) {
+    console.warn('[tiktok] metadata refused', typeof detail?.statusCode === 'number' ? detail.statusCode : -1)
+    throw new TikTokVideoError()
+  }
   const duration = item?.video?.duration
-  if (typeof duration !== 'number' || !Number.isFinite(duration) || duration <= 0 || duration > TIKTOK_MAX_SECONDS) throw new TikTokVideoError('tiktok_video_limit')
+  if (typeof duration !== 'number' || !Number.isFinite(duration) || duration <= 0 || duration > TIKTOK_MAX_SECONDS) {
+    console.warn('[tiktok] duration refused', typeof duration === 'number' && Number.isFinite(duration) ? duration : -1)
+    throw new TikTokVideoError('tiktok_video_limit')
+  }
   if (typeof item.video.playAddr !== 'string' || item.video.playAddr.length > 16_384) throw new TikTokVideoError()
   const media = await get(item.video.playAddr, true)
   if (!/^video\/mp4(?:;|$)/i.test(media.response.headers.get('content-type') ?? '')) {
