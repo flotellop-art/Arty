@@ -127,17 +127,19 @@ export async function prepareTikTokForGemini(url: string, apiKey: string, signal
   onFile: (cleanup: () => Promise<void>) => void): Promise<Record<string, unknown>> {
   const video = await retrieveTikTokVideo(url, signal)
   const googleHeaders = { 'x-goog-api-key': apiKey }
+  // workerd supports follow/manual only. Manual keeps credentials on the
+  // validated Google origin; the status checks below reject every redirect.
   const name = `files/a-${crypto.randomUUID()}`
   // Know the owned name before any creation can complete. Even a lost upload
   // response must leave a cleanup action; never guess a name from an error.
   onFile(async () => {
     try {
-      const res = await fetch(`${GOOGLE}/v1beta/${name}`, { method: 'DELETE', redirect: 'error', headers: googleHeaders, signal: AbortSignal.timeout(10_000) })
+      const res = await fetch(`${GOOGLE}/v1beta/${name}`, { method: 'DELETE', redirect: 'manual', headers: googleHeaders, signal: AbortSignal.timeout(10_000) })
       await res.body?.cancel()
       if (!res.ok && res.status !== 404) console.warn('[tiktok] temporary file cleanup failed', res.status)
     } catch { console.warn('[tiktok] temporary file cleanup failed') }
   })
-  const start = await fetch(`${GOOGLE}/upload/v1beta/files`, { method: 'POST', redirect: 'error', signal,
+  const start = await fetch(`${GOOGLE}/upload/v1beta/files`, { method: 'POST', redirect: 'manual', signal,
     headers: { ...googleHeaders, 'Content-Type': 'application/json', 'X-Goog-Upload-Protocol': 'resumable',
       'X-Goog-Upload-Command': 'start', 'X-Goog-Upload-Header-Content-Length': String(video.bytes.length),
       'X-Goog-Upload-Header-Content-Type': 'video/mp4' }, body: JSON.stringify({ file: { name, display_name: 'Arty TikTok analysis' } }) })
@@ -146,7 +148,7 @@ export async function prepareTikTokForGemini(url: string, apiKey: string, signal
   if (!start.ok || !uploadUrl) throw new TikTokVideoError('tiktok_analysis_unavailable')
   const parsed = new URL(uploadUrl)
   if (parsed.origin !== GOOGLE || parsed.username || parsed.password || !parsed.pathname.startsWith('/upload/')) throw new TikTokVideoError('tiktok_analysis_unavailable')
-  const uploaded = await fetch(uploadUrl, { method: 'POST', redirect: 'error', signal,
+  const uploaded = await fetch(uploadUrl, { method: 'POST', redirect: 'manual', signal,
     headers: { ...googleHeaders, 'Content-Type': 'video/mp4', 'X-Goog-Upload-Offset': '0', 'X-Goog-Upload-Command': 'upload, finalize' },
     body: video.bytes })
   if (!uploaded.ok) { await uploaded.body?.cancel(); throw new TikTokVideoError('tiktok_analysis_unavailable') }
@@ -159,7 +161,7 @@ export async function prepareTikTokForGemini(url: string, apiKey: string, signal
       const timer = setTimeout(() => { signal.removeEventListener('abort', abort); resolve() }, 1500)
       signal.addEventListener('abort', abort, { once: true })
     })
-    const res = await fetch(`${GOOGLE}/v1beta/${name}`, { headers: googleHeaders, redirect: 'error', signal })
+    const res = await fetch(`${GOOGLE}/v1beta/${name}`, { headers: googleHeaders, redirect: 'manual', signal })
     if (!res.ok) { await res.body?.cancel(); throw new TikTokVideoError('tiktok_analysis_unavailable') }
     file = JSON.parse(new TextDecoder().decode(await readVideoResponse(res, 64 * 1024)))
     if (file?.name !== name) throw new TikTokVideoError('tiktok_analysis_unavailable')
