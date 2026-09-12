@@ -392,9 +392,11 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
     })
   } catch (err) {
     scheduleUnservedRefunds()
+    const videoLimit = tikTokMode && err instanceof TikTokVideoError && err.code === 'tiktok_video_limit'
     return Response.json(
       { error: tikTokMode ? (err instanceof TikTokVideoError ? err.code : 'tiktok_video_unavailable') : err instanceof Error ? err.message : 'Gemini proxy error' },
-      { status: 502 }
+      // A known input limit is not an upstream gateway failure.
+      { status: videoLimit ? 422 : 502 }
     )
   } finally {
     streamBudget?.dispose()
