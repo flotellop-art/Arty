@@ -4,7 +4,7 @@ const { auth, quota, usage } = vi.hoisted(() => ({ auth: vi.fn(), quota: vi.fn()
 vi.mock('../../../functions/api/_lib/checkAllowedUser', () => ({ checkAllowedUserPeek: auth }))
 vi.mock('../../../functions/api/_lib/atomicQuota', () => ({ consumeCapAtomic: quota }))
 vi.mock('../../../functions/api/_lib/quota', () => ({ recordUsage: usage }))
-import { onRequestPost } from '../../../functions/api/ai/fact-check'
+import { normalizeVerdictContent, onRequestPost } from '../../../functions/api/ai/fact-check'
 
 const http = vi.fn()
 const env = { DB: { prepare: () => ({ run: async () => ({ success: true }) }) }, ANTHROPIC_API_KEY: 'test-a', GEMINI_API_KEY: 'test-g' }
@@ -20,6 +20,35 @@ beforeEach(() => { vi.clearAllMocks(); auth.mockResolvedValue({ email: 'test@exa
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals() })
 
 describe('bounded balanced fact-check', () => {
+  it('uses the final strict verdict after search progress, without empty non-correction fields', async () => {
+    const claim = { claim: 'Hauteur en 2000', verdict: 'verified', explanation: 'La source confirme la date.', originalText: '', correction: '' }
+    http.mockResolvedValueOnce(anthropic({ content: [
+      { type: 'text', text: 'Je recherche la valeur historique.' },
+      { type: 'text', text: JSON.stringify({ overall_confidence: 'high', claims: [claim] }) },
+    ] }))
+    const result = await (await call('haiku')).json() as { content: Array<{text:string}>; evidenceChecks: unknown[] }
+    expect(result.content).toHaveLength(1)
+    expect(JSON.parse(result.content[0]!.text).claims).toEqual([{ claim: claim.claim, verdict: claim.verdict, explanation: claim.explanation }])
+    expect(result.evidenceChecks).toHaveLength(1)
+  })
+  it('does not repair invalid corrections, truncate claim coverage, or parse an unfinished object', () => {
+    const claim = { claim: 'Valeur', verdict: 'wrong', explanation: 'Erreur', originalText: '20', correction: '' }
+    const blocks = [{type:'text' as const,text:JSON.stringify({claims:Array.from({length:12},()=>claim)})}]
+    expect(JSON.parse(normalizeVerdictContent(blocks)[0]!.text).claims).toEqual(Array.from({length:12},()=>claim))
+    const incomplete = [{type:'text' as const,text:'{"claims":['}]
+    expect(normalizeVerdictContent(incomplete)).toBe(incomplete)
+    const olderThenIncomplete = [...blocks, ...incomplete]
+    expect(normalizeVerdictContent(olderThenIncomplete)).toBe(olderThenIncomplete)
+  })
+  it('separates Gemini progress parts from the final JSON without including thinking', async () => {
+    http.mockResolvedValueOnce(Response.json({ modelVersion: 'gemini-3.8-flash', candidates: [{ finishReason: 'STOP', content: { parts: [
+      { thought: true, text: 'Private reasoning' }, { text: 'Recherche en cours.' },
+      { text: '{"overall_confidence":"high","claims":[]}' },
+    ] } }] }))
+    const result = await (await call('gemini')).json()
+    expect(result.content).toEqual([{ type: 'text', text: '{"overall_confidence":"high","claims":[]}' }])
+    expect(result.completion).toBe('complete')
+  })
   it.each(['haiku', 'sonnet'])('sets an explicit Sonnet effort without changing Haiku (%s)', async tier => {
     http.mockResolvedValueOnce(anthropic())
     expect((await call(tier)).status).toBe(200)

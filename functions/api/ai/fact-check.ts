@@ -3,7 +3,7 @@ import { isAdmissionUnavailable, admissionUnavailableResponse } from '../_lib/ad
 import { checkAllowedUserPeek } from '../_lib/checkAllowedUser'
 import { consumeCapAtomic } from '../_lib/atomicQuota'
 import { recordUsage } from '../_lib/quota'
-import { admitEvidenceWork, evidenceClaims, initialReviews, readEvidencePage, safeSourceUrls, verifyFactEvidence, readBoundedJSON } from '../_lib/factCheckEvidence'
+import { admitEvidenceWork, evidenceClaims, initialReviews, readEvidencePage, safeSourceUrls, verifyFactEvidence, readBoundedJSON, parseFactObject } from '../_lib/factCheckEvidence'
 
 /**
  * C-F (CDC visibilité modèle, décision D5) — Fact-check en quota de FOND.
@@ -94,6 +94,23 @@ interface FactCheckProviderPayload {
   webEvidence: boolean
   sourceUrls: string[]
   modelAttested: boolean
+}
+
+/** Keep the final strict verdict separate from search-progress text. Never repair a
+ * truncated object or synthesize missing corrections for a wrong claim. */
+export function normalizeVerdictContent(blocks: Array<{ type: 'text'; text: string }>): Array<{ type: 'text'; text: string }> {
+  const final = blocks.filter(b => b.text.trim()).at(-1)
+  const object = final ? parseFactObject(final.text) : null
+  if (!object || !Array.isArray(object.claims)) return blocks
+  object.claims = object.claims.map(claim => {
+    if (!claim || typeof claim !== 'object' || Array.isArray(claim) ||
+      (claim.verdict !== 'verified' && claim.verdict !== 'uncertain')) return claim
+    // These fields have no meaning outside a proposed correction. Models may
+    // return empty optional strings; do not make a sound verdict unparseable.
+    const { originalText: _originalText, correction: _correction, ...verdict } = claim
+    return verdict
+  })
+  return [{ type: 'text', text: JSON.stringify(object) }]
 }
 
 // Prompt système du fact-checker — vit CÔTÉ SERVEUR (le client ne peut pas
@@ -396,11 +413,11 @@ function normalizeGeminiFactCheck(
   },
   model: string,
 ): FactCheckProviderPayload | null {
-  const text = (data.candidates ?? [])
+  const blocks = (data.candidates ?? [])
     .flatMap((candidate) => candidate.content?.parts ?? [])
-    .map((part) => typeof part.text === 'string' && !part.thought ? part.text : '')
-    .join('')
-  if (!text) return null
+    .filter((part) => typeof part.text === 'string' && !part.thought && part.text.trim())
+    .map((part) => ({ type: 'text' as const, text: part.text! }))
+  if (!blocks.length) return null
 
   const metadata = data.usageMetadata
   const cachedTokens = metadata?.cachedContentTokenCount ?? 0
@@ -422,7 +439,7 @@ function normalizeGeminiFactCheck(
   })
 
   return {
-    content: [{ type: 'text', text }],
+    content: normalizeVerdictContent(blocks),
     sourceUrls: safeSourceUrls((data.candidates ?? []).flatMap(c => c.groundingMetadata?.groundingChunks ?? []).flatMap(chunk => {
       if (!chunk || typeof chunk !== 'object' || !('web' in chunk)) return []
       const web = chunk.web
@@ -507,7 +524,7 @@ function normalizeAnthropic(data: AnthropicResult, model: string): FactCheckProv
   return { model: typeof data.model === 'string' && data.model ? data.model : model,
     modelAttested: typeof data.model === 'string' && /^claude-[a-z0-9.-]{1,90}$/.test(data.model),
     completion: data.stop_reason === 'end_turn' ? 'complete' : 'incomplete',
-    content: (data.content ?? []).filter(c => c.type === 'text' && typeof c.text === 'string').map(c => ({ type: 'text', text: c.text! })),
+    content: normalizeVerdictContent((data.content ?? []).filter(c => c.type === 'text' && typeof c.text === 'string').map(c => ({ type: 'text', text: c.text! }))),
     usage: data.usage ?? {}, webEvidence: sourceUrls.length > 0, sourceUrls }
 }
 
