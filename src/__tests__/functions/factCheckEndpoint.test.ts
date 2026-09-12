@@ -52,8 +52,7 @@ describe('endpoint fact-check — hors quotas utilisateur (C-F/D5)', () => {
     expect(src).toMatch(/fetchAnthropicWithRetry/)
   })
 
-  // La passe 2 utilise la version courante avec filtrage dynamique et retire
-  // les blocs bruts déjà consommés. Cela réduit le réservoir hors sujet.
+  // La passe 2 utilise la recherche directe, tout en gardant le contrat de sources.
   it('utilise web_search_20260318 et ne déclare JAMAIS code_execution (BUG 10)', () => {
     expect(src).toMatch(/web_search_20260318/)
     expect(src).toMatch(/response_inclusion: 'excluded'/)

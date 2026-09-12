@@ -141,6 +141,8 @@ describe('real endpoint with synthetic provider responses', () => {
     const body = JSON.parse(http.mock.calls[2]![1].body)
     expect(body.tools).toBeUndefined()
     if (geminiPrimary) expect(body.generationConfig.thinkingConfig).toEqual({ thinkingLevel: 'low' })
+    else expect(body.output_config).toEqual({ effort: 'medium' })
+    if (geminiPrimary) expect(JSON.parse(http.mock.calls[3]![1].body).output_config).toEqual({ effort: 'high' })
   })
   it('refuses the initial paid call without confirmed admission', async () => {
     quota.mockResolvedValue({ status: 'fail_open' }); const http = vi.fn(); vi.stubGlobal('fetch', http)
