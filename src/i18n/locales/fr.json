@@ -830,6 +830,11 @@
       "partialDetail": "Ce contrôle ne permet pas de confirmer toute la réponse. Les corrections proposées n’ont pas été appliquées automatiquement.",
       "searchUnavailable": "La vérification par des sources n’a pas pu être menée à terme.",
       "evidenceMissing": "Certaines affirmations manquent de preuves contrôlées. Les corrections restent des propositions.",
+      "workChecking": "Contrôle en cours · {{done}}/{{total}} parties traitées",
+      "workComplete": "Analyse terminée",
+      "noClaimsIdentified": "Aucune affirmation factuelle identifiée — ce résultat ne certifie pas toute la réponse.",
+      "workStopped": "Analyse arrêtée · {{done}}/{{total}} parties traitées",
+      "proofProgress": "{{accepted}}/{{identified}} affirmations identifiées avec preuves contrôlées",
       "evidenceSource": "Preuve {{count}} et contexte",
       "fetchedAt": "Page consultée le {{date}} (date de consultation, pas de publication).",
       "challenge": {

@@ -1,4 +1,32 @@
 /** Bounded, inert receipts shared by the server, chat, archives and sync. */
+export interface FactCheckProgress {
+  phase: 'checking' | 'complete' | 'stopped'
+  batchesDone: number
+  batchesTotal: number
+  identified: number
+  accepted: number
+}
+export function isFactCheckProgress(v: unknown): v is FactCheckProgress {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return false
+  const p = v as FactCheckProgress
+  return Object.keys(p).every(k => ['phase', 'batchesDone', 'batchesTotal', 'identified', 'accepted'].includes(k)) &&
+    ['checking', 'complete', 'stopped'].includes(p.phase) &&
+    [p.batchesDone, p.batchesTotal, p.identified, p.accepted].every(n => Number.isSafeInteger(n) && n >= 0) &&
+    p.batchesTotal >= 1 && p.batchesTotal <= 4 && p.batchesDone <= p.batchesTotal &&
+    p.identified <= 40 && p.accepted <= p.identified &&
+    (p.phase !== 'complete' || p.batchesDone === p.batchesTotal)
+}
+export function validFactCheckProgressForResult(result: {
+  progress?: unknown; claims: Array<{ review?: FactReview }>;
+  coverage?: { inputChars: number; submittedChars: number; claimLimitReached: boolean };
+}): boolean {
+  const p = result.progress, c = result.coverage
+  return isFactCheckProgress(p) && p.identified === result.claims.length &&
+    p.accepted === result.claims.filter(claim => hasAcceptedFactProof(claim.review)).length && !!c &&
+    c.submittedChars <= p.batchesDone * 6000 && c.submittedChars <= c.inputChars &&
+    (p.phase !== 'complete' || c.submittedChars === c.inputChars)
+}
+
 export interface FactEvidence {
   sourceId: string
   url: string

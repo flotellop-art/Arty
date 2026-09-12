@@ -17,6 +17,7 @@ import { apiUrl } from './apiBase'
 import { Capacitor } from '@capacitor/core'
 import { postJsonNativeWithFallback } from './aiHttp'
 import { getValidAccessToken } from './googleAuth'
+import { getActiveUserId } from './userSession'
 import * as scoped from './scopedStorage'
 import * as storage from './storage'
 import { recordUsage } from './costTracker'
@@ -28,6 +29,7 @@ import { unified } from 'unified'
 import remarkParse from 'remark-parse'
 import remarkGfm from 'remark-gfm'
 import { hasAcceptedFactProof, isFactReview, factCorrection, factProofTarget, type FactReview } from '../../shared/factCheckEvidence'
+import { runFactCheckWork, type FactCheckWork, type FactCheckWorkOptions } from './factCheckWork'
 
 export type Verdict = FactCheckClaim['verdict']
 export type { FactCheckResult, FactCheckClaim }
@@ -1059,28 +1061,35 @@ export async function factCheckResponse(
   question: string,
   response: string,
   mode: FactCheckMode = getFactCheckMode(),
-  searchContext: SearchContext | null = null
+  searchContext: SearchContext | null = null,
+  options: FactCheckWorkOptions = {},
 ): Promise<FactCheckOutcome> {
   if (mode === 'off') return { result: null, reason: 'désactivé' }
   if (!response || response.length < 80) return { result: null, reason: 'réponse trop courte' }
   if (isFactCheckQuotaExhausted(mode)) return { result: null, reason: FACT_CHECK_QUOTA_REASON }
 
+  const outcome = await runFactCheckWork(response, (lot, work) => checkSingleLot(question, lot, mode, searchContext, work), options)
+  if (outcome.result) bumpAutoCheckCount()
+  return outcome
+}
+
+async function checkSingleLot(question: string, response: string, mode: FactCheckMode, searchContext: SearchContext | null, work: FactCheckWork): Promise<FactCheckOutcome> {
+
   const sourcesBlock = formatSearchContext(searchContext)
   const hasFreshSources = hasFreshSearchEvidence(searchContext)
   // Une vérification LOGIQUE réussie = 1 au compteur (même si escalade).
   const done = (o: FactCheckOutcome): FactCheckOutcome => {
-    if (o.result) bumpAutoCheckCount()
     return o
   }
 
   // Modes explicites (settings) : un seul palier, pas d'escalade.
   if (mode === 'haiku' || mode === 'sonnet' || mode === 'gemini') {
-    return done(await runCheckTier(mode, question, response, sourcesBlock, hasFreshSources))
+    return done(await runCheckTier(mode, question, response, sourcesBlock, hasFreshSources, work))
   }
 
   // Mode 'auto' (D5) : Haiku d'abord, Sonnet+web_search seulement si la
   // passe rapide remonte au moins un claim risqué.
-  const first = await runCheckTier('haiku', question, response, sourcesBlock, hasFreshSources)
+  const first = await runCheckTier('haiku', question, response, sourcesBlock, hasFreshSources, work)
   if (!first.result) return first
   // Le fallback serveur a déjà exécuté Sonnet : ne pas payer puis attendre
   // une seconde passe Sonnet dans la même vérification logique.
@@ -1090,7 +1099,9 @@ export async function factCheckResponse(
   // palier Haiku, lui, reste disponible pour les prochains messages).
   if (quotaExhaustedDayByTier.sonnet === today()) return done(partialCheck(first, 'search_unavailable'))
 
-  const escalated = await runCheckTier('sonnet', question, response, sourcesBlock, hasFreshSources)
+  work.interim?.(first.result)
+  if (!work.isCurrent() || Date.now() >= work.deadline) return done(partialCheck(first, 'completion_unknown'))
+  const escalated = await runCheckTier('sonnet', question, response, sourcesBlock, hasFreshSources, work)
   // Si l'escalade échoue (timeout, plafond Sonnet du jour…), le résultat
   // Haiku reste plus utile qu'un badge d'échec.
   return done(escalated.result ? escalated : partialCheck(first, 'search_unavailable'))
@@ -1120,6 +1131,9 @@ interface FactCheckRequestPayload {
   question: string
   response: string
   sources: string
+  context?: string
+  budgetMs?: number
+  recoverEvidence?: boolean
 }
 
 // Libellés d'échec réseau par classe d'exception native (`err.code` posé par
@@ -1180,15 +1194,22 @@ async function runCheckTier(
   response: string,
   sourcesBlock: string,
   hasFreshSources: boolean,
+  work: FactCheckWork,
 ): Promise<FactCheckOutcome> {
   const info = TIER_INFO[tier]
 
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
   const googleToken = await getValidAccessToken()
   if (googleToken) headers['x-google-token'] = googleToken
+  if (!work.isCurrent() || Date.now() >= work.deadline) return { result: null, reason: 'vérification interrompue' }
+  const timeoutMs = Math.max(1, Math.min(info.timeoutMs, work.deadline - Date.now()))
+  // Reserve the sole recovery before sending: a lost response must not allow
+  // another lot to pay for the same optional search again.
+  const recoverEvidence = work.recoverEvidence
+  if (tier !== 'haiku') work.recoverEvidence = false
 
   const controller = new AbortController()
-  const timeoutId = setTimeout(() => controller.abort(), info.timeoutMs)
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
 
   let res: Response
   try {
@@ -1199,8 +1220,11 @@ async function runCheckTier(
         question: question.slice(0, 2000),
         response: response.slice(0, 6000),
         sources: sourcesBlock,
+        ...(work.context !== response ? { context: work.context } : {}),
+        budgetMs: Math.max(1, timeoutMs - 1000),
+        recoverEvidence,
       },
-      info.timeoutMs,
+      timeoutMs,
       controller.signal,
     )
   } catch (err) {
@@ -1252,6 +1276,7 @@ async function runCheckTier(
       webEvidence?: boolean
       evidenceVersion?: unknown
       evidenceChecks?: unknown
+      evidenceRecoveryAttempted?: boolean
       usage?: { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number }
       reviewUsage?: Array<{ model: string; usage: { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number } }>
     }
@@ -1261,6 +1286,7 @@ async function runCheckTier(
     webEvidence = data.webEvidence === true
     evidenceVersion = data.evidenceVersion
     evidenceChecks = data.evidenceChecks
+    if (data.evidenceRecoveryAttempted === true) work.recoverEvidence = false
     // Une citation web peut couper le JSON final en plusieurs blocs `text`.
     // Les concaténer préserve l'objet complet ; extractJsonObject ignore la
     // prose éventuelle produite avant les recherches.
@@ -1275,7 +1301,7 @@ async function runCheckTier(
         const inputT = (data.usage.input_tokens || 0) + (data.usage.cache_read_input_tokens || 0)
         const outputT = data.usage.output_tokens || 0
         recordUsage(servedModel, inputT, outputT)
-        for (const added of (Array.isArray(data.reviewUsage) ? data.reviewUsage : []).slice(0, 2)) {
+        for (const added of (Array.isArray(data.reviewUsage) ? data.reviewUsage : []).slice(0, 5)) {
           if (typeof added?.model !== 'string' || !added.usage) continue
           const input = (added.usage.input_tokens ?? 0) + (added.usage.cache_read_input_tokens ?? 0)
           const output = added.usage.output_tokens ?? 0
@@ -1537,11 +1563,28 @@ function patchMessage(
 // Nettoie toujours les liens à partir de la provenance capturée. Le second
 // appel de vérification reste désactivé en mode off, en conversation EU, sur
 // une réponse interrompue ou quand la paire question/réponse est introuvable.
-export async function runFactCheckOnLatest(
+const activeFactChecks = new Set<string>()
+export async function runFactCheckOnLatest(conversationId: string, refreshConversations: () => void): Promise<void> {
+  const messageId = storage.getConversation(conversationId)?.messages.slice().reverse().find(m => m.role === 'assistant' && m.id !== 'streaming')?.id
+  const key = `arty-fact-check:${getActiveUserId()}:${conversationId}:${messageId ?? ''}`
+  if (activeFactChecks.has(key)) return
+  activeFactChecks.add(key)
+  try {
+    if (typeof navigator !== 'undefined' && navigator.locks) {
+      await navigator.locks.request(key, { ifAvailable: true }, async lock => {
+        if (lock) await runLatestFactCheck(conversationId, refreshConversations, messageId)
+      })
+    } else await runLatestFactCheck(conversationId, refreshConversations, messageId)
+  } finally { activeFactChecks.delete(key) }
+}
+
+async function runLatestFactCheck(
   conversationId: string,
-  refreshConversations: () => void
+  refreshConversations: () => void,
+  expectedMessageId?: string,
 ): Promise<void> {
   const mode = getFactCheckMode()
+  const owner = getActiveUserId()
 
   const conv = storage.getConversation(conversationId)
   if (!conv) {
@@ -1586,6 +1629,7 @@ export async function runFactCheckOnLatest(
   }
 
   const assistantMsg = conv.messages[lastAssistantIdx]!
+  if (assistantMsg.id !== expectedMessageId) return
   if (assistantMsg.restoredArchive === true) {
     clearSearchContext(conversationId)
     return
@@ -1714,12 +1758,28 @@ export async function runFactCheckOnLatest(
   // au fact-checker de comparer les claims aux SOURCES RÉELLES plutôt
   // que de se reposer sur son cutoff de connaissance — c'est la
   // différence v1 → v2.
+  const isCurrent = () => {
+    if (getActiveUserId() !== owner || getFactCheckMode() !== mode) return false
+    const current = storage.getConversation(conversationId)
+    const answer = current?.messages.find(m => m.id === assistantMsg.id)
+    const prompt = current?.messages.find(m => m.id === userMsg!.id)
+    return !!current && !current.euOnly && !isDocumentConversation(current) && !!answer && !answer.interrupted &&
+      answer.content === prepared.content && answer.factCheck?.checkedAt === pendingFactCheck.checkedAt &&
+      !!prompt && getMessageTextForModel(prompt) === question
+  }
   const outcome = await factCheckResponse(
     question,
     prepared.content,
     mode,
     prepared.searchContext,
+    { isCurrent, onProgress: progress => {
+      if (!isCurrent()) return
+      patchMessage(conversationId, assistantMsg.id, m => ({ ...m, factCheck: { ...progress,
+        checkedAt: pendingFactCheck.checkedAt, modelLabel: pendingFactCheck.modelLabel, status: 'pending' } }))
+      refreshConversations()
+    } },
   )
+  if (!isCurrent()) return
   if (!outcome.result) {
     console.warn('[factChecker] factCheckResponse returned null —', outcome.reason)
     // C-F — plafond de fond atteint PENDANT cet appel (429) : retirer le

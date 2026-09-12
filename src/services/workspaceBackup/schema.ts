@@ -2,7 +2,7 @@ import { PROJECT_LIMITS, validDescriptor, validProjectId, type ProjectSourceRefe
 import type { ProjectTurn } from '../projects/chatPolicy'
 import { BACKUP_FEATURES, BACKUP_LIMITS as L, BackupError, type BackupSnapshot, type BackupManifest, type BackupDiagnostics, type BackupSchemaVersion } from './types'
 import { utf8 } from './bytes'
-import { isFactReview } from '../../../shared/factCheckEvidence'
+import { isFactReview, validFactCheckProgressForResult } from '../../../shared/factCheckEvidence'
 
 function fail(): never { throw new BackupError('format') }
 function limit(): never { throw new BackupError('limit') }
@@ -108,7 +108,7 @@ function crop(value: unknown): void {
   if (r.x + r.width > 1 + Number.EPSILON * 4 || r.y + r.height > 1 + Number.EPSILON * 4) fail()
 }
 function factCheck(value: unknown): void {
-  object(value, ['overallConfidence', 'claims', 'modelLabel', 'checkedAt'], ['status', 'originalContent', 'appliedCorrections', 'limitations', 'coverage'])
+  object(value, ['overallConfidence', 'claims', 'modelLabel', 'checkedAt'], ['status', 'originalContent', 'appliedCorrections', 'limitations', 'coverage', 'progress'])
   enumeration(value.overallConfidence, ['high', 'medium', 'low']); text(value.modelLabel, 2000); integer(value.checkedAt)
   if (value.status !== undefined) enumeration(value.status, ['pending', 'success-empty', 'success-with-claims', 'failed', 'partial'])
   if (value.limitations !== undefined) {
@@ -118,7 +118,7 @@ function factCheck(value: unknown): void {
   if (value.coverage !== undefined) {
     object(value.coverage, ['inputChars', 'submittedChars', 'claimLimitReached'])
     integer(value.coverage.inputChars, L.contentChars)
-    integer(value.coverage.submittedChars, 6000)
+    integer(value.coverage.submittedChars, value.progress === undefined ? 6000 : 24_000)
     bool(value.coverage.claimLimitReached)
     if ((value.coverage.submittedChars as number) > (value.coverage.inputChars as number)) fail()
   }
@@ -132,6 +132,7 @@ function factCheck(value: unknown): void {
     for (const key of ['originalText', 'correction']) if (claim[key] !== undefined) text(claim[key], L.contentChars)
     if (claim.applied !== undefined) bool(claim.applied)
   }
+  if (value.progress !== undefined && !validFactCheckProgressForResult(value as unknown as Parameters<typeof validFactCheckProgressForResult>[0])) fail()
 }
 function uniqueIds(values: { id: string }[]): void { if (new Set(values.map(value => value.id)).size !== values.length) fail() }
 

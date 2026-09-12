@@ -17,6 +17,17 @@ const response = (claims: unknown = [], extra: object = {}) => Response.json({
 beforeEach(() => vi.clearAllMocks())
 afterEach(() => vi.unstubAllGlobals())
 describe('fact-check integrity through the real client', () => {
+  it('reserves the only recovery before a deep response is lost, keeping earlier results', async () => {
+    const http = vi.fn().mockResolvedValueOnce(response([claim('uncertain')], { webEvidence: false }))
+      .mockRejectedValueOnce(new TypeError('synthetic lost reply'))
+      .mockResolvedValueOnce(response([claim('uncertain')], { webEvidence: false }))
+      .mockResolvedValueOnce(response())
+    vi.stubGlobal('fetch', http)
+    const result = await factCheckResponse('Question', 'x'.repeat(6500), 'auto')
+    const bodies = http.mock.calls.map(c => JSON.parse(String(c[1].body)))
+    expect(bodies.filter(b => b.tier === 'sonnet').map(b => b.recoverEvidence)).toEqual([true, false])
+    expect(result.result).toMatchObject({ status: 'partial', progress: { batchesDone: 2 }, coverage: { submittedChars: 6500 } })
+  })
   it.each([{}, [{ overall_confidence: 'high', claims: [] }], { claims: null }, { claims: 'none' }, { claims: [null] }, { claims: [claim(), { claim: '', verdict: 'verified', explanation: '' }] },
     { claims: [{ ...claim(), verdict: 'true' }] }, { claims: [{ ...claim(), claim: 3 }] }, { claims: [] }])('rejects malformed provider results: %j', async payload => {
     vi.stubGlobal('fetch', vi.fn(async () => Response.json({ completion: 'complete', content: [{ type: 'text', text: JSON.stringify(payload) }] })))
@@ -51,12 +62,14 @@ describe('fact-check integrity through the real client', () => {
     expect((await factCheckResponse('Question', answer, 'auto')).result?.status).toBe('partial')
     expect(http).toHaveBeenCalledTimes(1)
   })
-  it.each([6000, 6001])('records submitted prefix honestly at %i characters, including empty claims', async length => {
+  it.each([6000, 6001])('covers %i characters in bounded lots, including empty claims', async length => {
     const http = vi.fn(async (_url: unknown, _init: RequestInit) => response()); vi.stubGlobal('fetch', http)
     const result = (await factCheckResponse('Question', 'x'.repeat(length), 'haiku')).result!
-    expect(result.status).toBe(length > 6000 ? 'partial' : 'success-empty')
-    expect(result.coverage).toEqual({ inputChars: length, submittedChars: Math.min(length, 6000), claimLimitReached: false })
-    expect(JSON.parse(String(http.mock.calls[0]![1].body)).response.length).toBe(Math.min(length, 6000))
+    expect(result.status).toBe('success-empty')
+    expect(result.coverage).toEqual({ inputChars: length, submittedChars: length, claimLimitReached: false })
+    const bodies = http.mock.calls.map(c => JSON.parse(String(c[1].body)))
+    expect(bodies.map(b => b.response).join('')).toBe('x'.repeat(length))
+    expect(bodies.every(b => b.response.length >= 80 && b.response.length <= 6000)).toBe(true)
   })
   it('keeps a failed web escalation partial even when the first pass had some sources', async () => {
     const http = vi.fn().mockResolvedValueOnce(response([claim('uncertain')])).mockResolvedValueOnce(response([], { webEvidence: false, fallback: 'without_web_search' }))
@@ -89,7 +102,7 @@ describe('fact-check integrity through the real client', () => {
     const captured = mapCapturedConversation(restored)
     expect(captured.messages[0]!.factCheck).toEqual(result)
     expect(() => validateSnapshot({ conversations: [captured], projects: [], files: [], objects: [] })).not.toThrow()
-    delete result.coverage; delete result.limitations; result.status = 'success-empty'
+    delete result.coverage; delete result.limitations; delete result.progress; result.status = 'success-empty'
     expect(projectLocalSyncConversationShape(conv).messages[0]!.factCheck).toEqual(result)
   })
   it('accepts only server receipts and preserves proof through archive and sync', async () => {

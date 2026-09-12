@@ -78,6 +78,7 @@ export interface FactCheckClaim {
 }
 
 export interface FactCheckResult {
+  progress?: import('../../shared/factCheckEvidence').FactCheckProgress
   overallConfidence: 'high' | 'medium' | 'low'
   claims: FactCheckClaim[]
   modelLabel: string

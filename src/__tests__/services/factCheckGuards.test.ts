@@ -78,6 +78,43 @@ beforeEach(() => {
 })
 
 describe('runFactCheckOnLatest — gardes', () => {
+  it('keeps a quotation spanning two lots unchanged and supplies its full context to both', async () => {
+    const conv = makeConv()
+    const original = '> ' + 'x'.repeat(6100) + ' La tour Eiffel mesure 350 mètres, selon cette citation fictive.'
+    conv.messages[1]!.content = original
+    convStore.set(conv.id, conv)
+    const claim = { claim: 'La tour Eiffel mesure 350 mètres', verdict: 'wrong', explanation: 'Une proposition synthétique.', originalText: 'mesure 350 mètres', correction: 'mesure 330 mètres' }
+    fetchMock.mockResolvedValueOnce(Response.json({ completion: 'complete', webEvidence: true, content: [{ type: 'text', text: '{"overall_confidence":"high","claims":[]}' }] }))
+      .mockResolvedValueOnce(Response.json({ completion: 'complete', webEvidence: true, evidenceVersion: 1,
+        evidenceChecks: [proof({ target: JSON.stringify([claim.claim, 'wrong', claim.originalText, claim.correction]) })],
+        content: [{ type: 'text', text: JSON.stringify({ overall_confidence: 'low', claims: [claim] }) }] }))
+    await runFactCheckOnLatest(conv.id, () => {})
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(fetchMock.mock.calls.every(c => JSON.parse(c[1].body).context === original)).toBe(true)
+    expect(convStore.get(conv.id)!.messages[1]!.content).toBe(original)
+    expect(convStore.get(conv.id)!.messages[1]!.factCheck?.appliedCorrections).toBe(0)
+  })
+  it('checks a new answer while an older answer is pending, without duplicating the same message', async () => {
+    const conv = makeConv(); convStore.set(conv.id, conv)
+    let resolveFirst!: (value: Response) => void
+    const reply = () => Response.json({ completion: 'complete', webEvidence: true, content: [{ type: 'text', text: '{"overall_confidence":"high","claims":[]}' }] })
+    fetchMock.mockImplementationOnce(() => new Promise<Response>(resolve => { resolveFirst = resolve }))
+      .mockImplementationOnce(async () => reply())
+    const first = runFactCheckOnLatest(conv.id, () => {})
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+    await runFactCheckOnLatest(conv.id, () => {})
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const current = convStore.get(conv.id)!
+    convStore.set(conv.id, { ...current, messages: [...current.messages,
+      { id: 'u2', role: 'user', content: 'Une autre question factuelle', timestamp: 3 },
+      { id: 'a2', role: 'assistant', content: 'Une seconde réponse factuelle assez longue pour déclencher une vérification distincte de la première.', timestamp: 4 },
+    ] })
+    await runFactCheckOnLatest(conv.id, () => {})
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(convStore.get(conv.id)!.messages[3]!.factCheck?.status).toBe('success-empty')
+    resolveFirst(reply()); await first
+    expect(convStore.get(conv.id)!.messages[1]!.factCheck?.status).toBe('success-empty')
+  })
   it.each([
     'Recopie exactement ce paragraphe de test, sans commentaire : Une minute contient 100 secondes.',
     'Peux-tu recopier mot pour mot : Une minute contient 100 secondes.',

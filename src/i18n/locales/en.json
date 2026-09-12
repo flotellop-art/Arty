@@ -830,6 +830,11 @@
       "partialDetail": "This check cannot confirm the entire response. Proposed corrections were not applied automatically.",
       "searchUnavailable": "Verification against sources could not be completed.",
       "evidenceMissing": "Some claims lack checked evidence. Corrections remain proposals.",
+      "workChecking": "Checking · {{done}}/{{total}} sections processed",
+      "workComplete": "Analysis finished",
+      "noClaimsIdentified": "No factual claim identified — this does not certify the entire response.",
+      "workStopped": "Analysis stopped · {{done}}/{{total}} sections processed",
+      "proofProgress": "{{accepted}}/{{identified}} identified claims have checked evidence",
       "evidenceSource": "Evidence {{count}} and context",
       "fetchedAt": "Page accessed on {{date}} (access date, not publication date).",
       "challenge": {

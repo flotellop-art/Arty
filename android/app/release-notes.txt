@@ -1,5 +1,6 @@
-Arty 1.0.82 — Sentiers OSM et expérience Android améliorée
+Arty 1.0.101 — Vérification progressive des faits
 
-• Recherche de sentiers et boucles autour d'un lieu avec visualisation cartographique intégrée.
-• Export GPX vers les applications compatibles, dont Komoot.
-• Routage conversationnel et accès OSM rendus plus robustes sur mobile.
+• Reprise ciblée des affirmations qui manquent de preuves documentaires.
+• Traitement des longues réponses par parties, avec contexte conservé.
+• Progression distincte du nombre de preuves acceptées et raisons de blocage plus claires.
+• Citations, recopies exactes et corrections sensibles protégées.
