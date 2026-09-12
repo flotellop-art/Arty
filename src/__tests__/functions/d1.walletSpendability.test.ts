@@ -75,7 +75,7 @@ describe('wallet spendability is not the accounting balance', () => {
     const background: Promise<unknown>[] = []
     const start = await beginWalletBilling(h.env, p => { background.push(p) }, {
       email: OWNER, provider: 'gemini', model: 'gemini-3.8-flash', reservePricingModel: 'gemini-3.5-flash',
-      body: tikTokAnalysisBody('https://vm.tiktok.com/ZN8jShEjq/'), minimumInputTokens: TIKTOK_RESERVE_INPUT_TOKENS,
+      body: tikTokAnalysisBody('https://vm.tiktok.com/ZN8jShEjq/', true), minimumInputTokens: TIKTOK_RESERVE_INPUT_TOKENS,
     })
     await Promise.allSettled(background)
     expect(start.mode).toBe('wallet')

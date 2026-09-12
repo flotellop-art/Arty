@@ -20,7 +20,7 @@ describe('TikTok conversation preparation', () => {
     const fetcher = vi.fn(async () => success()); vi.stubGlobal('fetch', fetcher)
     const result = await prepareTikTokTurn(options({ text: `Mon secret médical. ${url}`, messages: [{ ...message, content: 'Private mail', videoAnalysis: undefined }] }))
     expect(result).toMatchObject({ ...analysis, analyzedAt: expect.any(Number) })
-    expect(JSON.parse(fetcher.mock.calls[0]![1].body)).toEqual({ model: 'gemini-3.8-flash', stream: false, tiktokVideoUrl: url })
+    expect(JSON.parse(fetcher.mock.calls[0]![1].body)).toEqual({ model: 'gemini-3.8-flash', stream: false, tiktokVideoUrl: url, tiktokVideoFormat: 2 })
   })
   it.each([{ euOnly: true }, { available: false }, { documentRestricted: true }, { text: `${url} https://vt.tiktok.com/ABCD1234/` }])('blocks unsupported scope before network: %j', async extra => {
     const fetcher = vi.fn(); vi.stubGlobal('fetch', fetcher)

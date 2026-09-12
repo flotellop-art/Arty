@@ -161,6 +161,9 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
   try {
     const { model: requestedModel, stream, tiktokVideoUrl, ...inputBody } = await request.json() as { model: string; stream: boolean; [key: string]: unknown }
     tikTokMode = tiktokVideoUrl !== undefined
+    // Only the new client can display the larger report and wait 195 seconds.
+    // Older APKs retain their original output and timing contract.
+    const extendedVideoReport = tikTokMode && inputBody.tiktokVideoFormat === 2
     let body = inputBody
     const videoUrl = normalizeTikTokUrl(tiktokVideoUrl)
     if (tikTokMode) {
@@ -170,7 +173,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
       }
       // Fixed descriptive prompt: no private history, tools or arbitrary client
       // instructions. The media placeholder is reserved BEFORE network access.
-      body = tikTokAnalysisBody(videoUrl)
+      body = tikTokAnalysisBody(videoUrl, extendedVideoReport)
     }
     // Audit F-22 (3 juil. 2026) — `model` (body client) est interpolé dans
     // l'URL Gemini : format strict avant interpolation (même baseline que les
@@ -250,15 +253,15 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
       if (cap.debited) capConsumed = cap
     }
 
-    const videoSignal = tikTokMode ? AbortSignal.any([request.signal, AbortSignal.timeout(TIKTOK_SERVER_TIMEOUT_MS)]) : undefined
+    const videoSignal = tikTokMode ? AbortSignal.any([request.signal, AbortSignal.timeout(extendedVideoReport ? TIKTOK_SERVER_TIMEOUT_MS : 90_000)]) : undefined
     if (videoUrl && tikTokMode) {
       body = await prepareTikTokForGemini(videoUrl, apiKey,
-        AbortSignal.any([videoSignal!, AbortSignal.timeout(TIKTOK_PREPARATION_TIMEOUT_MS)]),
-        cleanup => { cleanupVideo = cleanup })
+        AbortSignal.any([videoSignal!, AbortSignal.timeout(extendedVideoReport ? TIKTOK_PREPARATION_TIMEOUT_MS : 40_000)]),
+        cleanup => { cleanupVideo = cleanup }, extendedVideoReport)
     }
     const action = stream ? 'streamGenerateContent' : 'generateContent'
     const suffix = stream ? '?alt=sse' : ''
-    streamBudget = createStreamBudget(tikTokMode ? TIKTOK_GENERATION_TIMEOUT_MS : GEMINI_UPSTREAM_BUDGET_MS, 90_000, videoSignal)
+    streamBudget = createStreamBudget(extendedVideoReport ? TIKTOK_GENERATION_TIMEOUT_MS : GEMINI_UPSTREAM_BUDGET_MS, 90_000, videoSignal)
     const upstreamSignal = streamBudget.signal
     const callModel = (candidateModel: string) =>
       fetch(

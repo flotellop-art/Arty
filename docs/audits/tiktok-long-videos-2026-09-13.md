@@ -20,6 +20,10 @@ doit respecter le plafond et correspondre à celle annoncée, à deux secondes p
 - Délais : préparation 90 s, serveur 180 s, client 195 s. L'attente des en-têtes
   de génération est bornée à 80 s ; l'inactivité et le délai global s'appliquent
   ensuite. Un APK ancien garde ses délais précédents.
+- Le format de rapport est négocié explicitement : seul le client envoyant
+  `tiktokVideoFormat: 2` reçoit le rapport étendu et les délais longs. Les anciens
+  APK gardent le contrat 1 200 mots / 4 096 tokens et 90 s serveur / 40 s
+  préparation, compatibles avec leur validation à 16 000 caractères.
 - Les erreurs de source arrêtent aussi l'upload. Aucun retry après un envoi
   ambigu. La suppression du fichier Google possédé reste enregistrée avant
   création. Stop ignore tout résultat tardif ; il ne garantit pas l'annulation

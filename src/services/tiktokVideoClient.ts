@@ -54,7 +54,7 @@ export async function prepareTikTokTurn(options: TikTokTurnOptions): Promise<Tik
   const timer = setTimeout(abort, TIKTOK_CLIENT_TIMEOUT_MS)
   try {
     const endpoint = apiUrl('/api/ai/gemini-proxy')
-    const payload = { model: TIKTOK_ANALYSIS_MODEL, stream: false, tiktokVideoUrl: url }
+    const payload = { model: TIKTOK_ANALYSIS_MODEL, stream: false, tiktokVideoUrl: url, tiktokVideoFormat: 2 }
     const response = Capacitor.isNativePlatform()
       ? await postJsonNativeWithFallback(endpoint, headers, payload, {
         connectTimeoutMs: 15_000, readTimeoutMs: TIKTOK_CLIENT_TIMEOUT_MS, deadline: Date.now() + TIKTOK_CLIENT_TIMEOUT_MS,
