@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useConnectionsStatus } from '../hooks/useConnectionsStatus'
 import type { ConnectionState } from '../services/connectionsStatus'
+import { LocalSmsAccess } from '../components/settings/LocalSmsAccess'
 
 const button = 'min-h-11 border border-theme-border px-4 py-2 text-sm text-theme-ink hover:border-theme-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-theme-accent disabled:opacity-50'
 const card = 'min-w-0 border border-theme-border p-5 space-y-3'
@@ -83,6 +84,7 @@ export function ConnectionsScreen({ onBack, onAccess, onAgenda, onApiKeys, onMai
         </article>
       </div>}
       <aside className={card}>
+        {!demo && <LocalSmsAccess disabled={configurationOpen} />}
         <h2 className="font-display text-2xl">{t('connections.unsupported.title')}</h2>
         <p className="text-sm text-theme-muted">{t('connections.unsupported.description')}</p>
       </aside>

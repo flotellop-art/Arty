@@ -27,6 +27,7 @@ import { PublicLandingFallback } from './components/shared/PublicLandingFallback
 import { Sidebar } from './components/layout/Sidebar'
 import { ApiKeysModal } from './components/settings/ApiKeysModal'
 import { MailAccountsModal } from './components/settings/MailAccountsModal'
+import { LocalSmsStartup } from './components/settings/LocalSmsAccess'
 import { CapReachedModal } from './components/chat/CapReachedModal'
 import { OAuthCallback } from './components/google/OAuthCallback'
 import { LoginScreen } from './components/auth/LoginScreen'
@@ -465,6 +466,7 @@ function AppContent({
       className="bg-theme-bg font-sans font-normal text-theme-ink"
       style={{ height: 'var(--viewport-h, 100dvh)' }}
     >
+      <LocalSmsStartup ready={authMethod !== 'demo' && !showProfileSetup && !configuration && !showGoogleReconnect && !showMorningBrief} />
       {shareError && (
         <div
           className="fixed top-0 inset-x-0 z-[61] bg-red-600 text-white px-4 py-2.5 flex items-center justify-between gap-3"

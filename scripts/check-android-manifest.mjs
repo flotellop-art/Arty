@@ -30,6 +30,8 @@ import { fileURLToPath } from 'node:url'
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url))
 const input = process.argv[2]
+const localSms = process.argv[3] === '--local-sms'
+if (process.argv.slice(3).some(arg => arg !== '--local-sms')) throw new Error('Unknown manifest profile')
 if (!input) {
   console.error('usage: node scripts/check-android-manifest.mjs <manifest.xml | aapt-dump.txt>')
   process.exit(2)
@@ -82,6 +84,12 @@ const DENYLIST = new Set([
   'android.permission.WRITE_CALENDAR',
 ])
 
+// Opt-in direct APK profile, never a global relaxation of the Play guard.
+if (localSms) {
+  DENYLIST.delete('android.permission.READ_SMS')
+  MERGED_ALLOWLIST.add('android.permission.READ_SMS')
+}
+
 function extractPermissions(text) {
   const found = new Set()
   // Manifest XML (mergé ou bundletool) : <uses-permission android:name="..."/>
@@ -97,6 +105,9 @@ const merged = extractPermissions(readFileSync(input, 'utf8'))
 const source = extractPermissions(
   readFileSync(join(ROOT, 'android/app/src/main/AndroidManifest.xml'), 'utf8'),
 )
+if (localSms) {
+  for (const permission of extractPermissions(readFileSync(join(ROOT, 'android/app/src/localSms/AndroidManifest.xml'), 'utf8'))) source.add(permission)
+}
 
 if (merged.size === 0) {
   console.error(`✗ aucune permission trouvée dans ${input} — mauvais fichier ou format inattendu`)

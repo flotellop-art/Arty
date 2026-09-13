@@ -161,6 +161,7 @@
   </ul>
 
   <h2>7. Local storage on your device</h2>
+  <p><strong>Local SMS (compatible Android APK only):</strong> after explicit consent for the session and Android permission, you can read and search received SMS on the phone from the last seven days (up to 50 results). This reader stays in a native Android screen: no SMS content is sent to chat, Arty servers, AI providers, synchronization or Arty backups. The module creates no persistent copy of messages or consent. Displayed results are removed on closing or going into the background. You can decline without losing other features, or withdraw consent in Connections → SMS. The reader does not modify, delete or send SMS; RCS and MMS are excluded.</p>
   <p>To operate, the app keeps the following data locally. When you request a feature, the necessary content, Google tokens, and/or BYOK keys may transit through Arty's Cloudflare endpoints and the relevant providers. Arty does not persist current conversation content, attachments, Google tokens, or BYOK keys server-side, except for a shared conversation or report you voluntarily submit.</p>
   <ul>
     <li><strong>localStorage:</strong> preferences (language, onboarding, plan), non-personal device identifier, hash of your email for reconnection, personal BYOK API keys without application-level encryption, encrypted conversations, generated reports, and Google OAuth tokens, trial state.</li>

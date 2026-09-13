@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="sms_consent_title">Read SMS on this phone?</string>
+    <string name="sms_consent_body">Arty can show and search received SMS from the last 7 days on this phone, only when you open the SMS screen. These are the phone\'s messages, not a separate mailbox for your Arty account. Messages stay in the Android screen: no transfer to Arty servers, AI providers, chat or backups. Arty cannot send, delete or mark them as read. Your choice lasts for this app session and can be withdrawn in Connections → SMS. You can continue using Arty if you decline. Android will also ask for permission if necessary.</string>
+    <string name="sms_allow">Allow for this session</string>
+    <string name="sms_decline">Continue without SMS</string>
+    <string name="sms_title">SMS · On this phone</string>
+    <string name="sms_local_notice">Received SMS · Last 7 days · Up to 50 results. No AI or synchronization. RCS and MMS are not included. Long messages are truncated at 4,000 characters.</string>
+    <string name="sms_close">Back to Arty</string>
+    <string name="sms_search_hint">Search text or a phone number</string>
+    <string name="sms_search">Search on this phone</string>
+    <string name="sms_revoke">Withdraw SMS access in Arty</string>
+    <string name="sms_loading">Reading locally…</string>
+    <string name="sms_empty">No matching SMS in the last 7 days.</string>
+    <string name="sms_count">%1$d SMS displayed locally.</string>
+    <string name="sms_limited">%1$d SMS displayed. Refine your search for more specific results.</string>
+    <string name="sms_denied">Android blocked SMS access. Permission or installer restrictions may prevent reading. No message was loaded.</string>
+    <string name="sms_unavailable">Local SMS reading is unavailable or took too long. Try again.</string>
+</resources>
