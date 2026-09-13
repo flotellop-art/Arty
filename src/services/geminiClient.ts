@@ -231,10 +231,13 @@ export function buildGeminiGenerationConfig(
   options: GeminiGenerationConfigOptions,
 ): Record<string, unknown> {
   if (isGemini3Model(model)) {
+    const requestedLevel = options.thinkingLevel ?? geminiThinkingLevelFromBudget(options.thinkingBudget)
+    // 3.8 Flash and 3.1 Pro require at least low; minimal returns HTTP 400.
+    const needsLow = /^(gemini-3\.8-flash(?:-001)?|gemini-3\.1-pro-preview)$/.test(model)
     return {
       maxOutputTokens: options.maxOutputTokens,
       thinkingConfig: {
-        thinkingLevel: options.thinkingLevel ?? geminiThinkingLevelFromBudget(options.thinkingBudget),
+        thinkingLevel: needsLow && requestedLevel === 'minimal' ? 'low' : requestedLevel,
       },
     }
   }

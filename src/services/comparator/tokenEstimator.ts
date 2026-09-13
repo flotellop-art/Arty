@@ -7,6 +7,7 @@
  */
 
 import { MODEL_COSTS, EUR_PER_USD } from '../costTracker'
+import { contextPricing } from '../../../shared/contextPricing'
 
 export function estimateTokens(text: string): number {
   if (!text) return 0
@@ -22,6 +23,7 @@ export function estimateTokens(text: string): number {
 export function estimateCostEur(costKey: string, inputTokens: number, outputTokens: number): number | null {
   const cost = MODEL_COSTS[costKey]
   if (!cost || !Number.isFinite(inputTokens) || !Number.isFinite(outputTokens) || inputTokens < 0 || outputTokens < 0) return null
-  const usd = (inputTokens * cost.input + outputTokens * cost.output) / 1_000_000
+  const rate = contextPricing(costKey, cost, inputTokens)
+  const usd = (inputTokens * rate.input + outputTokens * rate.output) / 1_000_000
   return usd * EUR_PER_USD
 }

@@ -9,6 +9,7 @@
 
 import * as scoped from './scopedStorage'
 import { gemini38Pricing } from '../../shared/gemini38Pricing'
+import { contextPricing } from '../../shared/contextPricing'
 
 // USD → EUR (taux fixe — pas besoin d'une précision boursière pour
 // estimer un coût mensuel d'API).
@@ -20,17 +21,21 @@ export const MODEL_COSTS: Record<string, { input: number; output: number }> = {
   get 'gemini-flash-3.8'() { const { input, output } = gemini38Pricing(); return { input, output } },
   'claude-haiku-4-5':  { input: 1.00,  output: 5.00 },
   'claude-sonnet-4-6': { input: 3.00,  output: 15.00 }, // legacy — conservé pour les coûts historiques
-  // Sonnet 5 : tarif durable $3/$15 (l'intro $2/$10 court jusqu'au 31/08/2026 —
-  // on inscrit le tarif pérenne pour éviter une PR de re-pricing en septembre).
-  // ⚠️ Tokenizer Sonnet 5 ~30% plus gourmand : coût par MESSAGE ~+30% à tarif égal.
-  'claude-sonnet-5':   { input: 3.00,  output: 15.00 },
+  // Prix standard vérifiés le 13/09/2026 : l'intro Sonnet est devenue permanente.
+  'claude-sonnet-5':   { input: 2.00,  output: 10.00 },
   'claude-opus-4-6':   { input: 5.00,  output: 25.00 }, // legacy — tarif unifié Opus actuel
   'claude-opus-4-7':   { input: 5.00,  output: 25.00 },
   'claude-opus-4-8':   { input: 5.00,  output: 25.00 },
+  'claude-opus-5':     { input: 5.00,  output: 25.00 },
+  'claude-fable-5-1':  { input: 10.00, output: 50.00 },
   // gpt-5.6-terra — défaut ChatGPT depuis C3 (18/07). Parité serveur exigée
   // (pricingParity.test.ts) : sans cette entrée, le fallback préfixe 'gpt-'
   // le rabattrait sur gpt-5 ($1.25/$10) = coût local sous-estimé 2×.
-  'gpt-5.6-terra':     { input: 2.50,  output: 15.00 },
+  'gpt-5.6-terra':     { input: 2.00,  output: 12.00 },
+  'gpt-5.6-luna':      { input: 0.20,  output: 1.20 },
+  'gpt-5.6-sol':       { input: 4.00,  output: 20.00 },
+  'gpt-6-astra':       { input: 10.00, output: 50.00 },
+  'gemini-3.1-pro-preview': { input: 2.00, output: 12.00 },
   'gpt-5.5':           { input: 5.00,  output: 30.00 }, // ancien défaut (→ 18/07, C3)
   // gpt-5.5-mini : JAMAIS routé aujourd'hui, mais l'entrée est OBLIGATOIRE —
   // sans elle, normaliseModel le rabattait sur gpt-5-mini via la règle
@@ -153,8 +158,9 @@ export function calculateCost(
   outputTokens: number
 ): number {
   const normalized = normaliseModel(model)
-  const rate = MODEL_COSTS[normalized]
-  if (!rate) return 0
+  const baseRate = MODEL_COSTS[normalized]
+  if (!baseRate) return 0
+  const rate = contextPricing(normalized, baseRate, inputTokens)
   const inputUsd = (inputTokens / 1_000_000) * rate.input
   const outputUsd = (outputTokens / 1_000_000) * rate.output
   return (inputUsd + outputUsd) * EUR_PER_USD

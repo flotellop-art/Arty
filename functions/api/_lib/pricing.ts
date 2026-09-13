@@ -5,6 +5,7 @@
 //
 // Mettre à jour quand les providers changent leurs tarifs.
 import { gemini38Pricing } from '../../../shared/gemini38Pricing'
+import { contextPricing } from '../../../shared/contextPricing'
 
 export interface ModelPricing {
   /** USD per 1M input tokens. */
@@ -36,16 +37,17 @@ export interface ModelPricing {
   groundingPerQuery?: number
 }
 
-// Toutes les valeurs sont vérifiées au 21 juillet 2026. À ajuster si les providers
-// publient de nouveaux tarifs.
+// Catalogue historique vérifié en juillet 2026 ; actualisation des modèles
+// texte le 13 septembre 2026. À ajuster si les providers changent leurs tarifs.
 const PRICING: Record<string, ModelPricing> = {
   get 'gemini-3.8-flash'() { return gemini38Pricing() },
   // Anthropic Claude
   'claude-sonnet-4-6': { input: 3, output: 15, cacheRead: 0.3, cacheCreation: 3.75 }, // legacy — conservé pour les coûts historiques
-  // Sonnet 5 : tarif durable $3/$15 (l'intro $2/$10 court jusqu'au 31/08/2026 —
-  // tarif pérenne inscrit d'emblée, conservateur pour le wallet). ⚠️ Tokenizer
-  // ~30% plus gourmand que 4.6 : coût par MESSAGE ~+30% à tarif égal.
-  'claude-sonnet-5': { input: 3, output: 15, cacheRead: 0.3, cacheCreation: 3.75 },
+  // Vérification 13/09/2026 : platform.claude.com/docs/en/about-claude/pricing.
+  // L'intro Sonnet $2/$10 est devenue le prix standard permanent.
+  'claude-sonnet-5': { input: 2, output: 10, cacheRead: 0.2, cacheCreation: 2.5 },
+  'claude-opus-5': { input: 5, output: 25, cacheRead: 0.5, cacheCreation: 6.25 },
+  'claude-fable-5-1': { input: 10, output: 50, cacheRead: 0.25, cacheCreation: 12.5 },
   'claude-opus-4-6': { input: 5, output: 25, cacheRead: 0.5, cacheCreation: 6.25 },
   'claude-opus-4-7': { input: 5, output: 25, cacheRead: 0.5, cacheCreation: 6.25 },
   'claude-opus-4-8': { input: 5, output: 25, cacheRead: 0.5, cacheCreation: 6.25 },
@@ -70,9 +72,13 @@ const PRICING: Record<string, ModelPricing> = {
 
   // OpenAI (chat)
   // gpt-5.6-terra — DÉFAUT openaiClient depuis C3 (18/07/2026). Palier milieu
-  // de la famille GPT-5.6 (GA 09/07/2026), tarif officiel $2.5/$15
-  // (developers.openai.com/api/docs/pricing) — moitié du gpt-5.5 remplacé.
-  'gpt-5.6-terra': { input: 2.5, output: 15 },
+  // de la famille GPT-5.6 (GA 09/07/2026).
+  // Prix Standard vérifiés le 13/09/2026, developers.openai.com/api/docs/pricing.
+  // Sol : promotion garantie au moins jusqu'au 21/11/2026, à revérifier ensuite.
+  'gpt-5.6-terra': { input: 2, output: 12, cacheRead: 0.2, cacheCreation: 2.5 },
+  'gpt-5.6-luna': { input: 0.2, output: 1.2, cacheRead: 0.02, cacheCreation: 0.25 },
+  'gpt-5.6-sol': { input: 4, output: 20, cacheRead: 0.4, cacheCreation: 5 },
+  'gpt-6-astra': { input: 10, output: 50, cacheRead: 1, cacheCreation: 12.5 },
   // gpt-5.5 — ANCIEN défaut (avril → 18 juillet 2026, remplacé par Terra en
   // C3). Conservé : coûts historiques + cible possible du retry si un compte
   // n'est pas éligible 5.6.
@@ -126,6 +132,7 @@ const PRICING: Record<string, ModelPricing> = {
   // Gemini 3 grounding : $14/1000 requêtes uniques après l'allocation gratuite
   // partagée. Ce tarif reste une borne haute analytique, jamais un débit wallet.
   'gemini-3.1-flash-lite': { input: 0.25, output: 1.5, groundingPerQuery: 14 / 1000 },
+  'gemini-3.1-pro-preview': { input: 2, output: 12, cacheRead: 0.2, groundingPerQuery: 14 / 1000 },
   // Gemini Flash. `gemini-3.5-flash` (GA, modèle réellement servi cf.
   // geminiClient.ts) : $1.50/$9, cache $0.15 — source ai.google.dev/gemini-api/
   // docs/pricing. ATTENTION : ~3× plus cher que le preview. Le preview
@@ -159,8 +166,8 @@ export function hasKnownPricing(model: string): boolean {
   return Object.prototype.hasOwnProperty.call(PRICING, model) || /^gemini-3\.8-flash-/.test(model)
 }
 
-export function getPricing(model: string): ModelPricing {
-  if (PRICING[model]) return PRICING[model]
+export function getPricing(model: string, totalInputTokens = 0): ModelPricing {
+  if (PRICING[model]) return contextPricing(model, PRICING[model], totalInputTokens)
   if (/^gemini-3\.8-flash-/.test(model)) return gemini38Pricing()
   return FALLBACK_PRICING
 }
@@ -192,14 +199,14 @@ export interface UsageTokens {
 
 /** Coût en micro-USD (10^-6 USD) — évite les floats dans D1. */
 export function computeCostMicroUsd(model: string, usage: UsageTokens): number {
-  const p = getPricing(model)
+  const p = getPricing(model, usage.inputTokens + usage.cacheReadTokens + usage.cacheCreationTokens)
   const MTOK = 1_000_000
   // Chaque composante convertie en USD, puis en micro-USD.
   const cost =
     (usage.inputTokens * p.input) / MTOK +
     (usage.outputTokens * p.output) / MTOK +
-    (usage.cacheReadTokens * (p.cacheRead ?? 0)) / MTOK +
-    (usage.cacheCreationTokens * (p.cacheCreation ?? 0)) / MTOK +
+    (usage.cacheReadTokens * (p.cacheRead ?? p.input)) / MTOK +
+    (usage.cacheCreationTokens * (p.cacheCreation ?? p.input)) / MTOK +
     usage.audioSeconds * (p.audioPerSec ?? 0) +
     (usage.images ?? 0) * (p.imagePerUnit ?? 0) +
     (usage.chars ?? 0) * (p.charPerUnit ?? 0)
