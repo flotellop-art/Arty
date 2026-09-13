@@ -35,6 +35,12 @@ describe('Shared catalogue invariants', () => {
     expect(estimateCostEur('gpt-5', NaN, 100)).toBeNull()
     expect(estimateCostEur('gpt-5', 0, 0)).toBe(0)
   })
+  it.each(['gpt-5-mini', 'gpt-5'])('prices the documented %s snapshot observed on the real phone', model => {
+    const entry = findTextModel('openai', `${model}-2025-08-07`)
+    expect(entry?.modelId).toBe(model)
+    expect(estimateCostEur(entry!.costKey, 100, 100)).toBe(estimateCostEur(model, 100, 100))
+    expect(findTextModel('openai', `${model}-2099-01-01`)).toBeUndefined()
+  })
   it.each([['gemini-2.5-flash', 'Gemini 2.5 Flash'], ['claude-sonnet-4-6', 'Claude Sonnet 4.6'], ['mistral-medium-2505', 'Mistral Medium'], ['mistral-medium-latest', 'Mistral Medium'], ['gpt-5.6-terra', 'GPT-5.6 Terra'], ['unknown-id', 'unknown-id']])('keeps old labels for %s', (id, label) => {
     expect(formatModelName(id!)).toBe(label)
     expect(getLastModelAttribution([{ role: 'assistant', model: id }, { role: 'assistant' }])).toBeNull()

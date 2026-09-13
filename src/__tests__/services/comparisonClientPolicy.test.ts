@@ -27,8 +27,8 @@ function sse(provider: Provider, model?: unknown) {
       : [{ model, choices: [{ delta: { content: 'Hello' }, finish_reason: 'stop' }] }]
   return body.map(obj => `${provider === 'claude' ? `event: ${(obj as { type: string }).type}\n` : ''}data: ${JSON.stringify(obj)}\n\n`).join('')
 }
-function start(provider: Provider, options: ModelInvocationOptions, done: () => void, error: (e: Error) => void) {
-  const full = { ...options, model: models[provider], systemPrompt: 'NEUTRAL', tools: [], comparisonTextOnly: true, background: true, expectedUserId: 'a', expectedSessionEpoch: 1 }
+function start(provider: Provider, options: ModelInvocationOptions, done: () => void, error: (e: Error) => void, model = models[provider]) {
+  const full = { ...options, model, systemPrompt: 'NEUTRAL', tools: [], comparisonTextOnly: true, background: true, expectedUserId: 'a', expectedSessionEpoch: 1 }
   const messages = [{ role: 'user', content: 'https://www.youtube.com/watch?v=12345678901 Prix près de chez moi' }]
   if (provider === 'claude') return streamMessage(messages, () => {}, done, error, full)
   if (provider === 'mistral') return streamMistralMessage(messages, () => {}, done, error, full)
@@ -38,6 +38,23 @@ function start(provider: Provider, options: ModelInvocationOptions, done: () => 
 beforeEach(() => { vi.clearAllMocks(); vi.mocked(getValidAccessToken).mockReset().mockResolvedValue(null); vi.mocked(getActiveSessionEpoch).mockReturnValue(1); vi.spyOn(console, 'log').mockImplementation(() => {}) })
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals() })
 describe('Real clients, simulated HTTP: text-only and attribution', () => {
+  it.each([
+    ['claude', 'claude-fable-5-1'], ['claude', 'claude-opus-5'],
+    ['openai', 'gpt-6-astra'], ['openai', 'gpt-5.6-luna'], ['openai', 'gpt-5.6-sol'],
+    ['gemini', 'gemini-3.8-flash'], ['gemini', 'gemini-3.1-pro-preview'],
+  ] as const)('compares %s %s with a compatible text payload', async (provider, model) => {
+    const fetch = vi.fn(async () => new Response(sse(provider, model)))
+    vi.stubGlobal('fetch', fetch)
+    const onModelUsed = vi.fn()
+    await new Promise<void>((resolve, reject) => start(provider, { onModelUsed }, resolve, reject, model))
+    const body = JSON.parse((fetch.mock.calls[0] as unknown as [string, RequestInit])[1].body as string)
+    expect(body.model).toBe(model)
+    expect(body.tools?.length ?? 0).toBe(0)
+    expect(body.thinking).toBeUndefined()
+    expect(body.temperature).toBeUndefined()
+    expect(body.reasoning_effort).toBeUndefined()
+    expect(onModelUsed.mock.calls.at(-1)?.[0]).toMatchObject({ model, source: 'provider' })
+  })
   it('Claude rechecks document consent after backoff and blocks a stale retry before a second HTTP call', async () => {
     const fetch = vi.fn(async () => new Response('{}', { status: 503 })); vi.stubGlobal('fetch', fetch)
     const gate = vi.fn(async () => { if (fetch.mock.calls.length) throw new Error('Document scope revoked') })

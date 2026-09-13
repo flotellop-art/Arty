@@ -4,6 +4,11 @@ import { classifyPremiumModel } from '../../../functions/api/_lib/checkPremiumCa
 describe('premium model classification stays aligned with exposed models', () => {
   it.each([
     ['claude-sonnet-5', 'claude-sonnet'],
+    ['claude-opus-5', 'claude-sonnet'],
+    ['claude-fable-5-1', 'claude-sonnet'],
+    ['gpt-6-astra', 'gpt-5'],
+    ['gpt-5.6-luna', 'gpt-5'],
+    ['gpt-5.6-sol', 'gpt-5'],
     ['claude-opus-4-8', 'claude-sonnet'],
     ['gpt-5', 'gpt-5'],
     ['gpt-5.5', 'gpt-5'],
@@ -32,6 +37,7 @@ describe('premium model classification stays aligned with exposed models', () =>
   })
 
   it('fails closed for an unknown model variant', () => {
+    expect(classifyPremiumModel('gpt-6-future')).toMatchObject({ bucket: 'unknown-model', cap: 80 })
     expect(classifyPremiumModel('gemini-99-ultra')).toMatchObject({
       bucket: 'unknown-model',
       cap: 80,

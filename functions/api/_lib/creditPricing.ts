@@ -124,10 +124,11 @@ export function estimateReserveMicro(
       ? Math.ceil(maxTokens as number)
       : DEFAULT_RESERVE_OUTPUT_TOKENS
   const inTokens = Number.isFinite(estInputTokens) && estInputTokens > 0 ? estInputTokens : 0
-  const p = getPricing(model)
+  const p = getPricing(model, inTokens)
   // µ$ = tokens × ($/Mtok) : les deux facteurs 1e6 (par-million ÷, micro ×) s'annulent.
-  const outputCostMicro = Math.round(tokens * p.output)
-  const inputCostMicro = Math.round(inTokens * p.input)
+  const outputCostMicro = Math.ceil(tokens * p.output)
+  // A cache miss may write every input token at a higher rate than plain input.
+  const inputCostMicro = Math.ceil(inTokens * Math.max(p.input, p.cacheCreation ?? p.input))
   return applyMarkup(outputCostMicro + inputCostMicro, model, 'text')
 }
 

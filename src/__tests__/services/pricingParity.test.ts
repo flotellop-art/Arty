@@ -7,11 +7,17 @@ import { MODEL_COSTS, normaliseModel } from '../../services/costTracker'
 describe('parité tarifs client ↔ serveur — modèles de chat exposés', () => {
   const cases: Array<[string, number, number]> = [
     ['claude-haiku-4-5-20251001', 1, 5],
-    ['claude-sonnet-5', 3, 15],
+    ['claude-sonnet-5', 2, 10],
+    ['claude-opus-5', 5, 25],
+    ['claude-fable-5-1', 10, 50],
     ['claude-opus-4-6', 5, 25],
     ['claude-opus-4-7', 5, 25],
     ['claude-opus-4-8', 5, 25],
-    ['gpt-5.6-terra', 2.5, 15], // défaut ChatGPT depuis C3 (18/07)
+    ['gpt-5.6-terra', 2, 12],
+    ['gpt-5.6-luna', 0.2, 1.2],
+    ['gpt-5.6-sol', 4, 20],
+    ['gpt-6-astra', 10, 50],
+    ['gemini-3.1-pro-preview', 2, 12],
     ['gpt-5.5', 5, 30], // ancien défaut — parité conservée (coûts historiques)
     // Entrée morte mais la parité est le filet anti-sous-estimation 2× si un
     // jour câblée (fix normalisation C6 — includes('mini') la rabattait sur
