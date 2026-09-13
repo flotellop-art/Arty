@@ -22,6 +22,16 @@ export function isBillingMessage(message: unknown): boolean {
   return typeof message === 'string' && message.trim() !== '' && BILLING_LEAK_PATTERN.test(message)
 }
 
+// Le filtre de confidentialité ci-dessus masque aussi les détails de quota.
+// Ils ne prouvent pas un problème de facturation : une limite de débit doit
+// conserver le statut 429 et permettre le backoff normal du client.
+const BILLING_CLASSIFICATION_PATTERN =
+  /credit\s*balance|insufficient\s*credit|billing|payment|purchase|invoice|spend\s*limit|monthly\s+quota/i
+
+function describesBilling(message: unknown): boolean {
+  return typeof message === 'string' && BILLING_CLASSIFICATION_PATTERN.test(message)
+}
+
 // Codes STRUCTURÉS signalant un compte à sec. Plus fiables qu'une regex de
 // message quand le fournisseur en expose (OpenAI, Mistral compat OpenAI).
 //
@@ -51,18 +61,23 @@ export function classifyUpstreamBilling(detail: string): 'upstream_billing' | nu
   } catch {
     // Corps non JSON (page d'erreur HTML d'un edge, texte brut) : on se rabat
     // sur le motif textuel, seul signal disponible.
-    return isBillingMessage(detail) ? 'upstream_billing' : null
+    return describesBilling(detail) ? 'upstream_billing' : null
   }
-  const error = (parsed as { error?: unknown })?.error
+  const nestedError = (parsed as { error?: unknown })?.error
+  // Mistral place message/type/code à la racine, OpenAI sous `error`.
+  const error = nestedError && typeof nestedError === 'object' ? nestedError : parsed
   if (!error || typeof error !== 'object') {
-    return isBillingMessage(detail) ? 'upstream_billing' : null
+    return describesBilling(detail) ? 'upstream_billing' : null
   }
   const { code, type, message } = error as { code?: unknown; type?: unknown; message?: unknown }
   if (typeof code === 'string' && BILLING_CODES.has(code)) return 'upstream_billing'
   if (typeof type === 'string' && BILLING_CODES.has(type)) return 'upstream_billing'
+  // Un code explicite de débit prime sur une mention générique du plan ou
+  // du tableau de facturation dans le texte d'aide du fournisseur.
+  if (code === 'rate_limit_exceeded' || type === 'rate_limit_exceeded' || type === 'rate_limited') return null
   // Repli textuel : couvre les formes historiques et les fournisseurs qui ne
   // renvoient qu'une phrase (le cas Anthropic d'origine).
-  return isBillingMessage(message) ? 'upstream_billing' : null
+  return describesBilling(message) ? 'upstream_billing' : null
 }
 
 /**

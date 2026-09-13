@@ -45,8 +45,8 @@ export const TEXT_MODELS: readonly TextModel[] = [
   { provider: 'openai', modelId: 'gpt-5.6-luna', costKey: 'gpt-5.6-luna', label: 'GPT-5.6 Luna', family: 'gpt-full', trial: false },
   { provider: 'openai', modelId: 'gpt-5.6-sol', costKey: 'gpt-5.6-sol', label: 'GPT-5.6 Sol', family: 'gpt-full', trial: false },
   { provider: 'openai', modelId: 'gpt-6-astra', costKey: 'gpt-6-astra', label: 'GPT-6 Astra', family: 'gpt-full', trial: false },
-  { provider: 'openai', modelId: 'gpt-5-mini', costKey: 'gpt-5-mini', label: 'GPT-5 Mini', family: 'gpt-mini', trial: true },
-  { provider: 'openai', modelId: TEXT_DEFAULTS.openaiFallback, costKey: 'gpt-5', label: 'GPT-5', family: 'gpt-full', trial: false },
+  { provider: 'openai', modelId: 'gpt-5-mini', responseIds: ['gpt-5-mini-2025-08-07'], costKey: 'gpt-5-mini', label: 'GPT-5 Mini', family: 'gpt-mini', trial: true },
+  { provider: 'openai', modelId: TEXT_DEFAULTS.openaiFallback, responseIds: ['gpt-5-2025-08-07'], costKey: 'gpt-5', label: 'GPT-5', family: 'gpt-full', trial: false },
 ]
 export function findTextModel(provider: TransportProvider, model: string): TextModel | undefined {
   return TEXT_MODELS.find(m => m.provider === provider && (m.modelId === model || m.responseIds?.includes(model)))
