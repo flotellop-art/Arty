@@ -1,5 +1,8 @@
 apply plugin: 'com.android.application'
 
+// Explicit direct/Firebase build only. Play/default builds never request SMS.
+def localSmsEnabled = providers.gradleProperty('artyLocalSms').orElse('false').get() == 'true'
+
 android {
     namespace = "com.arty.app"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -7,16 +10,23 @@ android {
         buildConfig = true
     }
     defaultConfig {
+        buildConfigField "boolean", "LOCAL_SMS_ENABLED", localSmsEnabled.toString()
         applicationId "com.arty.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 105
-        versionName "1.0.104"
+        versionCode 106
+        versionName "1.0.105"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
              // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
+        }
+    }
+    sourceSets {
+        if (localSmsEnabled) {
+            debug.manifest.srcFile 'src/localSms/AndroidManifest.xml'
+            release.manifest.srcFile 'src/localSms/AndroidManifest.xml'
         }
     }
     // Signing release lu depuis env vars (pour automatisation Firebase / CI).

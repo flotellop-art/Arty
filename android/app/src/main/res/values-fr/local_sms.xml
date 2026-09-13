@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="sms_consent_title">Lire les SMS de ce téléphone ?</string>
+    <string name="sms_consent_body">Arty peut afficher et rechercher les SMS reçus durant les 7 derniers jours sur ce téléphone, uniquement lorsque vous ouvrez l\'écran SMS. Ce sont les messages du téléphone, pas une boîte séparée pour votre compte Arty. Ils restent dans l\'écran Android : aucun transfert aux serveurs Arty, aux fournisseurs d\'IA, au chat ou aux sauvegardes. Arty ne peut ni les envoyer, ni les supprimer, ni les marquer comme lus. Votre choix vaut pour cette session de l\'application et peut être retiré dans Connexions → SMS. Vous pouvez utiliser Arty en refusant. Android demandera aussi votre autorisation si nécessaire.</string>
+    <string name="sms_allow">Autoriser pour cette session</string>
+    <string name="sms_decline">Continuer sans SMS</string>
+    <string name="sms_title">SMS · Sur ce téléphone</string>
+    <string name="sms_local_notice">SMS reçus · 7 derniers jours · 50 résultats maximum. Aucune IA ni synchronisation. RCS et MMS exclus. Les messages longs sont limités à 4 000 caractères.</string>
+    <string name="sms_close">Retour à Arty</string>
+    <string name="sms_search_hint">Rechercher un texte ou un numéro</string>
+    <string name="sms_search">Rechercher sur ce téléphone</string>
+    <string name="sms_revoke">Retirer l\'accès SMS dans Arty</string>
+    <string name="sms_loading">Lecture locale…</string>
+    <string name="sms_empty">Aucun SMS correspondant durant les 7 derniers jours.</string>
+    <string name="sms_count">%1$d SMS affichés localement.</string>
+    <string name="sms_limited">%1$d SMS affichés. Précisez votre recherche pour cibler les résultats.</string>
+    <string name="sms_denied">Android bloque l\'accès aux SMS. L\'autorisation ou les restrictions de l\'installateur peuvent empêcher la lecture. Aucun message chargé.</string>
+    <string name="sms_unavailable">La lecture locale est indisponible ou a pris trop de temps. Réessayez.</string>
+</resources>

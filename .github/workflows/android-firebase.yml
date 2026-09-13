@@ -113,7 +113,12 @@ jobs:
           ARTY_KEYSTORE_PASSWORD: ${{ secrets.ARTY_KEYSTORE_PASSWORD }}
           ARTY_KEY_ALIAS: ${{ secrets.ARTY_KEY_ALIAS }}
           ARTY_KEY_PASSWORD: ${{ secrets.ARTY_KEY_PASSWORD }}
-        run: ./gradlew :app:lintRelease :app:testReleaseUnitTest :app:assembleRelease --no-daemon
+        run: |
+          ./gradlew :app:lintRelease :app:testReleaseUnitTest :app:assembleRelease -PartyLocalSms=true --no-daemon
+          AAPT=$(find "$ANDROID_HOME/build-tools" -name aapt | sort | tail -1)
+          test -n "$AAPT"
+          "$AAPT" dump permissions app/build/outputs/apk/release/app-release.apk > /tmp/local-sms-permissions.txt
+          node ../scripts/check-android-manifest.mjs /tmp/local-sms-permissions.txt --local-sms
 
       - name: Verify exact APK candidate identity
         run: node scripts/verify-release-apk.mjs

@@ -107,3 +107,13 @@ jobs:
           test -n "$AAPT" || { echo "aapt introuvable dans ANDROID_HOME/build-tools"; exit 1; }
           "$AAPT" dump permissions "$APK" > /tmp/apk-permissions.txt
           node scripts/check-android-manifest.mjs /tmp/apk-permissions.txt
+
+      - name: Build and verify opt-in local SMS APK
+        run: |
+          cd android
+          ./gradlew :app:lintDebug :app:testDebugUnitTest :app:assembleDebug -PartyLocalSms=true --no-daemon
+          cd ..
+          AAPT=$(find "$ANDROID_HOME/build-tools" -name aapt | sort | tail -1)
+          test -n "$AAPT"
+          "$AAPT" dump permissions android/app/build/outputs/apk/debug/app-debug.apk > /tmp/local-sms-permissions.txt
+          node scripts/check-android-manifest.mjs /tmp/local-sms-permissions.txt --local-sms

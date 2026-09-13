@@ -1,4 +1,15 @@
 {
+  "localSms": {
+    "title": "SMS sur ce téléphone",
+    "description": "Consulte et recherche les SMS reçus durant les 7 derniers jours, dans un écran Android local. Aucun message envoyé à Arty, à une IA ou à la synchronisation.",
+    "enabled": "Lecture autorisée pour cette session.",
+    "disabled": "Lecture désactivée ou autorisation Android manquante.",
+    "open": "Consulter mes SMS",
+    "allow": "Autoriser la lecture locale",
+    "revoke": "Retirer mon accord",
+    "sessionNotice": "L’accord est redemandé après une fermeture complète ou un changement de compte. Le retrait désactive la lecture dans Arty ; l’autorisation système reste gérable dans les paramètres Android.",
+    "error": "Accès SMS indisponible. Android ou l’installateur peut bloquer cette autorisation. Tu peux continuer à utiliser Arty."
+  },
   "video": {
     "reading": "Lecture de la vidéo TikTok…",
     "saved": "Observations de la vidéo",

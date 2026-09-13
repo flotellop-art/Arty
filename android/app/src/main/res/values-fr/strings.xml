@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="generation_channel">Réponses en cours</string>
+    <string name="generation_title">Arty prépare votre réponse</string>
+    <string name="generation_body">Vous pouvez utiliser une autre application.</string>
+</resources>
