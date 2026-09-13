@@ -939,6 +939,7 @@
     "apiConnection": "Erreur de connexion ({{status}}). Vérifie ta connexion internet.",
     "apiBadRequest": "Requête refusée par le service IA (400). Ce n'est pas ta connexion : réessaie, et signale-le si ça persiste.",
     "apiUpstreamBilling": "Le service IA est momentanément indisponible : les crédits du serveur sont épuisés. Ce n'est pas ta connexion ni ta requête — signale-le à l'administrateur d'Arty.",
+    "apiOutcomeUnknown": "La réponse du service IA n'a pas pu être confirmée. L'appel n'est pas relancé automatiquement. Si tu utilises des crédits, vérifie ton solde avant de réessayer.",
     "geminiError": "Erreur Gemini ({{status}}). Vérifie ta clé ou ta connexion.",
     "geminiModelNotFound": "Modèle Gemini indisponible ({{status}}). L'app doit être mise à jour — réessaie avec Claude en attendant.",
     "geminiEmptyResponse": "Gemini n'a renvoyé aucune réponse ({{reason}}). Reformule ta demande ou choisis un autre modèle.",
