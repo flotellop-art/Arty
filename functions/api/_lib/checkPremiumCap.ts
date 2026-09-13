@@ -88,10 +88,10 @@ export function classifyPremiumModel(model: string): PremiumCapEntry | null {
     if (m === 'whisper-1' || m === 'voxtral-mini-latest') return null
   }
 
-  if (m.startsWith('claude-sonnet') || m.startsWith('claude-opus')) {
+  if (m.startsWith('claude-sonnet') || m.startsWith('claude-opus') || m.startsWith('claude-fable')) {
     return { bucket: 'claude-sonnet', cap: PREMIUM_BUCKET_CAPS['claude-sonnet']! }
   }
-  if (m === 'gpt-5' || m.startsWith('gpt-5.') || m.startsWith('gpt-5-')) {
+  if (m === 'gpt-5' || m.startsWith('gpt-5.') || m.startsWith('gpt-5-') || m === 'gpt-6-astra') {
     // gpt-5-mini déjà filtré plus haut. gpt-5, gpt-5.5, gpt-5-turbo, etc. → 100.
     return { bucket: 'gpt-5', cap: PREMIUM_BUCKET_CAPS['gpt-5']! }
   }

@@ -186,24 +186,37 @@ export function createAnthropicParser(format: UsageResponseFormat = 'sse'): Usag
 }
 
 /** OpenAI-compatible usage used by OpenAI Chat Completions and Mistral. */
-export function createMistralParser(format: UsageResponseFormat = 'sse'): UsageParser {
+export function createMistralParser(format: UsageResponseFormat = 'sse', splitCache = false): UsageParser {
   const usage = emptyMeasuredUsage()
 
   return createWireParser(format, (payload) => {
     const u = (payload as {
-      usage?: { prompt_tokens?: number; completion_tokens?: number }
+      usage?: { prompt_tokens?: number; completion_tokens?: number; prompt_tokens_details?: { cached_tokens?: number; cache_write_tokens?: number } }
     } | null)?.usage
     if (!u) return
 
     const hasInput = typeof u.prompt_tokens === 'number' && u.prompt_tokens >= 0
     const hasOutput = typeof u.completion_tokens === 'number' && u.completion_tokens >= 0
     if (hasInput) usage.inputTokens = u.prompt_tokens as number
+    // OpenAI prompt_tokens includes cache reads. Invalid details retain the
+    // full input charge rather than dropping tokens or counting them twice.
+    if (splitCache && hasInput) {
+      const cached = u.prompt_tokens_details?.cached_tokens
+      const written = u.prompt_tokens_details?.cache_write_tokens
+      const valid = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n) && n >= 0
+      const reads = cached === undefined ? 0 : cached
+      const writes = written === undefined ? 0 : written
+      const validSplit = valid(reads) && valid(writes) && reads + writes <= usage.inputTokens
+      usage.cacheReadTokens = validSplit ? reads : 0
+      usage.cacheCreationTokens = validSplit ? writes : 0
+      usage.inputTokens -= usage.cacheReadTokens + usage.cacheCreationTokens
+    }
     if (hasOutput) usage.outputTokens = u.completion_tokens as number
     usage.measured = hasInput && hasOutput
   }, usage)
 }
 
-export const createOpenAIParser = createMistralParser
+export const createOpenAIParser = (format: UsageResponseFormat = 'sse'): UsageParser => createMistralParser(format, true)
 
 export type GeminiGroundingTool = 'search' | 'maps'
 
