@@ -1,0 +1,1325 @@
+{
+  "generatedAt": "2026-09-13T18:37:44.551Z",
+  "protocolFrozenAt": "2026-09-13T17:36:00Z",
+  "app": {
+    "version": "1.0.108",
+    "versionCode": 109,
+    "functionalCommit": "31d1a4101bb96951ffa16f03c3f780a29c0017ce",
+    "device": "OnePlus 12R CPH2609",
+    "reflection": "Auto",
+    "style": "Normal"
+  },
+  "protocol": "2026-09-13-web10-protocol.md",
+  "conditions": {
+    "initialDeadlineSeconds": 120,
+    "verificationExtraSeconds": 30,
+    "freshConversation": true,
+    "providerRetries": 0,
+    "latency": "send tap to first sampled disappearance of Stop after busy; sampling approx 1.7s",
+    "facts": "one point per explicit correct fact, zero for wrong or omitted; normalize each question",
+    "sources": "score relevance and authenticity separately from whether Arty makes the URL usable",
+    "scope": "real phone end-to-end; not isolated provider API; no app fixes during series"
+  },
+  "prompts": {
+    "q01": "Recherche sur le web les informations officielles NASA sur Europa Clipper : date reelle du lancement, mois et annee prevus pour son insertion orbitale a destination, et planete que la sonde doit alors orbiter. Trois lignes courtes puis 1 ou 2 URL officielles exactes. Moins de 100 mots, sans tableau.",
+    "q02": "Recherche sur le web et verifie sur le site officiel du musee du Louvre a Paris : jour habituel de fermeture, entree gratuite ou non pour les moins de 18 ans quelle que soit leur nationalite, et heure de fermeture le mercredi et le vendredi. Trois lignes courtes puis 1 ou 2 URL officielles exactes. Moins de 100 mots, sans tableau.",
+    "q03": "Recherche sur le web les regles officielles Eurostar pour un adulte de Londres a Paris en classe Standard, sans option supplementaire : nombre de grands bagages inclus, longueur maximale de chacun, et nombre de petits bagages a main supplementaires inclus. Trois lignes courtes puis 1 ou 2 URL officielles exactes. Moins de 100 mots, sans tableau.",
+    "q04": "Recherche sur le web les specifications officielles du Raspberry Pi 5 : reference du processeur principal, frequence nominale, et nom de son alimentation officielle recommandee. Trois lignes courtes puis 1 ou 2 URL officielles exactes. Moins de 100 mots, sans tableau.",
+    "q05": "Recherche sur le web les resultats officiels des Jeux olympiques de Paris 2024 : qui a remporte la finale du 100 metres feminin, quel pays elle representait, et son temps dans cette finale. Trois lignes courtes puis 1 ou 2 URL officielles exactes. Moins de 100 mots, sans tableau.",
+    "q06": "Recherche sur le web : qui a recu le prix Nobel de physique 2024, et pour quels travaux ? Donne les deux laureats et le motif en trois lignes courtes puis 1 ou 2 URL officielles exactes. Moins de 100 mots, sans tableau.",
+    "q07": "Recherche sur le web : dans quel pays se trouvent les iles Galapagos et en quelle annee ont-elles ete inscrites initialement au patrimoine mondial UNESCO ? Deux lignes courtes puis 1 ou 2 URL officielles exactes. Moins de 100 mots, sans tableau.",
+    "q08": "Pour les nouveaux appareils rechargeables par cable mis sur le marche dans Union europeenne, recherche sur le web quel port commun est exige, depuis quelle date pour les smartphones et depuis quelle date pour les ordinateurs portables. Trois lignes courtes puis 1 ou 2 URL officielles exactes. Moins de 100 mots, sans tableau.",
+    "q09": "Recherche sur le web : qui a remporte le Concours Eurovision de la chanson 2024, pour quel pays et avec quelle chanson ? Trois lignes courtes puis 1 ou 2 URL officielles exactes. Moins de 100 mots, sans tableau.",
+    "q10": "Recherche sur le web : a quelle date Wikipedia a-t-elle ete lancee, quelle organisation heberge Wikipedia et cette organisation est-elle a but lucratif ? Trois lignes courtes puis 1 ou 2 URL officielles exactes. Moins de 100 mots, sans tableau."
+  },
+  "references": {
+    "q01": {
+      "domain": "espace",
+      "facts": [
+        "14 octobre 2024",
+        "avril 2030 prevu",
+        "Jupiter"
+      ],
+      "urls": [
+        "https://science.nasa.gov/mission/europa-clipper/mission-timeline/"
+      ]
+    },
+    "q02": {
+      "domain": "culture",
+      "facts": [
+        "mardi",
+        "gratuit moins de 18 ans toutes nationalites",
+        "21h mercredi et vendredi"
+      ],
+      "urls": [
+        "https://www.louvre.fr/visiter/horaires-tarifs"
+      ]
+    },
+    "q03": {
+      "domain": "voyage",
+      "facts": [
+        "2 grands bagages",
+        "85 cm chacun",
+        "1 petit bagage en plus"
+      ],
+      "urls": [
+        "https://www.eurostar.com/rw-en/travel-info/travel-planning/luggage"
+      ]
+    },
+    "q04": {
+      "domain": "informatique",
+      "facts": [
+        "Broadcom BCM2712",
+        "2.4 GHz",
+        "Raspberry Pi 27W USB-C Power Supply"
+      ],
+      "urls": [
+        "https://www.raspberrypi.com/products/raspberry-pi-5/"
+      ]
+    },
+    "q05": {
+      "domain": "sport",
+      "facts": [
+        "Julien Alfred",
+        "Sainte-Lucie",
+        "10.72 secondes"
+      ],
+      "urls": [
+        "https://iaafmedia.s3.amazonaws.com/misc/olympics/OG2024_ATHLETICS.pdf#page=358"
+      ]
+    },
+    "q06": {
+      "domain": "science",
+      "facts": [
+        "John J. Hopfield",
+        "Geoffrey Hinton",
+        "decouvertes et inventions permettant apprentissage automatique avec reseaux neuronaux artificiels"
+      ],
+      "urls": [
+        "https://www.nobelprize.org/prizes/physics/2024/press-release/"
+      ]
+    },
+    "q07": {
+      "domain": "patrimoine",
+      "facts": [
+        "Equateur",
+        "1978"
+      ],
+      "urls": [
+        "https://whc.unesco.org/en/list/1/"
+      ]
+    },
+    "q08": {
+      "domain": "consommation",
+      "facts": [
+        "USB-C",
+        "28 decembre 2024 smartphones",
+        "28 avril 2026 ordinateurs portables"
+      ],
+      "urls": [
+        "https://commission.europa.eu/news-and-media/news/eu-common-charger-rules-power-all-your-devices-single-charger-2024-12-28_en"
+      ]
+    },
+    "q09": {
+      "domain": "musique",
+      "facts": [
+        "Nemo",
+        "Suisse",
+        "The Code"
+      ],
+      "urls": [
+        "https://www.eurovision.com/stories/switzerlands-nemo-wins-the-eurovision-song-contest-2024/"
+      ]
+    },
+    "q10": {
+      "domain": "internet",
+      "facts": [
+        "15 janvier 2001",
+        "Wikimedia Foundation",
+        "organisation a but non lucratif"
+      ],
+      "urls": [
+        "https://wikimediafoundation.org/wikipedia25/",
+        "https://wikimediafoundation.org/who-we-are/"
+      ]
+    }
+  },
+  "modelOrder": [
+    [
+      "gemini",
+      "luna",
+      "terra",
+      "sonnet"
+    ],
+    [
+      "luna",
+      "terra",
+      "sonnet",
+      "gemini"
+    ],
+    [
+      "terra",
+      "sonnet",
+      "gemini",
+      "luna"
+    ],
+    [
+      "sonnet",
+      "gemini",
+      "luna",
+      "terra"
+    ],
+    [
+      "gemini",
+      "luna",
+      "terra",
+      "sonnet"
+    ],
+    [
+      "luna",
+      "terra",
+      "sonnet",
+      "gemini"
+    ],
+    [
+      "terra",
+      "sonnet",
+      "gemini",
+      "luna"
+    ],
+    [
+      "sonnet",
+      "gemini",
+      "luna",
+      "terra"
+    ],
+    [
+      "gemini",
+      "luna",
+      "terra",
+      "sonnet"
+    ],
+    [
+      "luna",
+      "terra",
+      "sonnet",
+      "gemini"
+    ]
+  ],
+  "summaries": [
+    {
+      "model": "gemini-3.8-flash",
+      "label": "Gemini 3.8 Flash",
+      "delivered": 10,
+      "fullyCorrect": 10,
+      "factScore": 29,
+      "factMaximum": 29,
+      "normalizedScoreOutOf10": 10,
+      "medianSeconds": 8.122,
+      "meanSeconds": 9.777999999999999,
+      "maximumSeconds": 19.419,
+      "timedQuestions": [
+        "q02",
+        "q03",
+        "q04",
+        "q05",
+        "q06",
+        "q07",
+        "q08",
+        "q09",
+        "q10"
+      ],
+      "explicitInstitutionalSupportCount": 3,
+      "fullInstitutionalSupportCount": 3
+    },
+    {
+      "model": "gpt-5.6-luna",
+      "label": "GPT-5.6 Luna",
+      "delivered": 10,
+      "fullyCorrect": 10,
+      "factScore": 29,
+      "factMaximum": 29,
+      "normalizedScoreOutOf10": 10,
+      "medianSeconds": 8.294,
+      "meanSeconds": 9.507000000000001,
+      "maximumSeconds": 14.76,
+      "timedQuestions": [
+        "q02",
+        "q03",
+        "q04",
+        "q05",
+        "q06",
+        "q07",
+        "q08",
+        "q09",
+        "q10"
+      ],
+      "explicitInstitutionalSupportCount": 7,
+      "fullInstitutionalSupportCount": 7
+    },
+    {
+      "model": "gpt-5.6-terra",
+      "label": "GPT-5.6 Terra",
+      "delivered": 10,
+      "fullyCorrect": 10,
+      "factScore": 29,
+      "factMaximum": 29,
+      "normalizedScoreOutOf10": 10,
+      "medianSeconds": 8.186,
+      "meanSeconds": 8.413888888888888,
+      "maximumSeconds": 12.898,
+      "timedQuestions": [
+        "q02",
+        "q03",
+        "q04",
+        "q05",
+        "q06",
+        "q07",
+        "q08",
+        "q09",
+        "q10"
+      ],
+      "explicitInstitutionalSupportCount": 7,
+      "fullInstitutionalSupportCount": 8
+    },
+    {
+      "model": "claude-sonnet-5",
+      "label": "Claude Sonnet 5",
+      "delivered": 10,
+      "fullyCorrect": 9,
+      "factScore": 27,
+      "factMaximum": 29,
+      "normalizedScoreOutOf10": 9.333333333333332,
+      "medianSeconds": 8.13,
+      "meanSeconds": 8.368333333333332,
+      "maximumSeconds": 11.405,
+      "timedQuestions": [
+        "q02",
+        "q03",
+        "q04",
+        "q05",
+        "q06",
+        "q07",
+        "q08",
+        "q09",
+        "q10"
+      ],
+      "explicitInstitutionalSupportCount": 5,
+      "fullInstitutionalSupportCount": 5
+    }
+  ],
+  "runs": [
+    {
+      "id": "q01-gemini",
+      "question": "q01",
+      "model": "gemini-3.8-flash",
+      "modelLabel": "Gemini 3.8 Flash",
+      "domain": "espace",
+      "factScore": 3,
+      "factMaximum": 3,
+      "normalizedScore": 1,
+      "fullyCorrect": true,
+      "deliveryStatus": "completed",
+      "latencySeconds": null,
+      "latencyIntervalSeconds": {
+        "greaterThan": 9.662,
+        "atMost": 25.017
+      },
+      "sendAt": "2026-09-13T17:36:48.166Z",
+      "busyObserved": null,
+      "sourceCategory": "direct",
+      "sourceLabel": "Directe",
+      "addresses": [
+        "https://europa.nasa.gov/spacecraft/meet-europa-clipper/",
+        "https://science.nasa.gov/mission/europa-clipper/"
+      ],
+      "notes": "First URL redirects to second. Time imprecise: >9.662 and <=25.017s; exclude Q01 for all models from paired speed comparison.",
+      "primaryEvidence": "q01-gemini-bottom-0.png",
+      "additionalEvidence": []
+    },
+    {
+      "id": "q01-luna",
+      "question": "q01",
+      "model": "gpt-5.6-luna",
+      "modelLabel": "GPT-5.6 Luna",
+      "domain": "espace",
+      "factScore": 3,
+      "factMaximum": 3,
+      "normalizedScore": 1,
+      "fullyCorrect": true,
+      "deliveryStatus": "completed",
+      "latencySeconds": 16.371,
+      "latencyIntervalSeconds": null,
+      "sendAt": "2026-09-13T17:38:30.188Z",
+      "busyObserved": true,
+      "sourceCategory": "direct",
+      "sourceLabel": "Directe",
+      "addresses": [
+        "https://science.nasa.gov/mission/europa-clipper/",
+        "https://www.jpl.nasa.gov/press-kits/europa-clipper/mission/"
+      ],
+      "notes": "First page supports actual launch; JPL mission presskit predates launch but supports arrival and orbit.",
+      "primaryEvidence": "q01-luna-final-bottom-0.png",
+      "additionalEvidence": []
+    },
+    {
+      "id": "q01-terra",
+      "question": "q01",
+      "model": "gpt-5.6-terra",
+      "modelLabel": "GPT-5.6 Terra",
+      "domain": "espace",
+      "factScore": 3,
+      "factMaximum": 3,
+      "normalizedScore": 1,
+      "fullyCorrect": true,
+      "deliveryStatus": "completed",
+      "latencySeconds": 6.749,
+      "latencyIntervalSeconds": null,
+      "sendAt": "2026-09-13T17:39:55.100Z",
+      "busyObserved": true,
+      "sourceCategory": "direct",
+      "sourceLabel": "Directe",
+      "addresses": [
+        "https://science.nasa.gov/mission/europa-clipper/"
+      ],
+      "notes": "Also displays long JPL /edu/resources/teachable-moment/exploring-the-next-frontier-in-our-search-for-life-with-europa-clipper/; matching official page supports all facts but middle of displayed URL clips. initial-bottom and final-bottom valid; later redundant final-scroll shots interrupted by harness overlap.",
+      "primaryEvidence": "q01-terra-final-bottom-0.png",
+      "additionalEvidence": []
+    },
+    {
+      "id": "q01-sonnet",
+      "question": "q01",
+      "model": "claude-sonnet-5",
+      "modelLabel": "Claude Sonnet 5",
+      "domain": "espace",
+      "factScore": 3,
+      "factMaximum": 3,
+      "normalizedScore": 1,
+      "fullyCorrect": true,
+      "deliveryStatus": "completed",
+      "latencySeconds": 6.45,
+      "latencyIntervalSeconds": null,
+      "sendAt": "2026-09-13T17:41:24.153Z",
+      "busyObserved": true,
+      "sourceCategory": "direct",
+      "sourceLabel": "Directe",
+      "addresses": [
+        "https://science.nasa.gov/mission/europa-clipper/mission-timeline",
+        "https://www.jpl.nasa.gov/press-kits/europa-clipper/mission/"
+      ],
+      "notes": "Saved conversation reopened after all forty runs, without regeneration, to recover previously skipped response middle. Launch14October2024, plannedApril2030 andJupiter are explicit. Extra exactday11April2030 corroborated by cited JPL mission presskit; launch time12h06EDT,LC39A,Kennedy andFalconHeavy corroborated by NASA timeline.",
+      "primaryEvidence": "q01-sonnet-final-bottom-0.png",
+      "additionalEvidence": [
+        "q01-sonnet-recovery-1.png",
+        "q01-sonnet-recovery-2.png"
+      ]
+    },
+    {
+      "id": "q02-gemini",
+      "question": "q02",
+      "model": "gemini-3.8-flash",
+      "modelLabel": "Gemini 3.8 Flash",
+      "domain": "culture",
+      "factScore": 3,
+      "factMaximum": 3,
+      "normalizedScore": 1,
+      "fullyCorrect": true,
+      "deliveryStatus": "completed",
+      "latencySeconds": 5.073,
+      "latencyIntervalSeconds": null,
+      "sendAt": "2026-09-13T17:46:16.744Z",
+      "busyObserved": true,
+      "sourceCategory": "indirect",
+      "sourceLabel": "Indirecte",
+      "addresses": [
+        "https://www.louvre.fr/visiter/faq"
+      ],
+      "notes": "Correct initial horaires-tarifs neutralized then replaced by FAQ. FAQ directly supports none of the three facts in retrieved content, links onward to current timetable for free admission. Extras reservation/proof/20h30 evacuation accurate.",
+      "primaryEvidence": "q02-gemini-final-bottom-0.png",
+      "additionalEvidence": []
+    },
+    {
+      "id": "q02-luna",
+      "question": "q02",
+      "model": "gpt-5.6-luna",
+      "modelLabel": "GPT-5.6 Luna",
+      "domain": "culture",
+      "factScore": 3,
+      "factMaximum": 3,
+      "normalizedScore": 1,
+      "fullyCorrect": true,
+      "deliveryStatus": "completed",
+      "latencySeconds": 11.545,
+      "latencyIntervalSeconds": null,
+      "sendAt": "2026-09-13T17:42:36.019Z",
+      "busyObserved": true,
+      "sourceCategory": "direct",
+      "sourceLabel": "Directe",
+      "addresses": [
+        "https://www.louvre.fr/visiter/horaires-tarifs#conditions-de-gratuite",
+        "https://www.louvre.fr/en/visit/hours-admission/tickets-and-prices"
+      ],
+      "notes": "",
+      "primaryEvidence": "q02-luna-final-bottom-0.png",
+      "additionalEvidence": []
+    },
+    {
+      "id": "q02-terra",
+      "question": "q02",
+      "model": "gpt-5.6-terra",
+      "modelLabel": "GPT-5.6 Terra",
+      "domain": "culture",
+      "factScore": 3,
+      "factMaximum": 3,
+      "normalizedScore": 1,
+      "fullyCorrect": true,
+      "deliveryStatus": "completed",
+      "latencySeconds": 11.56,
+      "latencyIntervalSeconds": null,
+      "sendAt": "2026-09-13T17:43:51.015Z",
+      "busyObserved": true,
+      "sourceCategory": "direct",
+      "sourceLabel": "Directe",
+      "addresses": [
+        "https://www.louvre.fr/visiter/horaires-tarifs"
+      ],
+      "notes": "",
+      "primaryEvidence": "q02-terra-final-bottom-0.png",
+      "additionalEvidence": []
+    },
+    {
+      "id": "q02-sonnet",
+      "question": "q02",
+      "model": "claude-sonnet-5",
+      "modelLabel": "Claude Sonnet 5",
+      "domain": "culture",
+      "factScore": 3,
+      "factMaximum": 3,
+      "normalizedScore": 1,
+      "fullyCorrect": true,
+      "deliveryStatus": "completed",
+      "latencySeconds": 11.405,
+      "latencyIntervalSeconds": null,
+      "sendAt": "2026-09-13T17:45:04.141Z",
+      "busyObserved": true,
+      "sourceCategory": "partial_indirect",
+      "sourceLabel": "Partielle/indirecte",
+      "addresses": [
+        "https://mini-site.louvre.fr/ingres/1.8_fr.html",
+        "https://contact.louvre.fr/hc/fr/articles/12675810433821-Puis-je-entrer-au-mus%C3%A9e-gratuitement"
+      ],
+      "notes": "Correct initial horaires-tarifs neutralized then replaced by 2006 Ingres exhibition with old 22h hours. ContactFAQ directly confirms Tuesday, links onward to current timetable/free-admission page. Observed Arty postprocessing source regression, facts unchanged.",
+      "primaryEvidence": "q02-sonnet-final-bottom-0.png",
+      "additionalEvidence": []
+    },
+    {
+      "id": "q03-gemini",
+      "question": "q03",
+      "model": "gemini-3.8-flash",
+      "modelLabel": "Gemini 3.8 Flash",
+      "domain": "voyage",
+      "factScore": 3,
+      "factMaximum": 3,
+      "normalizedScore": 1,
+      "fullyCorrect": true,
+      "deliveryStatus": "completed",
+      "latencySeconds": 13.037,
+      "latencyIntervalSeconds": null,
+      "sendAt": "2026-09-13T17:49:46.551Z",
+      "busyObserved": true,
+      "sourceCategory": "unverified",
+      "sourceLabel": "Non vérifiable",
+      "addresses": [
+        "https://www.eurostar.com/fr-fr/train/tours-londres"
+      ],
+      "notes": "Initial official luggage page neutralized and replaced. Final Tours-London page inaccessible to external checker, not proven false. Added search cards include Trainline, London-Paris, Lille-London; hrefs not established by screenshots, cannot count as full primary corroboration.",
+      "primaryEvidence": "q03-gemini-final-bottom-0.png",
+      "additionalEvidence": []
+    },
+    {
+      "id": "q03-luna",
+      "question": "q03",
+      "model": "gpt-5.6-luna",
+      "modelLabel": "GPT-5.6 Luna",
+      "domain": "voyage",
+      "factScore": 3,
+      "factMaximum": 3,
+      "normalizedScore": 1,
+      "fullyCorrect": true,
+      "deliveryStatus": "completed",
+      "latencySeconds": 8.24,
+      "latencyIntervalSeconds": null,
+      "sendAt": "2026-09-13T17:51:05.708Z",
+      "busyObserved": true,
+      "sourceCategory": "direct",
+      "sourceLabel": "Directe",
+      "addresses": [
+        "https://www.eurostar.com/rw-en/train/london-to-paris",
+        "https://www.eurostar.com/rw-en/travel-info/travel-planning/luggage"
+      ],
+      "notes": "",
+      "primaryEvidence": "q03-luna-final-bottom-0.png",
+      "additionalEvidence": []
+    },
+    {
+      "id": "q03-terra",
+      "question": "q03",
+      "model": "gpt-5.6-terra",
+      "modelLabel": "GPT-5.6 Terra",
+      "domain": "voyage",
+      "factScore": 3,
+      "factMaximum": 3,
+      "normalizedScore": 1,
+      "fullyCorrect": true,
+      "deliveryStatus": "completed",
+      "latencySeconds": 12.898,
+      "latencyIntervalSeconds": null,
+      "sendAt": "2026-09-13T17:47:23.803Z",
+      "busyObserved": true,
+      "sourceCategory": "direct",
+      "sourceLabel": "Directe",
+      "addresses": [
+        "https://www.eurostar.com/uk-en/travel-info/travel-planning/luggage"
+      ],
+      "notes": "",
+      "primaryEvidence": "q03-terra-final-bottom-0.png",
+      "additionalEvidence": []
+    },
+    {
+      "id": "q03-sonnet",
+      "question": "q03",
+      "model": "claude-sonnet-5",
+      "modelLabel": "Claude Sonnet 5",
+      "domain": "voyage",
+      "factScore": 3,
+      "factMaximum": 3,
+      "normalizedScore": 1,
+      "fullyCorrect": true,
+      "deliveryStatus": "completed",
+      "latencySeconds": 6.569,
+      "latencyIntervalSeconds": null,
+      "sendAt": "2026-09-13T17:48:38.465Z",
+      "busyObserved": true,
+      "sourceCategory": "direct",
+      "sourceLabel": "Directe",
+      "addresses": [
+        "https://www.eurostar.com/us-en/travel-info/eurostar-experience/travel-classes/eurostar-standard",
+        "https://www.eurostar.com/fr-fr/train/tours-londres"
+      ],
+      "notes": "Initial duplicate Standard page becomes Standard plus Tours-London. First supports all3; second inaccessible in external check, not proven false. Extra no weight/liquid limit omits self-carry and alcohol restrictions; requested factscore unaffected.",
+      "primaryEvidence": "q03-sonnet-final-bottom-0.png",
+      "additionalEvidence": []
+    },
+    {
+      "id": "q04-gemini",
+      "question": "q04",
+      "model": "gemini-3.8-flash",
+      "modelLabel": "Gemini 3.8 Flash",
+      "domain": "informatique",
+      "factScore": 3,
+      "factMaximum": 3,
+      "normalizedScore": 1,
+      "fullyCorrect": true,
+      "deliveryStatus": "completed",
+      "latencySeconds": 6.717,
+      "latencyIntervalSeconds": null,
+      "sendAt": "2026-09-13T17:53:23.030Z",
+      "busyObserved": true,
+      "sourceCategory": "blocked",
+      "sourceLabel": "Bloquée, adresse incomplète",
+      "addresses": [],
+      "notes": "Two raspberrypi.com/products/ addresses remain non-verified/neutralized. Visible suffixes pi-5/ and power-supply/, middles horizontally clipped so exact full paths not proven. Corresponding official product and27w pages support all facts. Added cards are separate; destination hrefs unknown.",
+      "primaryEvidence": "q04-gemini-final-bottom-0.png",
+      "additionalEvidence": []
+    },
+    {
+      "id": "q04-luna",
+      "question": "q04",
+      "model": "gpt-5.6-luna",
+      "modelLabel": "GPT-5.6 Luna",
+      "domain": "informatique",
+      "factScore": 3,
+      "factMaximum": 3,
+      "normalizedScore": 1,
+      "fullyCorrect": true,
+      "deliveryStatus": "completed",
+      "latencySeconds": 8.294,
+      "latencyIntervalSeconds": null,
+      "sendAt": "2026-09-13T17:54:30.078Z",
+      "busyObserved": true,
+      "sourceCategory": "direct",
+      "sourceLabel": "Directe",
+      "addresses": [
+        "https://www.raspberrypi.com/products/raspberry-pi-5/",
+        "https://www.raspberrypi.com/news/introducing-raspberry-pi-5/"
+      ],
+      "notes": "",
+      "primaryEvidence": "q04-luna-final-bottom-0.png",
+      "additionalEvidence": []
+    },
+    {
+      "id": "q04-terra",
+      "question": "q04",
+      "model": "gpt-5.6-terra",
+      "modelLabel": "GPT-5.6 Terra",
+      "domain": "informatique",
+      "factScore": 3,
+      "factMaximum": 3,
+      "normalizedScore": 1,
+      "fullyCorrect": true,
+      "deliveryStatus": "completed",
+      "latencySeconds": 6.507,
+      "latencyIntervalSeconds": null,
+      "sendAt": "2026-09-13T17:55:43.418Z",
+      "busyObserved": true,
+      "sourceCategory": "direct",
+      "sourceLabel": "Directe",
+      "addresses": [
+        "https://www.raspberrypi.com/products/raspberry-pi-5/",
+        "https://www.raspberrypi.com/products/27w-power-supply/"
+      ],
+      "notes": "",
+      "primaryEvidence": "q04-terra-final-bottom-0.png",
+      "additionalEvidence": []
+    },
+    {
+      "id": "q04-sonnet",
+      "question": "q04",
+      "model": "claude-sonnet-5",
+      "modelLabel": "Claude Sonnet 5",
+      "domain": "informatique",
+      "factScore": 3,
+      "factMaximum": 3,
+      "normalizedScore": 1,
+      "fullyCorrect": true,
+      "deliveryStatus": "completed",
+      "latencySeconds": 8.13,
+      "latencyIntervalSeconds": null,
+      "sendAt": "2026-09-13T17:52:14.616Z",
+      "busyObserved": true,
+      "sourceCategory": "third_party_only",
+      "sourceLabel": "Sites tiers",
+      "addresses": [
+        "https://elektormagazine.fr/raspberry-pi-5",
+        "https://www.kubii.com/fr/content/316-raspberry-pi-5"
+      ],
+      "notes": "Reply gives scheme-less third-party source text, not manufacturer URLs. Searchcard hrefs unknown. Extra supply profiles omit official5.1V/5A in favor of5V/3A; incomplete/misleading specification, not assertion that supply cannot output more than3A. Other three profiles correct; keep requested factscore.",
+      "primaryEvidence": "q04-sonnet-final-bottom-0.png",
+      "additionalEvidence": []
+    },
+    {
+      "id": "q05-gemini",
+      "question": "q05",
+      "model": "gemini-3.8-flash",
+      "modelLabel": "Gemini 3.8 Flash",
+      "domain": "sport",
+      "factScore": 3,
+      "factMaximum": 3,
+      "normalizedScore": 1,
+      "fullyCorrect": true,
+      "deliveryStatus": "completed",
+      "latencySeconds": 19.419,
+      "latencyIntervalSeconds": null,
+      "sendAt": "2026-09-13T17:56:50.520Z",
+      "busyObserved": true,
+      "sourceCategory": "removed",
+      "sourceLabel": "Lien retiré",
+      "addresses": [],
+      "notes": "Only World Athletics results label remains; URL removed before initial-bottom capture and never recovered. Original destination unknown, not proven false. Independent official results PDF confirms all3.",
+      "primaryEvidence": "q05-gemini-final-bottom-0.png",
+      "additionalEvidence": []
+    },
+    {
+      "id": "q05-luna",
+      "question": "q05",
+      "model": "gpt-5.6-luna",
+      "modelLabel": "GPT-5.6 Luna",
+      "domain": "sport",
+      "factScore": 3,
+      "factMaximum": 3,
+      "normalizedScore": 1,
+      "fullyCorrect": true,
+      "deliveryStatus": "completed",
+      "latencySeconds": 8.157,
+      "latencyIntervalSeconds": null,
+      "sendAt": "2026-09-13T17:58:14.975Z",
+      "busyObserved": true,
+      "sourceCategory": "unverified",
+      "sourceLabel": "Non vérifiable",
+      "addresses": [
+        "https://www.olympics.com/en/video/women-s-100m-final-athletics-olympic-games-paris-2024-x5195",
+        "https://www.olympics.com/en/athletes/julien-alfred"
+      ],
+      "notes": "Stable visible links on official domain; both external opens502, exact content not corroborated. Official-domain index query yielded no relevant page. Do not label false.",
+      "primaryEvidence": "q05-luna-final-bottom-0.png",
+      "additionalEvidence": []
+    },
+    {
+      "id": "q05-terra",
+      "question": "q05",
+      "model": "gpt-5.6-terra",
+      "modelLabel": "GPT-5.6 Terra",
+      "domain": "sport",
+      "factScore": 3,
+      "factMaximum": 3,
+      "normalizedScore": 1,
+      "fullyCorrect": true,
+      "deliveryStatus": "completed",
+      "latencySeconds": 6.785,
+      "latencyIntervalSeconds": null,
+      "sendAt": "2026-09-13T17:59:27.884Z",
+      "busyObserved": true,
+      "sourceCategory": "unverified",
+      "sourceLabel": "Non vérifiable",
+      "addresses": [
+        "https://www.olympics.com/en/video/women-s-100m-final-athletics-olympic-games-paris-2024-x5195",
+        "https://www.olympics.com/en/athletes/julien-alfred"
+      ],
+      "notes": "Same stable official-domain URLs as Luna; external502 already recorded, no redundant retry. Facts independently verified via official resultbook.",
+      "primaryEvidence": "q05-terra-final-bottom-0.png",
+      "additionalEvidence": []
+    },
+    {
+      "id": "q05-sonnet",
+      "question": "q05",
+      "model": "claude-sonnet-5",
+      "modelLabel": "Claude Sonnet 5",
+      "domain": "sport",
+      "factScore": 3,
+      "factMaximum": 3,
+      "normalizedScore": 1,
+      "fullyCorrect": true,
+      "deliveryStatus": "completed",
+      "latencySeconds": 8.337,
+      "latencyIntervalSeconds": null,
+      "sendAt": "2026-09-13T18:00:35.034Z",
+      "busyObserved": true,
+      "sourceCategory": "unverified",
+      "sourceLabel": "Non vérifiable",
+      "addresses": [
+        "https://www.olympics.com/en/olympic-games/paris-2024/results/athletics/women-100m"
+      ],
+      "notes": "Also long worldathletics.org/competitions/olympic-games/the-xxxiii-olympic-games-7153115/results/women/100-metres/final/result; part of displayed prefix clips. Both candidate pages fail external open. Extras Richardson silver/Jefferson bronze USA/date3Aug/StadeFrance confirmed PDF; SaintLucia first medal corroborated by official indexed2024-review-sprints. Searchcard hrefs unknown.",
+      "primaryEvidence": "q05-sonnet-final-bottom-0.png",
+      "additionalEvidence": []
+    },
+    {
+      "id": "q06-gemini",
+      "question": "q06",
+      "model": "gemini-3.8-flash",
+      "modelLabel": "Gemini 3.8 Flash",
+      "domain": "science",
+      "factScore": 3,
+      "factMaximum": 3,
+      "normalizedScore": 1,
+      "fullyCorrect": true,
+      "deliveryStatus": "completed",
+      "latencySeconds": 6.498,
+      "latencyIntervalSeconds": null,
+      "sendAt": "2026-09-13T18:05:12.772Z",
+      "busyObserved": true,
+      "sourceCategory": "direct_indexed",
+      "sourceLabel": "Directe (index officiel)",
+      "addresses": [
+        "https://www.nobelprize.org/prizes/physics/2024/summary/"
+      ],
+      "notes": "Initially neutralized Nobel URL, final displayed link is summary/ confirmed by horizontal final-right capture. Official indexed summary supports3facts despite direct403. Added news cards separate. All requested facts correct; Hopfield memory/Hinton Boltzmann extras corroborated by official press release.",
+      "primaryEvidence": "q06-gemini-final-bottom-0.png",
+      "additionalEvidence": []
+    },
+    {
+      "id": "q06-luna",
+      "question": "q06",
+      "model": "gpt-5.6-luna",
+      "modelLabel": "GPT-5.6 Luna",
+      "domain": "science",
+      "factScore": 3,
+      "factMaximum": 3,
+      "normalizedScore": 1,
+      "fullyCorrect": true,
+      "deliveryStatus": "completed",
+      "latencySeconds": 8.115,
+      "latencyIntervalSeconds": null,
+      "sendAt": "2026-09-13T18:01:47.979Z",
+      "busyObserved": true,
+      "sourceCategory": "direct_indexed",
+      "sourceLabel": "Directe (index officiel)",
+      "addresses": [
+        "https://www.nobelprize.org/prizes/physics/2024/summary/",
+        "https://www.nobelprize.org/prizes/physics/2024/prize-announcement/"
+      ],
+      "notes": "Saved conversation reopened without regeneration for horizontal capture. Exact summary path now legible and official indexed summary supports all3 despite direct403. Second address transcribed, not needed for full corroboration. Extra AI foundations correct.",
+      "primaryEvidence": "q06-luna-final-bottom-0.png",
+      "additionalEvidence": [
+        "q06-luna-recovery-bottom-0.png",
+        "q06-luna-recovery-right-0.png"
+      ]
+    },
+    {
+      "id": "q06-terra",
+      "question": "q06",
+      "model": "gpt-5.6-terra",
+      "modelLabel": "GPT-5.6 Terra",
+      "domain": "science",
+      "factScore": 3,
+      "factMaximum": 3,
+      "normalizedScore": 1,
+      "fullyCorrect": true,
+      "deliveryStatus": "completed",
+      "latencySeconds": 5.123,
+      "latencyIntervalSeconds": null,
+      "sendAt": "2026-09-13T18:03:00.138Z",
+      "busyObserved": true,
+      "sourceCategory": "direct_indexed",
+      "sourceLabel": "Directe (index officiel)",
+      "addresses": [
+        "https://www.nobelprize.org/prizes/physics/2024/summary/",
+        "https://www.nobelprize.org/prizes/physics/2024/hopfield/facts/"
+      ],
+      "notes": "Saved conversation reopened without regeneration for horizontal capture. Exact summary path now legible and official indexed summary supports all3 despite direct403. Second address transcribed, not needed for full corroboration. Associative memory and Boltzmann machine extras corroborated by Nobel press release.",
+      "primaryEvidence": "q06-terra-final-bottom-0.png",
+      "additionalEvidence": [
+        "q06-terra-recovery-bottom-0.png",
+        "q06-terra-recovery-right-0.png"
+      ]
+    },
+    {
+      "id": "q06-sonnet",
+      "question": "q06",
+      "model": "claude-sonnet-5",
+      "modelLabel": "Claude Sonnet 5",
+      "domain": "science",
+      "factScore": 3,
+      "factMaximum": 3,
+      "normalizedScore": 1,
+      "fullyCorrect": true,
+      "deliveryStatus": "completed",
+      "latencySeconds": 8.083,
+      "latencyIntervalSeconds": null,
+      "sendAt": "2026-09-13T18:04:05.244Z",
+      "busyObserved": true,
+      "sourceCategory": "direct_text_only",
+      "sourceLabel": "Directe, adresse en texte",
+      "addresses": [
+        "https://www.nobelprize.org/prizes/physics/2024/summary/"
+      ],
+      "notes": "Exact official summary path provided as text citing ENS Lyon; official indexed summary corroborates facts despite403. Actual wording interventions instead of inventions (not OCR): retain semantic motif point, flag quotation accuracy separately. Specific ChatGPT lineage not established by cited summary. Cards Universalis/EconomicTimes distinct, href unknown.",
+      "primaryEvidence": "q06-sonnet-final-bottom-0.png",
+      "additionalEvidence": []
+    },
+    {
+      "id": "q07-gemini",
+      "question": "q07",
+      "model": "gemini-3.8-flash",
+      "modelLabel": "Gemini 3.8 Flash",
+      "domain": "patrimoine",
+      "factScore": 2,
+      "factMaximum": 2,
+      "normalizedScore": 1,
+      "fullyCorrect": true,
+      "deliveryStatus": "completed",
+      "latencySeconds": 8.122,
+      "latencyIntervalSeconds": null,
+      "sendAt": "2026-09-13T18:08:43.591Z",
+      "busyObserved": true,
+      "sourceCategory": "direct",
+      "sourceLabel": "Directe",
+      "addresses": [
+        "https://whc.unesco.org/fr/list/1"
+      ],
+      "notes": "Initial en/list/1 URL neutralized, final replaced by pertinent fr/list/1 counterpart; source corroborates bothfacts. Added cards separate.",
+      "primaryEvidence": "q07-gemini-final-bottom-0.png",
+      "additionalEvidence": []
+    },
+    {
+      "id": "q07-luna",
+      "question": "q07",
+      "model": "gpt-5.6-luna",
+      "modelLabel": "GPT-5.6 Luna",
+      "domain": "patrimoine",
+      "factScore": 2,
+      "factMaximum": 2,
+      "normalizedScore": 1,
+      "fullyCorrect": true,
+      "deliveryStatus": "completed",
+      "latencySeconds": 9.745,
+      "latencyIntervalSeconds": null,
+      "sendAt": "2026-09-13T18:09:59.495Z",
+      "busyObserved": true,
+      "sourceCategory": "direct",
+      "sourceLabel": "Directe",
+      "addresses": [
+        "https://whc.unesco.org/en/list/1",
+        "https://whc.unesco.org/en/events/1468/"
+      ],
+      "notes": "Both official pages corroborate bothfacts; source addresses retained.",
+      "primaryEvidence": "q07-luna-final-bottom-0.png",
+      "additionalEvidence": []
+    },
+    {
+      "id": "q07-terra",
+      "question": "q07",
+      "model": "gpt-5.6-terra",
+      "modelLabel": "GPT-5.6 Terra",
+      "domain": "patrimoine",
+      "factScore": 2,
+      "factMaximum": 2,
+      "normalizedScore": 1,
+      "fullyCorrect": true,
+      "deliveryStatus": "completed",
+      "latencySeconds": 8.186,
+      "latencyIntervalSeconds": null,
+      "sendAt": "2026-09-13T18:06:23.231Z",
+      "busyObserved": true,
+      "sourceCategory": "direct",
+      "sourceLabel": "Directe",
+      "addresses": [
+        "https://whc.unesco.org/en/events/1468/",
+        "https://whc.unesco.org/en/news/321"
+      ],
+      "notes": "Both official pages directly support Ecuador and initial1978; 2018 anniversary and2007mission reports remain pertinent to these historical facts.",
+      "primaryEvidence": "q07-terra-final-bottom-0.png",
+      "additionalEvidence": []
+    },
+    {
+      "id": "q07-sonnet",
+      "question": "q07",
+      "model": "claude-sonnet-5",
+      "modelLabel": "Claude Sonnet 5",
+      "domain": "patrimoine",
+      "factScore": 2,
+      "factMaximum": 2,
+      "normalizedScore": 1,
+      "fullyCorrect": true,
+      "deliveryStatus": "completed",
+      "latencySeconds": 6.56,
+      "latencyIntervalSeconds": null,
+      "sendAt": "2026-09-13T18:07:34.344Z",
+      "busyObserved": true,
+      "sourceCategory": "direct_text_only",
+      "sourceLabel": "Directe, adresse en texte",
+      "addresses": [
+        "https://whc.unesco.org/fr/list/1/",
+        "https://whc.unesco.org/fr/activites/615/"
+      ],
+      "notes": "First page directly supports bothfacts and1959park creation. Second relevantconservationstudy lacks dates. Extra archipelago became nationalpark1959 omits97percent land coverage; requested points retained. Added searchcard hrefs unknown.",
+      "primaryEvidence": "q07-sonnet-final-bottom-0.png",
+      "additionalEvidence": []
+    },
+    {
+      "id": "q08-gemini",
+      "question": "q08",
+      "model": "gemini-3.8-flash",
+      "modelLabel": "Gemini 3.8 Flash",
+      "domain": "consommation",
+      "factScore": 3,
+      "factMaximum": 3,
+      "normalizedScore": 1,
+      "fullyCorrect": true,
+      "deliveryStatus": "completed",
+      "latencySeconds": 11.532,
+      "latencyIntervalSeconds": null,
+      "sendAt": "2026-09-13T18:12:28.285Z",
+      "busyObserved": true,
+      "sourceCategory": "blocked_official_unverified",
+      "sourceLabel": "Référence officielle bloquée",
+      "addresses": [
+        "http://data.europa.eu/eli/dir/2022/2380/oj"
+      ],
+      "notes": "Three exact facts correct. Official ELI directive identifier remains neutralized/nonverified in final-right. Direct normative-text retrieval encountered antirobot via EUR-Lex during review; do not claim article2 directly inspected. Commission independently corroborates dates. Added cards do not establish hrefs.",
+      "primaryEvidence": "q08-gemini-final-bottom-0.png",
+      "additionalEvidence": []
+    },
+    {
+      "id": "q08-luna",
+      "question": "q08",
+      "model": "gpt-5.6-luna",
+      "modelLabel": "GPT-5.6 Luna",
+      "domain": "consommation",
+      "factScore": 3,
+      "factMaximum": 3,
+      "normalizedScore": 1,
+      "fullyCorrect": true,
+      "deliveryStatus": "completed",
+      "latencySeconds": 14.76,
+      "latencyIntervalSeconds": null,
+      "sendAt": "2026-09-13T18:13:44.146Z",
+      "busyObserved": true,
+      "sourceCategory": "direct",
+      "sourceLabel": "Directe",
+      "addresses": [
+        "https://commission.europa.eu/news-and-media/news/eu-common-charger-rules-power-all-your-devices-single-charger-2024-12-28_en"
+      ],
+      "notes": "Commission page directly corroborates3facts. Also a retained EUR-Lex SL-language legal-content URL; precise query recorded in horizontal screenshot, direct normative-text access not validated.",
+      "primaryEvidence": "q08-luna-final-bottom-0.png",
+      "additionalEvidence": []
+    },
+    {
+      "id": "q08-terra",
+      "question": "q08",
+      "model": "gpt-5.6-terra",
+      "modelLabel": "GPT-5.6 Terra",
+      "domain": "consommation",
+      "factScore": 3,
+      "factMaximum": 3,
+      "normalizedScore": 1,
+      "fullyCorrect": true,
+      "deliveryStatus": "completed",
+      "latencySeconds": 8.25,
+      "latencyIntervalSeconds": null,
+      "sendAt": "2026-09-13T18:15:07.563Z",
+      "busyObserved": true,
+      "sourceCategory": "direct",
+      "sourceLabel": "Directe",
+      "addresses": [
+        "https://commission.europa.eu/news-and-media/news/eu-common-charger-rules-power-all-your-devices-single-charger-2024-12-28_en"
+      ],
+      "notes": "Commission page directly corroborates3facts. Also displays long Consilium common-charger infographic URL; full path outside normal viewport, not independently validated here. Facts visible in final-1.",
+      "primaryEvidence": "q08-terra-final-bottom-0.png",
+      "additionalEvidence": []
+    },
+    {
+      "id": "q08-sonnet",
+      "question": "q08",
+      "model": "claude-sonnet-5",
+      "modelLabel": "Claude Sonnet 5",
+      "domain": "consommation",
+      "factScore": 1,
+      "factMaximum": 3,
+      "normalizedScore": 0.3333333333333333,
+      "fullyCorrect": false,
+      "deliveryStatus": "completed",
+      "latencySeconds": 9.809,
+      "latencyIntervalSeconds": null,
+      "sendAt": "2026-09-13T18:11:14.365Z",
+      "busyObserved": true,
+      "sourceCategory": "official_source_conflict",
+      "sourceLabel": "Source officielle erronée",
+      "addresses": [
+        "https://www.entreprises.gouv.fr/la-dge/actualites/le-chargeur-universel-devient-obligatoire-pour-les-appareils-electroniques-de"
+      ],
+      "notes": "USB-C correct. Smartphones only December2024: day28 omitted. Laptops before26April2026 with28 cited as unresolved alternative. Exact authentic DGEpage really ends in -de and itself erroneously states26April; source error propagated, not demonstrated invention. It does give28December, omitted in reply. Commission explicitly gives28April. Literal directive article2 not directly read: EUR-Lex antirobot, no bypass.",
+      "primaryEvidence": "q08-sonnet-final-bottom-0.png",
+      "additionalEvidence": []
+    },
+    {
+      "id": "q09-gemini",
+      "question": "q09",
+      "model": "gemini-3.8-flash",
+      "modelLabel": "Gemini 3.8 Flash",
+      "domain": "musique",
+      "factScore": 3,
+      "factMaximum": 3,
+      "normalizedScore": 1,
+      "fullyCorrect": true,
+      "deliveryStatus": "completed",
+      "latencySeconds": 11.058,
+      "latencyIntervalSeconds": null,
+      "sendAt": "2026-09-13T18:16:18.031Z",
+      "busyObserved": true,
+      "sourceCategory": "homepage_redirect",
+      "sourceLabel": "Redirection accueil",
+      "addresses": [
+        "https://eurovision.tv/story/switzerland-wins-eurovision-2024"
+      ],
+      "notes": "Initial event/malmo-2024 and participant/nemo-2024 neutralized. First replaced by story/switzerland-wins-eurovision-2024; participant remains blocked. All three old-domain paths resolve to general eurovision.com homepage in external tool, not direct proof. Not proven invented or historically nonexistent. Added evous/Latvia cards not official href evidence; no phone click.",
+      "primaryEvidence": "q09-gemini-final-bottom-0.png",
+      "additionalEvidence": []
+    },
+    {
+      "id": "q09-luna",
+      "question": "q09",
+      "model": "gpt-5.6-luna",
+      "modelLabel": "GPT-5.6 Luna",
+      "domain": "musique",
+      "factScore": 3,
+      "factMaximum": 3,
+      "normalizedScore": 1,
+      "fullyCorrect": true,
+      "deliveryStatus": "completed",
+      "latencySeconds": 6.628,
+      "latencyIntervalSeconds": null,
+      "sendAt": "2026-09-13T18:17:35.654Z",
+      "busyObserved": true,
+      "sourceCategory": "third_party_only",
+      "sourceLabel": "Sites tiers",
+      "addresses": [
+        "https://www.billboard.com/music/music-news/eurovision-2024-winner-switzerland-nemo-1235680979/",
+        "https://www.vulture.com/article/eurovision-2024-winner-switzerland.html"
+      ],
+      "notes": "Stable full addresses, media rather than organizer sources. Official-source instruction unmet. Article content/accessibility not assessed; requestedfacts independently confirmed.",
+      "primaryEvidence": "q09-luna-final-bottom-0.png",
+      "additionalEvidence": []
+    },
+    {
+      "id": "q09-terra",
+      "question": "q09",
+      "model": "gpt-5.6-terra",
+      "modelLabel": "GPT-5.6 Terra",
+      "domain": "musique",
+      "factScore": 3,
+      "factMaximum": 3,
+      "normalizedScore": 1,
+      "fullyCorrect": true,
+      "deliveryStatus": "completed",
+      "latencySeconds": 6.503,
+      "latencyIntervalSeconds": null,
+      "sendAt": "2026-09-13T18:18:50.012Z",
+      "busyObserved": true,
+      "sourceCategory": "homepage_redirect",
+      "sourceLabel": "Redirection accueil",
+      "addresses": [
+        "https://eurovision.tv/video/nemos-first-interview-after-winning-eurovision-song-contest-2024",
+        "https://eurovision.tv/story/a-to-z-eurovision-2024"
+      ],
+      "notes": "Each old-domain URL independently resolves to general eurovision.com homepage in external tool; pages reported as crawled7/4months ago, not guaranteed freshHTTP at phone-run time. No direct support, not proof of invented paths. Text/addresses stable, no phone click.",
+      "primaryEvidence": "q09-terra-final-bottom-0.png",
+      "additionalEvidence": []
+    },
+    {
+      "id": "q09-sonnet",
+      "question": "q09",
+      "model": "claude-sonnet-5",
+      "modelLabel": "Claude Sonnet 5",
+      "domain": "musique",
+      "factScore": 3,
+      "factMaximum": 3,
+      "normalizedScore": 1,
+      "fullyCorrect": true,
+      "deliveryStatus": "completed",
+      "latencySeconds": 9.889,
+      "latencyIntervalSeconds": null,
+      "sendAt": "2026-09-13T18:19:59.481Z",
+      "busyObserved": true,
+      "sourceCategory": "direct_indexed",
+      "sourceLabel": "Directe (index officiel)",
+      "addresses": [
+        "https://www.eurovision.com/stories/switzerlands-nemo-wins-the-eurovision-song-contest-2024/",
+        "https://en.wikipedia.org/wiki/Eurovision_Song_Contest_2024"
+      ],
+      "notes": "Current-domain official organizer article stable initial/final, verified at protocolfreeze and corroborated by official indexedcontent4daysold. Freshopens later expired; no claim instantaneousphoneaccess. Extras591points,44pointlead,Croatia547 correct. Wikipedia second link nonofficial, does not negate first primary source.",
+      "primaryEvidence": "q09-sonnet-final-bottom-0.png",
+      "additionalEvidence": []
+    },
+    {
+      "id": "q10-gemini",
+      "question": "q10",
+      "model": "gemini-3.8-flash",
+      "modelLabel": "Gemini 3.8 Flash",
+      "domain": "internet",
+      "factScore": 3,
+      "factMaximum": 3,
+      "normalizedScore": 1,
+      "fullyCorrect": true,
+      "deliveryStatus": "completed",
+      "latencySeconds": 6.546,
+      "latencyIntervalSeconds": null,
+      "sendAt": "2026-09-13T18:24:58.612Z",
+      "busyObserved": true,
+      "sourceCategory": "partial_indirect",
+      "sourceLabel": "Partielle/indirecte",
+      "addresses": [
+        "https://wikimediafoundation.org",
+        "https://fr.wikipedia.org/wiki/Fondation_Wikim%C3%A9dia"
+      ],
+      "notes": "Foundation URL remains neutralized nonverified; initial wikipedia.org replaced by linked French community encyclopedia article, not institutional primary. Article saysJanuary2001, not exactday in reviewed content. Independently accessible Foundation and original Wikipedia portal support host+nonprofit2/3; their neutralization does not prove false sources. Searchcard hrefs unknown; no phone click.",
+      "primaryEvidence": "q10-gemini-final-bottom-0.png",
+      "additionalEvidence": [
+        "q10-gemini-final-1.png",
+        "q10-gemini-final-right-0.png"
+      ]
+    },
+    {
+      "id": "q10-luna",
+      "question": "q10",
+      "model": "gpt-5.6-luna",
+      "modelLabel": "GPT-5.6 Luna",
+      "domain": "internet",
+      "factScore": 3,
+      "factMaximum": 3,
+      "normalizedScore": 1,
+      "fullyCorrect": true,
+      "deliveryStatus": "completed",
+      "latencySeconds": 10.079,
+      "latencyIntervalSeconds": null,
+      "sendAt": "2026-09-13T18:21:17.403Z",
+      "busyObserved": true,
+      "sourceCategory": "partial_indirect",
+      "sourceLabel": "Partielle/indirecte",
+      "addresses": [
+        "https://fr.wikipedia.org/wiki/Histoire_de_Wikip%C3%A9dia",
+        "https://wikimediafoundation.org/"
+      ],
+      "notes": "Stable addresses. Community encyclopedia article explicitly supports launch date; institutional Foundation homepage supports hosting and nonprofit, but not exact launch date. Combined facts corroborated, but institutional primary coverage only2/3. Extra501c3 independently correct; not established by inspected homepage.",
+      "primaryEvidence": "q10-luna-final-bottom-0.png",
+      "additionalEvidence": [
+        "q10-luna-final-1.png",
+        "q10-luna-final-right-0.png"
+      ]
+    },
+    {
+      "id": "q10-terra",
+      "question": "q10",
+      "model": "gpt-5.6-terra",
+      "modelLabel": "GPT-5.6 Terra",
+      "domain": "internet",
+      "factScore": 3,
+      "factMaximum": 3,
+      "normalizedScore": 1,
+      "fullyCorrect": true,
+      "deliveryStatus": "completed",
+      "latencySeconds": 9.913,
+      "latencyIntervalSeconds": null,
+      "sendAt": "2026-09-13T18:22:35.749Z",
+      "busyObserved": true,
+      "sourceCategory": "direct_derived",
+      "sourceLabel": "Primaire, date déduite",
+      "addresses": [
+        "https://wikimediafoundation.org/news/2026/01/15/wikipedia-celebrates-25years/",
+        "https://meta.wikimedia.org/wiki/Wikimedia_Foundation"
+      ],
+      "notes": "Stable institutional anniversary article dated15January2026 states25thbirthday today:15January2001 follows by calendar subtraction. Same article confirms Foundation operatesWikipedia and nonprofit. Meta is a community project page; its institutional editorial status is not established here. The official anniversary article alone supports the credited inference. Oui at start of nonprofit sentence is awkward polarity in response to for-profit question; explicit nonprofit status is correct, point retained with wording reservation.",
+      "primaryEvidence": "q10-terra-final-bottom-0.png",
+      "additionalEvidence": [
+        "q10-terra-final-1.png",
+        "q10-terra-final-right-0.png"
+      ]
+    },
+    {
+      "id": "q10-sonnet",
+      "question": "q10",
+      "model": "claude-sonnet-5",
+      "modelLabel": "Claude Sonnet 5",
+      "domain": "internet",
+      "factScore": 3,
+      "factMaximum": 3,
+      "normalizedScore": 1,
+      "fullyCorrect": true,
+      "deliveryStatus": "completed",
+      "latencySeconds": 6.533,
+      "latencyIntervalSeconds": null,
+      "sendAt": "2026-09-13T18:23:48.220Z",
+      "busyObserved": true,
+      "sourceCategory": "partial_indirect",
+      "sourceLabel": "Partielle/indirecte",
+      "addresses": [
+        "https://wikimediafoundation.org/fr/our-work/",
+        "https://en.wikipedia.org/wiki/Wikimedia_Foundation"
+      ],
+      "notes": "Stable addresses. Institutional Our Work supports hosting and nonprofit plus mainly donations, not exact15January2001 launch. Community encyclopedia article shows2001, not exactday in reviewed content. Primary coverage2/3. Extra501c3 anddonations independently corroborated by donorFAQ; official contact supports SanFrancisco mailingaddress, not alone legal headquarters.",
+      "primaryEvidence": "q10-sonnet-final-bottom-0.png",
+      "additionalEvidence": [
+        "q10-sonnet-final-1.png",
+        "q10-sonnet-final-right-0.png"
+      ]
+    }
+  ],
+  "limits": [
+    "Ten short factual questions, mostly historical; not deep research or a universal benchmark.",
+    "One run per model/question, no provider retries. End-to-end application/network/provider; cache and provider thinking settings not isolated.",
+    "Main paired latency comparison excludes Q01 for every model after first Gemini measurement failure; nine paired questions, approximately1.7s sampling.",
+    "Addresses and app rendering inspected; actual phone clicks are not automatically inferred. Search invocation and actual billed cost not independently measured.",
+    "Official source support may come from an accessible page or explicitly identified official index text; inaccessible pages are not labelled false.",
+    "Raw screenshots and device network details stay local; reported model identity comes from application footer, not an independent server trace."
+  ]
+}
