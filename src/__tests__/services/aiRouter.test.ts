@@ -316,10 +316,10 @@ describe('forced model selection', () => {
     expect(detectProvider('Météo demain ?')).toBe('gemini')
   })
 
-  it('forced gemini + private data → claude (Gemini has no tools)', () => {
+  it('forced gemini + private data retains Gemini with personal tools', () => {
     mockGetSelectedModel.mockReturnValue('gemini')
     withKeys({ gemini: true })
-    expect(detectProvider('Montre mes emails')).toBe('claude')
+    expect(detectProvider('Montre mes emails')).toBe('gemini')
   })
 
   it('forced gemini + non-private → gemini', () => {

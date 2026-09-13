@@ -10,6 +10,8 @@ import type { MouseEvent, ReactNode } from 'react'
 import { isValidElement } from 'react'
 import { Capacitor } from '@capacitor/core'
 import { isAllowedReportAction } from '../../services/reportActions'
+import { Link } from 'react-router-dom'
+import { storedLocalReportPath } from '../../services/localReportLink'
 
 // Model/public Markdown never grants access to private local file IDs.
 function UnavailableImage() {
@@ -43,6 +45,12 @@ function MarkdownLink({
   children: ReactNode
   className?: string
 }) {
+  const reportPath = href ? storedLocalReportPath(href) : null
+  if (reportPath) {
+    return <Link to={reportPath} className={className} onClick={(event) => {
+      if (!href || storedLocalReportPath(href) !== reportPath) event.preventDefault()
+    }}>{children}</Link>
+  }
   const openNative = (event: MouseEvent<HTMLAnchorElement>) => {
     if (!href || !Capacitor.isNativePlatform()) return
     try {

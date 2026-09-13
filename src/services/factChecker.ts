@@ -1,3 +1,4 @@
+import { storedLocalReportPath } from './localReportLink'
 // Fact-checker post-pass : vérifie les claims factuels d'une réponse IA
 // avec un second appel Claude (Haiku d'abord, escalade Sonnet sur risque).
 //
@@ -174,6 +175,7 @@ function extractHttpUrls(text: string): string[] {
 }
 
 function isArtyInternalUrl(value: string): boolean {
+  if (storedLocalReportPath(value)) return true
   try {
     const host = new URL(value).hostname.toLowerCase()
     return host === 'tryarty.com' ||

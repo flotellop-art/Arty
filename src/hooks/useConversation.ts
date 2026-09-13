@@ -979,7 +979,9 @@ export function useConversation(options?: { onNavigate?: (id: string) => void })
       const requestedChatModel = resolveChatModelPreference(routeInput, routeDecision)
       const portablePersonalTools = routeDecision.isPrivateData && routeDecision.reason.code === 'manual_selection'
         && (provider === 'gemini' || provider === 'openai')
-      if (routeDecision.isPrivateData && !conv.hasGoogleData) {
+      // Documentary preparation has already captured its persisted metadata.
+      // It carries its own privacy policy; do not invalidate that receipt here.
+      if (routeDecision.isPrivateData && !officeRequest && !conv.hasGoogleData) {
         conv.hasGoogleData = true
         storage.saveConversation(conv)
       }

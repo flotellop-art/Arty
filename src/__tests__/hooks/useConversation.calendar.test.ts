@@ -56,13 +56,19 @@ describe('Calendar turn authority — real hook/dispatcher/handler/crypto, simul
     const fetcher = vi.fn(); vi.stubGlobal('fetch', fetcher)
     const hook = setup()
     let sending!: Promise<boolean>
-    act(() => { sending = hook.result.current.sendMessage('Lis https://example.invalid/source.pdf puis crée un rendez-vous', conv.id) })
+    act(() => { sending = hook.result.current.sendMessage('Lis https://example.invalid/source.pdf', conv.id) })
     await vi.waitFor(() => expect(fetchPdfMarkdowns).toHaveBeenCalled())
     await act(async () => relinkCalendarGoogle('b'))
     await act(async () => { gate.resolve(''); await sending })
     const options = vi.mocked(streamMessage).mock.calls[0]?.[4]
     if (options) await act(async () => { await expect(options.onToolCall!('create_calendar_event', input)).rejects.toThrow() })
     expect(fetcher).not.toHaveBeenCalled()
+    act(() => hook.result.current.stopStreaming())
+  })
+  it('does not preload a public PDF when the same request contains private agenda work', async () => {
+    const hook = setup()
+    await act(async () => { await hook.result.current.sendMessage('Lis https://example.invalid/source.pdf puis crée un rendez-vous', conv.id) })
+    expect(fetchPdfMarkdowns).not.toHaveBeenCalled()
     act(() => hook.result.current.stopStreaming())
   })
   it('blocks the next provider request after a Calendar result loses its grant', async () => {
