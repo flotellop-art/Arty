@@ -1,3 +1,4 @@
+import { storedLocalReportPath } from '../../services/localReportLink'
 /**
  * ProviderPanel — un panneau du comparateur.
  * En-tête (sélecteurs provider/modèle), corps (réponse en Markdown sanitisé),
@@ -117,7 +118,7 @@ export const ProviderPanel = memo(function ProviderPanel({ panel, outputNotice, 
           <p className="text-theme-muted italic">{t('compare.waiting')}</p>
         )}
         {outputNotice && <p role="status" className="mb-2 text-sm font-medium text-theme-muted">{outputNotice}</p>}
-        {text && <MarkdownRenderer content={text} disableFragmentCopy={!!outputNotice} inertActions={!!outputNotice} />}
+        {text && <MarkdownRenderer resolveLocalReportPath={storedLocalReportPath} content={text} disableFragmentCopy={!!outputNotice} inertActions={!!outputNotice} />}
       </div>
 
       {/* Footer : métriques */}

@@ -12,17 +12,20 @@ import { useAppSetup } from '../../hooks/useAppSetup'
 import { streamMessage } from '../../services/anthropicClient'
 import { fetchPdfMarkdowns } from '../../services/pdfUrlFetch'
 import i18n from '../../i18n'
-const stubs=vi.hoisted(()=>({google:{isConnected:false,user:null},drive:{fetchFiles:vi.fn()},computer:{},memory:{loadMemory:vi.fn(),getPromptContext:vi.fn((message?:string)=>message?'FILTERED_SYNTHETIC_MEMORY':'FULL_SYNTHETIC_MEMORY')},executor:vi.fn()}))
+import { setChatModelPreference } from '../../services/chatModelPreference'
+import { streamMessage as streamOpenAI } from '../../services/openaiClient'
+const stubs=vi.hoisted(()=>({route:{} as Record<string,unknown>,google:{isConnected:false,user:null},drive:{fetchFiles:vi.fn()},computer:{},memory:{loadMemory:vi.fn(),getPromptContext:vi.fn((message?:string)=>message?'FILTERED_SYNTHETIC_MEMORY':'FULL_SYNTHETIC_MEMORY')},executor:vi.fn()}))
 vi.mock('../../services/apiBase',()=>({apiUrl:(path:string)=>path}))
 vi.mock('../../services/activeApiKey',()=>({getOpenAIKey:()=>null,getGeminiKey:()=>null,getActiveApiKey:()=> 'server-provided'}))
 vi.mock('../../services/anthropicClient',()=>({streamMessage:vi.fn(()=>new AbortController())}))
+vi.mock('../../services/openaiClient',()=>({streamMessage:vi.fn(()=>new AbortController())}))
 vi.mock('../../services/autoMemory',()=>({maybeExtractMemory:vi.fn()}))
 vi.mock('../../services/pdfUrlFetch',()=>({fetchPdfMarkdowns:vi.fn(async()=>''),fetchUrlMarkdowns:vi.fn(async()=>({block:'',unreadable:[]}))}))
 vi.mock('../../services/factChecker',()=>({clearSearchContext:vi.fn(),setSearchContext:vi.fn(),getFactCheckMode:()=> 'off',runFactCheckOnLatest:vi.fn()}))
 vi.mock('../../services/taskService',()=>({detectSuggestedTasks:()=>[],addTask:vi.fn()}))
 vi.mock('../../services/reminderService',()=>({detectReminderIntent:()=>null,createReminder:vi.fn()}))
 vi.mock('../../services/router/notifyRouteOverrides',()=>({notifyRouteOverrides:vi.fn()}))
-vi.mock('../../services/router/gatherRouteInput',async original=>({...await original<typeof import('../../services/router/gatherRouteInput')>(),gatherRouteInput:(ctx:object)=>({...ctx,selectedModel:'claude',availability:{claude:true,mistral:true,gemini:true,openai:true},plan:{plan:'vip',isPro:false,creditsCoverPremium:false},reflectionLevel:'auto'})}))
+vi.mock('../../services/router/gatherRouteInput',async original=>({...await original<typeof import('../../services/router/gatherRouteInput')>(),gatherRouteInput:(ctx:object)=>({...ctx,selectedModel:'claude',availability:{claude:true,mistral:true,gemini:true,openai:true},plan:{plan:'vip',isPro:false,creditsCoverPremium:false},reflectionLevel:'auto',...stubs.route})}))
 vi.mock('../../services/toolExecutor',()=>({createToolExecutor:()=>stubs.executor}))
 vi.mock('react-router-dom',()=>({useNavigate:()=>vi.fn()}))
 vi.mock('../../hooks/useGoogleAuth',()=>({useGoogleAuth:()=>stubs.google}))
@@ -35,11 +38,19 @@ const setup=()=>{const h=renderHook(()=>{const conversation=useConversation();us
 beforeEach(async()=>{
   await resetCalendarFixture();await storage.bootstrapConversationStorage()
   storage.saveConversation({id,title:'Synthetic',messages:[],createdAt:1,updatedAt:1})
-  vi.clearAllMocks();stubs.google.isConnected=false
+  vi.clearAllMocks();stubs.google.isConnected=false;stubs.route={}
   vi.stubGlobal('fetch',vi.fn(()=>{throw new Error('unexpected external HTTP')}))
 })
 afterEach(()=>{cleanup();vi.restoreAllMocks();vi.unstubAllGlobals()})
 describe('real chat adoption and prompt preparation with actual encrypted local memory',()=>{
+  it('cleans up a refused saved Terra preference before any provider call',async()=>{
+    stubs.route={selectedModel:'openai',availability:{claude:true,openai:true,openaiLuna:true,openaiFull:false,openaiVision:false,gemini:false,mistral:false},plan:{plan:'free',isPro:false,creditsCoverPremium:false}}
+    setChatModelPreference('openai','gpt-5.6-terra');const h=setup()
+    await act(async()=>{expect(await h.result.current.sendMessage('Bonjour',id)).toBe(true)})
+    expect(streamOpenAI).not.toHaveBeenCalled();expect(streamMessage).not.toHaveBeenCalled()
+    expect(h.result.current.isStreaming).toBe(false);expect(h.result.current.isConversationBusy(id)).toBe(false)
+    expect(h.result.current.error).toBe(i18n.t('errors.trialModelRestricted'))
+  })
   it('hydrates real encrypted instructions and preserves the prepared prompt through a later edit', async () => {
     await instructions.setCustomInstructions('FIRST DURABLE INSTRUCTION'); instructions.resetCustomInstructionsCache()
     const gate = deferred<string>(); vi.mocked(fetchPdfMarkdowns).mockReturnValueOnce(gate.promise)

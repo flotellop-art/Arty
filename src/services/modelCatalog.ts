@@ -42,7 +42,7 @@ export const TEXT_MODELS: readonly TextModel[] = [
   { provider: 'mistral', modelId: TEXT_DEFAULTS.mistralChat, responseIds: ['mistral-medium-3-5'], costKey: 'mistral-medium', label: 'Mistral Medium', family: 'mistral-medium', trial: true },
   { provider: 'mistral', modelId: TEXT_DEFAULTS.mistralSmall, costKey: 'mistral-small', label: 'Mistral Small', family: 'mistral-medium', trial: false },
   { provider: 'openai', modelId: TEXT_DEFAULTS.openaiChat, costKey: 'gpt-5.6-terra', label: 'GPT-5.6 Terra', family: 'gpt-full', trial: false },
-  { provider: 'openai', modelId: 'gpt-5.6-luna', costKey: 'gpt-5.6-luna', label: 'GPT-5.6 Luna', family: 'gpt-full', trial: false },
+  { provider: 'openai', modelId: 'gpt-5.6-luna', costKey: 'gpt-5.6-luna', label: 'GPT-5.6 Luna', family: 'gpt-full', trial: true },
   { provider: 'openai', modelId: 'gpt-5.6-sol', costKey: 'gpt-5.6-sol', label: 'GPT-5.6 Sol', family: 'gpt-full', trial: false },
   { provider: 'openai', modelId: 'gpt-6-astra', costKey: 'gpt-6-astra', label: 'GPT-6 Astra', family: 'gpt-full', trial: false },
   { provider: 'openai', modelId: 'gpt-5-mini', responseIds: ['gpt-5-mini-2025-08-07'], costKey: 'gpt-5-mini', label: 'GPT-5 Mini', family: 'gpt-mini', trial: true },

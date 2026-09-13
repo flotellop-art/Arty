@@ -30,6 +30,8 @@ export const ALL_REASON_CODES = [
   'openai_intent',          // mention explicite de ChatGPT/GPT
   'hybrid_research',        // rapport/comparatif → recherche Gemini + rédaction Claude
   'trivial_chat',           // salutation/micro-réponse → chemin rapide
+  'luna_everyday',          // texte et recherche factuelle ordinaires
+  'luna_personal_tools',    // outils personnels portables, sans web public
   'default_capable',        // défaut : modèle capable avec recherche web (BUG 58)
   'fallback_no_provider',   // provider préféré indisponible → repli
   // Sous-modèle Claude (subModelReason) :
@@ -61,6 +63,9 @@ export interface ProviderAvailability {
   gemini: boolean
   mistral: boolean
   openai: boolean
+  /** Exact model access, not merely access to gpt-mini. Absent = unavailable. */
+  openaiLuna?: boolean
+  openaiFull?: boolean
   /** Terra vision réellement accessible : BYOK OpenAI, ou clé serveur hors
       trial et famille gpt-full autorisée. Plus stricte que le chat OpenAI. */
   openaiVision: boolean
@@ -117,6 +122,9 @@ export interface RouteInput {
 
 export interface RouteDecision {
   provider: AIProvider
+  /** Explicit text choice; never changes the separate Terra vision default. */
+  textModel?: string
+  personalTools?: boolean
   /** Contrat d'exécution explicite : le hook ne doit jamais reconstruire le
       choix multimodal depuis les flags après la décision pure. */
   usesOpenAIVision: boolean

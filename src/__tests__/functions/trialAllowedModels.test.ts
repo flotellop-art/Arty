@@ -22,6 +22,7 @@ describe('parité TRIAL_ALLOWED_MODELS ↔ isModelAllowedInTrial', () => {
     'gemini-3.6-flash',
     'gemini-3.5-flash-lite',
     'gpt-5-mini',
+    'gpt-5.6-luna',
   ])('id réel %s → autorisé en essai', (id) => {
     expect(isModelAllowedInTrial(id)).toBe(true)
   })
@@ -33,6 +34,8 @@ describe('parité TRIAL_ALLOWED_MODELS ↔ isModelAllowedInTrial', () => {
     // Décision vision A5 : un essai sur clé serveur reste chez Claude pour
     // les photos. Seule une clé OpenAI personnelle peut contourner ce verrou.
     'gpt-5.6-terra',
+    'gpt-5.6-sol', 'gpt-6-astra', 'gpt-5.6-luna-mini', 'gpt-5.6-luna-preview',
+    ' gpt-5.6-luna', 'GPT-5.6-LUNA',
     'gpt-5',
     'gemini-2.5-pro',
     'mistral-large-latest',

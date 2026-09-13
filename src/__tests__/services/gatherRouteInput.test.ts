@@ -85,14 +85,14 @@ describe('gatherRouteInput', () => {
     localStorage.setItem('arty-plan-cache', 'subscription')
     localStorage.setItem('arty-allowed-families', JSON.stringify(['claude-haiku', 'gemini-flash', 'mistral-medium']))
     const input = gatherRouteInput(CTX)
-    expect(input.availability).toEqual({ claude: true, gemini: true, mistral: true, openai: false, openaiVision: false })
+    expect(input.availability).toEqual({ claude: true, gemini: true, mistral: true, openai: false, openaiLuna: false, openaiFull: false, openaiVision: false })
   })
 
   it('Pro One-Time ne transforme jamais le cache familles en accès clé-serveur', () => {
     localStorage.setItem('arty-plan-cache', 'pro')
     localStorage.setItem('arty-allowed-families', JSON.stringify(['gemini-flash', 'mistral-medium', 'gpt-full']))
     const input = gatherRouteInput(CTX)
-    expect(input.availability).toEqual({ claude: true, gemini: false, mistral: false, openai: false, openaiVision: false })
+    expect(input.availability).toEqual({ claude: true, gemini: false, mistral: false, openai: false, openaiLuna: false, openaiFull: false, openaiVision: false })
   })
 
   it('essai avec crédits utilise les familles effectives débloquées par le wallet', () => {
@@ -240,16 +240,19 @@ describe('gatherRouteInput', () => {
     expect(d.reason.code).toBe('default_capable')
   })
 
-  // Non-régression BUG 12 via le chemin complet : données privées → Claude,
-  // jamais hybrid/gemini, même avec toutes les familles ouvertes.
-  it('bout-en-bout : « rapport sur mes mails » → Claude (BUG 12)', () => {
+  // Non-régression BUG 12 via le chemin complet : outils privés portables,
+  // sans recherche publique ni hybridation, même avec toutes les familles ouvertes.
+  it('bout-en-bout : « rapport sur mes mails » → Luna avec outils privés (BUG 12)', () => {
     localStorage.setItem('arty-plan-cache', 'subscription')
     localStorage.setItem(
       'arty-allowed-families',
       JSON.stringify(['claude-sonnet', 'gemini-flash', 'gemini-pro', 'mistral-medium', 'gpt-full'])
     )
     const d = resolveRoute(gatherRouteInput({ ...CTX, originalText: 'Fais un rapport sur mes mails' }))
-    expect(d.provider).toBe('claude')
+    expect(d.provider).toBe('openai')
+    expect(d.textModel).toBe('gpt-5.6-luna')
+    expect(d.personalTools).toBe(true)
+    expect(d.reason.code).toBe('luna_personal_tools')
     expect(d.needsHybrid).toBe(false)
     expect(d.webSearch).toBe(false)
   })

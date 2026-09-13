@@ -47,30 +47,37 @@ function availability(plan: string | null, creditsCoverPremium = false, trialRem
 }
 
 describe('getProviderAvailability', () => {
+  it.each(['free', 'trial'])('opens only Luna during a known active %s trial', plan => {
+    setFamilies(['claude-haiku'])
+    expect(availability(plan, false, 30)).toMatchObject({ openai: true, openaiLuna: true, openaiFull: false, openaiVision: false })
+    for (const remaining of [0, -1, 31, 1.5, NaN, null]) {
+      expect(availability(plan, false, remaining).openaiLuna).toBe(false)
+    }
+  })
   it('sans BYOK ni cache familles → BYOK-only historique (tout fermé sauf Claude)', () => {
-    expect(availability('subscription')).toEqual({ claude: true, gemini: false, mistral: false, openai: false, openaiVision: false })
+    expect(availability('subscription')).toEqual({ claude: true, gemini: false, mistral: false, openai: false, openaiVision: false, openaiLuna: false, openaiFull: false })
   })
 
   it('abonné clé-serveur (familles payantes, zéro BYOK) → tout disponible', () => {
     setFamilies(PAID_FAMILIES)
-    expect(availability('subscription')).toEqual({ claude: true, gemini: true, mistral: true, openai: true, openaiVision: true })
-    expect(availability('vip')).toEqual({ claude: true, gemini: true, mistral: true, openai: true, openaiVision: true })
+    expect(availability('subscription')).toEqual({ claude: true, gemini: true, mistral: true, openai: true, openaiVision: true, openaiLuna: true, openaiFull: true })
+    expect(availability('vip')).toEqual({ claude: true, gemini: true, mistral: true, openai: true, openaiVision: true, openaiLuna: true, openaiFull: true })
   })
 
   it('free/essai sans crédits → familles serveur fermées, même avec un cache payé obsolète', () => {
     setFamilies(PAID_FAMILIES)
-    expect(availability('free')).toEqual({ claude: true, gemini: false, mistral: false, openai: false, openaiVision: false })
-    expect(availability('trial')).toEqual({ claude: true, gemini: false, mistral: false, openai: false, openaiVision: false })
+    expect(availability('free')).toEqual({ claude: true, gemini: false, mistral: false, openai: false, openaiVision: false, openaiLuna: false, openaiFull: false })
+    expect(availability('trial')).toEqual({ claude: true, gemini: false, mistral: false, openai: false, openaiVision: false, openaiLuna: false, openaiFull: false })
   })
 
   it('free avec wallet mais état trial inconnu → chat disponible, vision fermée', () => {
     setFamilies(PAID_FAMILIES)
-    expect(availability('free', true)).toEqual({ claude: true, gemini: true, mistral: true, openai: true, openaiVision: false })
+    expect(availability('free', true)).toEqual({ claude: true, gemini: true, mistral: true, openai: true, openaiVision: false, openaiLuna: false, openaiFull: false })
   })
 
   it('essai actif avec crédits → chat disponible, vision serveur fermée', () => {
     setFamilies(PAID_FAMILIES)
-    expect(availability('trial', true, 5)).toEqual({ claude: true, gemini: true, mistral: true, openai: true, openaiVision: false })
+    expect(availability('trial', true, 5)).toEqual({ claude: true, gemini: true, mistral: true, openai: true, openaiVision: false, openaiLuna: true, openaiFull: false })
     // Cas client réel : subscription/status normalise `trial` en `free`.
     expect(availability('free', true, 5).openaiVision).toBe(false)
   })
@@ -87,24 +94,24 @@ describe('getProviderAvailability', () => {
 
   it('Pro One-Time reste BYOK-only, même si le cache contient toutes les familles', () => {
     setFamilies(PAID_FAMILIES)
-    expect(availability('pro', true)).toEqual({ claude: true, gemini: false, mistral: false, openai: false, openaiVision: false })
+    expect(availability('pro', true)).toEqual({ claude: true, gemini: false, mistral: false, openai: false, openaiVision: false, openaiLuna: false, openaiFull: false })
   })
 
   it('plan inconnu échoue fermé, même si le cache contient toutes les familles', () => {
     setFamilies(PAID_FAMILIES)
-    expect(availability(null, true)).toEqual({ claude: true, gemini: false, mistral: false, openai: false, openaiVision: false })
+    expect(availability(null, true)).toEqual({ claude: true, gemini: false, mistral: false, openai: false, openaiVision: false, openaiLuna: false, openaiFull: false })
   })
 
   it('clé BYOK présente → provider ouvert indépendamment du plan serveur', () => {
     setFamilies(['claude-haiku'])
     mockGemini.mockReturnValue('byok-key')
     mockOpenAI.mockReturnValue('byok-openai')
-    expect(availability('trial', false, 12)).toMatchObject({ gemini: true, openai: true, openaiVision: true })
+    expect(availability('trial', false, 12)).toMatchObject({ gemini: true, openai: true, openaiVision: true, openaiLuna: true, openaiFull: true })
   })
 
   it('cache corrompu → repli BYOK-only, pas de crash', () => {
     localStorage.setItem('arty-allowed-families', '{pas-un-tableau')
-    expect(availability('subscription')).toEqual({ claude: true, gemini: false, mistral: false, openai: false, openaiVision: false })
+    expect(availability('subscription')).toEqual({ claude: true, gemini: false, mistral: false, openai: false, openaiVision: false, openaiLuna: false, openaiFull: false })
     localStorage.setItem('arty-allowed-families', '"string"')
     expect(availability('subscription').gemini).toBe(false)
   })
@@ -139,10 +146,10 @@ describe('abonné clé-serveur en Auto (F-14 — toutes clés BYOK null)', () =>
   const SUB: PlanContext = { plan: 'subscription', isPro: false, creditsCoverPremium: false }
   beforeEach(() => setFamilies(PAID_FAMILIES))
 
-  it('question factuelle → Gemini (plus jamais 100 % Claude)', () => {
+  it('question factuelle → Luna', () => {
     const d = route('Explique-moi la loi de Moore', SUB)
-    expect(d.provider).toBe('gemini')
-    expect(d.reason.code).toBe('default_capable')
+    expect(d.provider).toBe('openai')
+    expect(d.reason.code).toBe('luna_everyday')
   })
 
   it('comparatif → hybride (recherche Gemini + rédaction Claude)', () => {
@@ -150,23 +157,24 @@ describe('abonné clé-serveur en Auto (F-14 — toutes clés BYOK null)', () =>
     expect(d.provider).toBe('hybrid')
   })
 
-  it('« merci » → Mistral (chemin rapide)', () => {
+  it('« merci » → Luna', () => {
     const d = route('merci beaucoup', SUB)
-    expect(d.provider).toBe('mistral')
-    expect(d.reason.code).toBe('trivial_chat')
+    expect(d.provider).toBe('openai')
+    expect(d.reason.code).toBe('luna_everyday')
   })
 
-  it('« mes mails » → Claude (BUG 12, inchangé)', () => {
+  it('« mes mails » → Luna portable sans web', () => {
     const d = route('Montre mes emails non lus', SUB)
-    expect(d.provider).toBe('claude')
-    expect(d.reason.code).toBe('private_data')
+    expect(d.provider).toBe('openai')
+    expect(d.reason.code).toBe('luna_personal_tools')
+    expect(d.webSearch).toBe(false)
   })
 
   // BUG 58 — le défaut reste le modèle CAPABLE (Gemini + recherche web),
   // jamais un repli cheap-first.
   it('non-régression BUG 58 : défaut = modèle capable', () => {
     const d = route('Quels sont les patchs Cloudflare Workers de juillet 2026 ?', SUB)
-    expect(d.provider).toBe('gemini')
+    expect(d.provider).toBe('openai')
     expect(d.webSearch).toBe(true)
   })
 })

@@ -1,0 +1,121 @@
+{
+  "date": "2026-09-13",
+  "functionalCommit": "190eb364c898870a7f502b6b65fed14438872a58",
+  "testAssertionsCommit": "2e51aa95d81ae79f82514d81a9f93435a79af14e",
+  "device": "OnePlus 12R",
+  "application": {
+    "packageName": "com.arty.app",
+    "versionCode": 110,
+    "versionName": "1.0.109",
+    "bytes": 4481395,
+    "sha256": "5ba4e8b43c406be502d5ba92648dbb2e04de100b2673e2905af6fff07530aa8c",
+    "signerSha256": "2656e001a8bcbb6504bbbb7a2b6416e6371d21d0b86713d045f5bca22527a2e0",
+    "signatureVerified": true,
+    "androidBuildToolsVersion": "37.0.0",
+    "assetLinks": {
+      "source": "checkout-file",
+      "path": "public/.well-known/assetlinks.json",
+      "sha256": "9f4447c03215c4b7f321ea8deb5cdc6796ad3d606dc44f63cb6f556d33f7e415",
+      "matches": true
+    }
+  },
+  "sameSignerAsPreviouslyInstalled": true,
+  "deviceTrialAccount": false,
+  "productionTrialActivationVerified": false,
+  "firebaseDistribution": false,
+  "restoredTo": "Home, Auto",
+  "cases": [
+    {
+      "busyObserved": true,
+      "detectedDurationMs": 3390.0,
+      "providerReportedModel": "gpt-5.6-luna",
+      "firstIdleCaptureAt": "2026-09-13T19:29:15.088Z",
+      "requestedModel": "gpt-5.6-luna",
+      "id": "t1",
+      "sentAt": "2026-09-13T19:29:11.698Z",
+      "prompt": "En deux phrases, donne-moi une idee pour organiser ma journee."
+    },
+    {
+      "busyObserved": true,
+      "detectedDurationMs": 6583.0,
+      "providerReportedModel": "gpt-5.6-luna",
+      "firstIdleCaptureAt": "2026-09-13T19:30:35.709Z",
+      "requestedModel": "gpt-5.6-luna",
+      "id": "t2",
+      "sentAt": "2026-09-13T19:30:29.126Z",
+      "prompt": "Recherche le jour du lancement de Europa Clipper et cite la NASA. Deux phrases."
+    },
+    {
+      "busyObserved": true,
+      "detectedDurationMs": 5008.0,
+      "providerReportedModel": "gpt-5.6-luna",
+      "firstIdleCaptureAt": "2026-09-13T19:31:33.140Z",
+      "requestedModel": "gpt-5.6-luna",
+      "id": "t3",
+      "sentAt": "2026-09-13T19:31:28.132Z",
+      "prompt": "Lis mon agenda et indique seulement le nombre de rendez-vous pour demain. Ne modifie rien."
+    },
+    {
+      "busyObserved": true,
+      "detectedDurationMs": 4988.0,
+      "providerReportedModel": "gpt-5.6-luna",
+      "firstIdleCaptureAt": "2026-09-13T19:32:28.308Z",
+      "requestedModel": "gpt-5.6-luna",
+      "id": "t4",
+      "sentAt": "2026-09-13T19:32:23.320Z",
+      "prompt": "Utilise generate_report avec une ligne 10 euros et une ligne 12 euros. Titre: Test Luna. Affiche le lien."
+    }
+  ],
+  "evidence": [
+    {
+      "sha256": "0b4287084481107338146839a1995d953406412b21698417aab51e852b6b8394",
+      "file": "t1-model-detail-0.png"
+    },
+    {
+      "sha256": "f6580398f3929d7ca45a4c6e60aaea9203913dbcf8ee1975debb88a530c7eb1c",
+      "file": "t1-check-detail-0.png"
+    },
+    {
+      "sha256": "ec5af754bf7d8a4bae2de613d8038aaea7ca4f6921388e1eb176b6e5350c9e1b",
+      "file": "t2-attribution-0.png"
+    },
+    {
+      "sha256": "1687d982165fd24cad93fbbeb008e065c98e356e9b9b0f4eca27fe761b1e89ed",
+      "file": "t3-attribution-0.png"
+    },
+    {
+      "sha256": "8e776168bafb355d6acf97557111c9173baad1a0ebe31cc5060303d153e91196",
+      "file": "t4-model-confirmed-0.png"
+    },
+    {
+      "sha256": "b3403b1a299d2aea560f6baeb228374208a6ec64ce2141b21124d8c51793b80e",
+      "file": "t4-report-reopened-0.png"
+    },
+    {
+      "sha256": "e8328af525f7d585cef563db63c69b0d31ba83502a7664cd267887396cff1824",
+      "file": "final-home-0.png"
+    }
+  ],
+  "method": "One attempt per fresh Auto conversation. Durations from send to first idle screenshot, sampled about every 1.6 seconds. Private screenshots remain local.",
+  "limitations": [
+    "Owner phone account is not a trial-account test.",
+    "Calendar count was not independently checked against an export.",
+    "Full fact-check was unavailable on t1, partial 0/5 on t2, partial 0/2 on t4.",
+    "t4 displayed an unrelated Luna Capital search card; generated report link still opened twice.",
+    "Native API origin remains production; local D1 and preview do not prove production trial activation."
+  ],
+  "validation": {
+    "d1Quota": "Google and email: 30 served, 31st denied; refunds persisted; simulated upstream and authenticated identity",
+    "viteBuild": "passed",
+    "googleSourceScope": "passed",
+    "sourceTypecheck": "passed",
+    "googleAndroidScope": "passed",
+    "ciStatus": "success: verify-app (typecheck, tests with coverage, build), verify-android, verify-growth-orchestrator; tested commit 2e51aa95d81ae79f82514d81a9f93435a79af14e",
+    "localFullSuite": "413 files passed; 6093 tests passed; 1 skipped; 1001.24 seconds; --maxWorkers=2 --testTimeout=15000",
+    "routeAssertions": "22 passed",
+    "ciRun": "https://github.com/flotellop-art/Arty/actions/runs/34778325397",
+    "androidReleaseBuild": "passed",
+    "localFullSuiteSha256": "29e0988616f6237b6cd01728d1e5b05e28eec30e618a8993e7048f9b83acb597",
+    "ciLogSha256": "e3f4a11dfffef776c05e60923f155250d4f54b4bc99a77fb1a1bfa84e45b0a35"
+  }
+}

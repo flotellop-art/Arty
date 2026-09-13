@@ -11,7 +11,7 @@ import { isValidElement } from 'react'
 import { Capacitor } from '@capacitor/core'
 import { isAllowedReportAction } from '../../services/reportActions'
 import { Link } from 'react-router-dom'
-import { storedLocalReportPath } from '../../services/localReportLink'
+const LocalReportResolver = createContext<((href: string) => string | null) | undefined>(undefined)
 
 // Model/public Markdown never grants access to private local file IDs.
 function UnavailableImage() {
@@ -45,10 +45,11 @@ function MarkdownLink({
   children: ReactNode
   className?: string
 }) {
-  const reportPath = href ? storedLocalReportPath(href) : null
+  const resolveReport = useContext(LocalReportResolver)
+  const reportPath = href ? resolveReport?.(href) : null
   if (reportPath) {
     return <Link to={reportPath} className={className} onClick={(event) => {
-      if (!href || storedLocalReportPath(href) !== reportPath) event.preventDefault()
+      if (!href || resolveReport?.(href) !== reportPath) event.preventDefault()
     }}>{children}</Link>
   }
   const openNative = (event: MouseEvent<HTMLAnchorElement>) => {
@@ -134,6 +135,8 @@ interface MarkdownRendererProps {
   /** Whole-output provenance must not be dropped by a secondary fragment copy. */
   disableFragmentCopy?: boolean
   inertActions?: boolean
+  /** Only private callers provide this capability; public shares have none. */
+  resolveLocalReportPath?: (href: string) => string | null
 }
 const DisableFragmentCopy = createContext(false)
 
@@ -349,8 +352,9 @@ const historicalComponents: Components = {
 }
 const inertActionComponents: Components = { ...components, button: ({ children }) => <span>{children}</span> }
 
-export const MarkdownRenderer = memo(function MarkdownRenderer({ content, historical = false, disableFragmentCopy = false, inertActions = false }: MarkdownRendererProps) {
+export const MarkdownRenderer = memo(function MarkdownRenderer({ content, historical = false, disableFragmentCopy = false, inertActions = false, resolveLocalReportPath }: MarkdownRendererProps) {
   return (
+    <LocalReportResolver.Provider value={resolveLocalReportPath}>
     <DisableFragmentCopy.Provider value={disableFragmentCopy}>
     <div className="max-w-none text-sm text-theme-ink/90 leading-relaxed report-content">
       {/* Ordre des plugins IMPÉRATIF : highlight AVANT sanitize, pour que les
@@ -363,5 +367,6 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({ content, histor
       </ReactMarkdown>
     </div>
     </DisableFragmentCopy.Provider>
+    </LocalReportResolver.Provider>
   )
 })

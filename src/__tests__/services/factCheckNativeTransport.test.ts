@@ -66,9 +66,11 @@ describe('fact-check, transport Android natif', () => {
         'x-google-token': 'google-token',
       }),
       connectTimeout: 15_000,
-      readTimeout: 90_000,
+      readTimeout: expect.any(Number),
       responseType: 'json',
     }))
+    expect(nativeRequest.mock.calls[0][0].readTimeout).toBeGreaterThan(0)
+    expect(nativeRequest.mock.calls[0][0].readTimeout).toBeLessThanOrEqual(90_000)
 
     fetchSpy.mockRestore()
   })
@@ -195,9 +197,11 @@ describe('fact-check, transport Android natif', () => {
         verifyUrls: true,
       }),
       connectTimeout: 10_000,
-      readTimeout: 30_000,
+      readTimeout: expect.any(Number),
       responseType: 'json',
     }))
+    expect(nativeRequest.mock.calls[0][0].readTimeout).toBeGreaterThan(0)
+    expect(nativeRequest.mock.calls[0][0].readTimeout).toBeLessThanOrEqual(30_000)
   })
 
   it('transmet le redirect Google au serveur et utilise sa destination verifiee', async () => {

@@ -27,6 +27,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { hasPersonalKey } from '../providerLock'
 import type { ProviderAvailability } from './types'
+import { hasActiveLunaTrial } from '../lunaTrialAccess'
 
 export interface ProviderAccessContext {
   plan: string | null
@@ -59,6 +60,7 @@ export function getProviderAvailability(context: ProviderAccessContext): Provide
   const serverAllows = (...fams: string[]) =>
     canUseServerKey && fams.some((f) => families.includes(f))
   const openaiByok = hasPersonalKey('openai')
+  const lunaTrial = hasActiveLunaTrial(context.plan, context.trialRemaining)
   // Le cache plan normalise l'essai en `free`. `null` est ambigu : il peut
   // signifier « aucun essai » OU « initTrial a échoué ». Comme le serveur
   // débite l'essai avant de refuser Terra, seule la preuve explicite `0`
@@ -73,7 +75,9 @@ export function getProviderAvailability(context: ProviderAccessContext): Provide
     claude: true,
     gemini: hasPersonalKey('gemini') || serverAllows('gemini-flash', 'gemini-pro'),
     mistral: hasPersonalKey('mistral') || serverAllows('mistral-medium'),
-    openai: openaiByok || serverAllows('gpt-mini', 'gpt-full'),
+    openai: openaiByok || lunaTrial || serverAllows('gpt-mini', 'gpt-full'),
+    openaiLuna: openaiByok || lunaTrial || (canUseVisionServerKey && families.includes('gpt-full')),
+    openaiFull: openaiByok || (canUseVisionServerKey && families.includes('gpt-full')),
     // Décision A5 : le trial conserve Claude pour les photos tant que Terra
     // n'est pas dans TRIAL_ALLOWED_MODELS. Une clé OpenAI personnelle reste
     // utilisable : elle ne passe pas par l'allowlist ni la facture serveur.

@@ -21,6 +21,7 @@ import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { quotedStrings } from './lib/quotedStrings.mjs'
+import { javascriptStrings } from './lib/javascriptStrings.mjs'
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url))
 
@@ -315,7 +316,8 @@ check('bundle APK synchronisé : scope Calendar exact et à jour', () => {
   const offenders = []
   for (const file of walk(androidAssetsRoot)) {
     const rel = relative(ROOT, file).replaceAll('\\', '/')
-    for (const literal of quotedStrings(readFileSync(file, 'utf8'))) {
+    const extract = /\.m?js$/.test(file) ? javascriptStrings : quotedStrings
+    for (const literal of extract(readFileSync(file, 'utf8'))) {
       if (literal === 'https://www.googleapis.com/auth/calendar.events.owned') currentScopeFound = true
       if (
         literal === 'https://www.googleapis.com/auth/calendar'

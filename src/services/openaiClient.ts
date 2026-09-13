@@ -426,6 +426,9 @@ async function streamOnce(
       if (parsed?.error === 'trial_model_restricted') {
         throw new Error('trial_model_restricted')
       }
+      if (parsed?.error === 'trial_request_limit') {
+        throw new Error(i18n.t('errors.trialRequestLimit'))
+      }
       // Terrain 10 août 2026 : « Erreur OpenAI (400) » sur un simple « Salut ».
       // La clé serveur à sec est signalée par OpenAI en 400/429 selon le cas —
       // sans cette catégorie, impossible de distinguer une panne d'exploitation

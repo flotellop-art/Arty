@@ -559,6 +559,7 @@
   },
   "chat": {
     "modelVariant": {
+      "lunaTrial": "Luna est inclus dans les 30 messages de l’essai. Les étapes nécessaires aux outils sont aussi décomptées. Terra nécessite un accès payant ou une clé personnelle.",
       "label": "Modèle de conversation",
       "default": "Modèle par défaut",
       "hint": "Ce choix s’applique au chat et aux outils personnels disponibles. Les documents et le mode Europe suivent leurs règles dédiées."
@@ -635,6 +636,8 @@
       "fallback": "Modèle sélectionné automatiquement selon le contenu de ta requête."
     },
     "routeReason": {
+      "luna_everyday": "Luna répond aux discussions courantes et aux recherches factuelles simples.",
+      "luna_personal_tools": "Luna utilise les outils personnels disponibles, sans recherche web publique.",
       "manual_selection": "Tu as choisi ce modèle manuellement.",
       "eu_only": "Conversation en mode Europe : Mistral (serveurs en France) est le seul modèle utilisé — tes données ne quittent pas l'Europe.",
       "files_to_claude": "Ce fichier n'est pas pris en charge par le modèle choisi dans Arty : Claude est utilisé pour l'analyser.",
@@ -1003,7 +1006,8 @@
       "cancelled": "Lecture du document annulée."
     },
     "mistralTimeout": "Mistral n'a pas répondu à temps (60 s) — réseau lent ou service surchargé. Réessaie.",
-    "trialModelRestricted": "Ce modèle n'est pas disponible sans crédits — l'accès gratuit utilise Haiku.",
+    "trialModelRestricted": "Ce modèle n'est pas inclus dans l'essai. Choisis Luna ou Haiku dans le sélecteur.",
+    "trialRequestLimit": "Ce contenu est trop volumineux pour l'essai. Réduis la demande. Les actions déjà effectuées sont conservées.",
     "euPlanRequired": "La conversation EU nécessite un accès Mistral : abonnement, crédits suffisants ou clé API personnelle. Aucune donnée n'a été envoyée hors Europe."
   },
   "sidebar": {
