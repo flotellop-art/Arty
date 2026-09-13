@@ -1595,7 +1595,7 @@ async function runLatestFactCheck(
   // Document analysis is read-only, including post-processing. In particular,
   // link recovery runs even when mode=off: never send document-derived URLs
   // or text into that public search pipeline through another caller.
-  if (isDocumentConversation(conv)) {
+  if (isDocumentConversation(conv) || conv.hasGoogleData) {
     clearSearchContext(conversationId)
     return
   }

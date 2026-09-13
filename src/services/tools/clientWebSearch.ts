@@ -54,7 +54,7 @@ export async function executeClientWebSearch(
   args: Record<string, unknown>,
   contextScope?: string,
   externalSignal?: AbortSignal,
-): Promise<{ result: string }> {
+): Promise<{ result: string; sourceUrls?: string[] }> {
   const query = String(args.query || '').trim()
   if (!query) return { result: 'Erreur: paramètre `query` manquant.' }
   // Défaut 5 → 8 : sur les requêtes type rapport/comparatif, 5 snippets ne
@@ -112,6 +112,9 @@ export async function executeClientWebSearch(
         bySource: Record<string, { answer?: string; results: Array<{ title: string; url: string; snippet: string }> }>
       }
 
+  const sourceUrls = ('bySource' in data ? Object.values(data.bySource).flatMap(entry => entry.results) : data.results ?? [])
+    .map(result => result.url).filter(url => typeof url === 'string' && /^https?:\/\//i.test(url))
+
   // Notifie l'UI du provider qui a répondu (Linkup ou Brave).
   try {
     window.dispatchEvent(new CustomEvent('arty-search-used', { detail: { provider: data.provider } }))
@@ -144,7 +147,9 @@ export async function executeClientWebSearch(
     const sections: string[] = []
     for (const [source, entry] of Object.entries(data.bySource)) {
       if (entry.answer) {
-        sections.push(`### Chez ${source}\n${clip(entry.answer, MAX_ANSWER_CHARS)}`)
+        const refs = entry.results.slice(0, maxResults)
+          .map((r, i) => `[${i + 1}] ${r.title} — ${r.url}`).join('\n')
+        sections.push(`### Chez ${source}\n${clip(entry.answer, MAX_ANSWER_CHARS)}${refs ? `\n\nSources:\n${refs}` : ''}`)
       } else if (entry.results.length > 0) {
         const refs = entry.results
           .map((r) => `- ${r.title}\n  ${clip(r.snippet, MAX_SNIPPET_CHARS)}\n  Source: ${r.url}`)
@@ -155,6 +160,7 @@ export async function executeClientWebSearch(
       }
     }
     return {
+      sourceUrls,
       result:
         `Recherche multi-source (${data.provider}) pour "${query}" :\n\n${sections.join('\n\n')}\n\n` +
         `IMPORTANT : chaque section ci-dessus correspond À UNE SOURCE PRÉCISE. NE MÉLANGE JAMAIS les données entre sources. Si une source dit X et une autre Y, mentionne les deux. Cite via [Brico Dépôt: prix X], [Cedeo: prix Y], etc.`,
@@ -168,8 +174,9 @@ export async function executeClientWebSearch(
 
   if (data.answer) {
     return {
+      sourceUrls,
       result:
-        `Réponse vérifiée (${data.provider}) à "${query}" :\n\n${clip(data.answer, MAX_ANSWER_CHARS)}\n\n` +
+        `Synthèse de recherche (${data.provider}) à "${query}" :\n\n${clip(data.answer, MAX_ANSWER_CHARS)}\n\n` +
         `IMPORTANT : reprends ces données telles quelles, ne devine pas, cite les sources via [1], [2], etc.${sourcesBlock}`,
     }
   }
@@ -181,6 +188,7 @@ export async function executeClientWebSearch(
     .map((r, i) => `[${i + 1}] **${r.title}**\n${clip(r.snippet, MAX_SNIPPET_CHARS)}\nSource: ${r.url}`)
     .join('\n\n')
   return {
+    sourceUrls,
     result:
       `Résultats de recherche (${data.provider}) pour "${query}" :\n\n${formatted}\n\n` +
       `IMPORTANT : ne devine pas, ne mélange pas les sources, cite via [1], [2], etc.`,

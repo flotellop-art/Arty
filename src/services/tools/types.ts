@@ -16,6 +16,8 @@ export interface ToolResult {
 
 /** Local authority, never taken from tool arguments or sent to a provider. */
 export interface ToolExecutionContext {
+  memory?: { readonly readReceipts: Map<string, string> }
+  invocation?: import('../invocationAuthority').InvocationAuthority
   imageGeneration?: { readonly signal: AbortSignal; assertCurrent(): void }
   calendar?: { readonly scope: CalendarContext | null; readonly signal?: AbortSignal }
 }

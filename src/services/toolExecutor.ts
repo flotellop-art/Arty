@@ -45,6 +45,7 @@ export function createToolExecutor(
         result: 'Ce profil Google public ne donne pas à Arty un accès global à Drive ou Contacts.',
       }
     }
+    context?.invocation?.assertCurrent()
     const handler = handlers[name]
     if (!handler) return { result: `Outil inconnu: ${name}` }
     try {
@@ -52,7 +53,7 @@ export function createToolExecutor(
     } catch (err) {
       // Image scope failures must reach the invocation owner for teardown;
       // returning them as model text would allow the tool loop to continue.
-      if (context?.imageGeneration) throw err
+      if (context?.imageGeneration || (err instanceof Error && err.name === 'AbortError')) throw err
       return { result: `Erreur: ${err instanceof Error ? err.message : 'inconnue'}` }
     }
   }

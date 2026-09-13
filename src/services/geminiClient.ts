@@ -13,6 +13,9 @@ import type { RouteReason } from './router/types'
 import { setSearchContext, type SearchContext } from './factChecker'
 import type { ReflectionLevel } from './reflectionLevel'
 import i18n from '../i18n'
+import { captureInvocationAuthority } from './invocationAuthority'
+import type { ToolDispatcher } from './tools/types'
+import { buildPortableTools, executePortableTool, toolAttemptKey, MAX_PORTABLE_TOOL_CALLS, MAX_PORTABLE_RESULT_CHARS, PORTABLE_TOOL_RULES, type PersonalToolOptions } from './tools/personalToolPolicy'
 
 // Modèle Flash par défaut du CHAT (gros volume). C1 (CDC veille 2026-07,
 // décision Florent 18/07) : gemini-2.5-flash est DÉPRÉCIÉ par Google — arrêt
@@ -267,7 +270,9 @@ export function resolveGeminiResearchThinkingLevel(
   return 'medium'
 }
 
-interface GeminiStreamOptions extends ModelInvocationOptions {
+interface GeminiStreamOptions extends ModelInvocationOptions, PersonalToolOptions {
+  onToolCall?: ToolDispatcher
+  webSearch?: boolean
   /** User-authored text only; fetched reports must not authorize more video reads. */
   videoSourceText?: string
   systemPrompt?: string
@@ -321,12 +326,14 @@ async function runGeminiStream(
   // au début pour que l'event "model-used", la requête, et le tracking
   // de coût remontent tous le même nom.
   const model = options?.model || geminiChatModel()
+  const authority = captureInvocationAuthority({ signal: controller.signal, assertCurrent: () => options?.assertRequestCurrent?.() })
+  const assertCurrent = () => authority.assertCurrent()
   const receipt = captureAiEntitlementReceipt(!apiKey || apiKey === 'server-provided', controller.signal, options?.assertRequestCurrent)
   const reportModel = createModelReporter(options, model)
   try {
-    options?.assertRequestCurrent?.()
+    assertCurrent()
     // Convert messages to Gemini format
-    type GeminiPart = { text: string } | { fileData: { fileUri: string } }
+    type GeminiPart = Record<string, any>
     const contents: Array<{ role: string; parts: GeminiPart[] }> = messages.map((m) => ({
       role: m.role === 'assistant' ? 'model' : 'user',
       parts: [{ text: m.content }],
@@ -363,12 +370,21 @@ async function runGeminiStream(
     const defaultTools = isMapQuery
       ? [{ google_maps: {} }]
       : [{ google_search: {} }, { url_context: {} }]
-    const selectedTools = options?.comparisonTextOnly ? [] : options?.tools ?? defaultTools
+    const privateContext = !!(options?.personalTools || options?.privateContext)
+    const custom = !hasVideo && !options?.comparisonTextOnly && options?.tools === undefined && options?.onToolCall && (!isMapQuery || privateContext)
+      ? buildPortableTools(options) : []
+    const native = privateContext || options?.webSearch === false ? [] : defaultTools
+    const selectedTools = options?.comparisonTextOnly ? [] : options?.tools ?? [
+      ...native,
+      ...(custom.length ? [{ functionDeclarations: custom.map(tool => ({
+        name: tool.name, description: tool.description, parametersJsonSchema: tool.input_schema,
+      })) }] : []),
+    ]
     const tools = hasVideo || selectedTools.length === 0 ? undefined : selectedTools
-
-    const locationContext = options?.comparisonTextOnly ? '' : await buildLocationContext(lastMessage)
-    options?.assertRequestCurrent?.()
-    const systemText = (options?.systemPrompt || GEMINI_SYSTEM) + locationContext
+    const combinesTools = custom.length > 0 && native.length > 0
+    const locationContext = options?.comparisonTextOnly || privateContext ? '' : await buildLocationContext(lastMessage)
+    assertCurrent()
+    const systemText = (options?.systemPrompt || GEMINI_SYSTEM) + locationContext + (custom.length ? PORTABLE_TOOL_RULES : '')
 
     const reflectionLevel = options?.reflectionLevel ?? 'auto'
     const thinkingBudget = resolveGeminiThinkingBudget(lastMessage, isMapQuery, reflectionLevel)
@@ -389,6 +405,11 @@ async function runGeminiStream(
       ...(options?.routeReason ? { reason: options.routeReason } : {}),
     })
 
+    let totalCalls = 0, resultChars = 0
+    const executedIds = new Set<string>()
+    const attemptedWrites = new Set<string>()
+    for (let iteration = 0; iteration < 8; iteration++) {
+    assertCurrent()
     const requestBody = {
       model,
       stream: true,
@@ -403,10 +424,12 @@ async function runGeminiStream(
         thinkingLevel,
       }),
       tools,
+      ...(combinesTools ? { toolConfig: { includeServerSideToolInvocations: true, functionCallingConfig: { mode: 'VALIDATED' } } } : {}),
     }
 
     // C9 : headers factorisés (BYOK Bearer + garde server-provided + google-token/trial).
-    const headers = await buildAiHeaders({ byokKey: apiKey, auth: 'bearer', assertRequestCurrent: options?.assertRequestCurrent })
+    const headers = await buildAiHeaders({ byokKey: apiKey, auth: 'bearer', assertRequestCurrent: assertCurrent })
+    assertCurrent()
     controller.signal.throwIfAborted()
 
     const response = await fetchWithTimeout(
@@ -415,7 +438,7 @@ async function runGeminiStream(
       GEMINI_TIMEOUT_MS,
       controller.signal,
     )
-    options?.assertRequestCurrent?.()
+    assertCurrent()
     receipt.updateTrial(response)
 
     // Le proxy peut appliquer le killswitch global ou le fallback 3.6 → 3.5.
@@ -491,68 +514,108 @@ async function runGeminiStream(
     let emittedText = false
     let blockReason = ''
     let finishReason = ''
+    const modelParts: GeminiPart[] = []
+    let responseChars = 0
+    const consumeLine = (line: string) => {
+      if (!line.startsWith('data:')) return
+      const jsonStr = line.slice(5).trim()
+      if (!jsonStr || jsonStr === '[DONE]') return
+      let data: Record<string, any>
+      try { data = JSON.parse(jsonStr) } catch { throw new Error('Flux Gemini incomplet : aucune action effectuée.') }
+      if (data.error) throw new Error('Flux Gemini interrompu : aucune action effectuée.')
+      if (validModelId(data.modelVersion)) {
+        servedModel = data.modelVersion
+        reportModel({ model: servedModel, provider: 'gemini', source: 'provider', confirmed: true,
+          background: options?.background, conversationId: options?.conversationId, reflecting: thinkingLevel === 'high',
+          ...(options?.routeReason ? { reason: options.routeReason } : {}) })
+      }
+      const searchContext = extractGeminiSearchContext(data, lastMessage)
+      if (searchContext && !privateContext) setSearchContext(searchContext, options?.conversationId)
+      const parts = data.candidates?.[0]?.content?.parts
+      if (Array.isArray(parts)) for (const part of parts) {
+        // Keep opaque signatures and native toolCall/toolResponse parts at their exact positions.
+        modelParts.push(part)
+        if (typeof part.text === 'string' && part.text && !part.thought) {
+          emittedText = true
+          onToken(part.text)
+        }
+      }
+      if (data.promptFeedback?.blockReason) blockReason = String(data.promptFeedback.blockReason)
+      if (data.candidates?.[0]?.finishReason) finishReason = String(data.candidates[0].finishReason)
+      const usage = data.usageMetadata
+      if (usage) {
+        promptTokens = usage.promptTokenCount || promptTokens
+        candidatesTokens = usage.candidatesTokenCount || candidatesTokens
+        thoughtsTokens = usage.thoughtsTokenCount || thoughtsTokens
+      }
+    }
     try {
       while (true) {
         const { done, value } = await reader.read()
-        options?.assertRequestCurrent?.()
-        if (done) break
-
-        buffer += decoder.decode(value, { stream: true })
+        assertCurrent()
+        if (done) { buffer += decoder.decode(); break }
+        const chunk = decoder.decode(value, { stream: true })
+        responseChars += chunk.length
+        if (responseChars > 2_000_000) throw new Error('Réponse Gemini trop volumineuse.')
+        buffer += chunk
         const lines = buffer.split('\n')
         buffer = lines.pop() || ''
-
-        for (const line of lines) {
-          if (!line.startsWith('data: ')) continue
-          const jsonStr = line.slice(6).trim()
-          if (!jsonStr || jsonStr === '[DONE]') continue
-
-          try {
-            const data = JSON.parse(jsonStr)
-            if (validModelId(data.modelVersion)) {
-              servedModel = data.modelVersion
-              reportModel({ model: servedModel, provider: 'gemini', source: 'provider', confirmed: true,
-                background: options?.background, conversationId: options?.conversationId, reflecting: thinkingLevel === 'high',
-                ...(options?.routeReason ? { reason: options.routeReason } : {}) })
-            }
-            const searchContext = extractGeminiSearchContext(data, lastMessage)
-            if (searchContext) setSearchContext(searchContext, options?.conversationId)
-            const text = data.candidates?.[0]?.content?.parts?.[0]?.text
-            if (text) {
-              emittedText = true
-              onToken(text)
-            }
-            // Un tour peut se terminer SANS aucun texte : prompt bloqué
-            // (promptFeedback.blockReason, aucun candidate), filtre de sûreté
-            // ou budget épuisé par le raisonnement (finishReason ≠ STOP).
-            // Sans ces deux captures, onDone() publiait une bulle VIDE et
-            // silencieuse — symptôme terrain du 9 août (classe BUG 61 :
-            // jamais d'état stable invisible). Cf. aussi BUG 59.
-            if (data.promptFeedback?.blockReason) {
-              blockReason = String(data.promptFeedback.blockReason)
-            }
-            const chunkFinish = data.candidates?.[0]?.finishReason
-            if (chunkFinish) finishReason = String(chunkFinish)
-            // Gemini envoie usageMetadata sur chaque chunk avec un cumulé.
-            // On garde la dernière valeur reçue.
-            const usage = data.usageMetadata
-            if (usage) {
-              promptTokens = usage.promptTokenCount || promptTokens
-              candidatesTokens = usage.candidatesTokenCount || candidatesTokens
-              thoughtsTokens = usage.thoughtsTokenCount || thoughtsTokens
-            }
-          } catch {
-            // Skip malformed JSON chunks
-          }
-        }
+        for (const line of lines) consumeLine(line)
       }
+      if (buffer.trim()) consumeLine(buffer)
     } finally {
+      try { await reader.cancel() } catch { /* closed/aborted */ }
       try { reader.releaseLock() } catch { /* already released */ }
     }
+    assertCurrent()
 
     try {
       recordUsage(servedModel, promptTokens, candidatesTokens + thoughtsTokens)
     } catch {
       // Tracking ne doit pas casser la réponse
+    }
+
+    const calls = modelParts.filter(part => part.functionCall).map(part => part.functionCall)
+    if (calls.length) {
+      // Never execute a partial/truncated batch, nor unrequested comparator functions.
+      if (blockReason || finishReason !== 'STOP' || !options?.onToolCall || !custom.length) {
+        throw new Error('Appels d’outils Gemini incomplets ou indisponibles. Aucune action effectuée.')
+      }
+      if (iteration === 7 || totalCalls + calls.length > MAX_PORTABLE_TOOL_CALLS || resultChars >= MAX_PORTABLE_RESULT_CHARS) {
+        throw new Error('Limite des outils atteinte. Les actions déjà confirmées sont conservées.')
+      }
+      // One model batch, then one user batch: signatures and parallel call grouping are preserved.
+      const responses: GeminiPart[] = []
+      for (const call of calls) {
+        assertCurrent()
+        if (typeof call.name !== 'string' || (call.id !== undefined && typeof call.id !== 'string')) {
+          throw new Error('Appel Gemini invalide. Action non exécutée.')
+        }
+        totalCalls++
+        let result: string
+        const write = /^(?:create_|update_|delete_|save_|share$|generate_)/.test(call.name)
+        const fingerprint = toolAttemptKey(call.name, call.args)
+        if ((call.id && executedIds.has(call.id)) || (write && attemptedWrites.has(fingerprint))) {
+          result = 'Action déjà tentée. Aucun nouvel essai automatique ; ne pas annoncer un nouveau succès.'
+        } else {
+          if (call.id) executedIds.add(call.id)
+          if (write) attemptedWrites.add(fingerprint)
+          try {
+            result = await executePortableTool(call.name, call.args ?? {}, custom, options.onToolCall)
+            assertCurrent()
+          } catch (error) {
+            assertCurrent()
+            if (error instanceof Error && error.name === 'AbortError') throw error
+            result = 'Outil échoué ; ne pas réessayer automatiquement une écriture : ' + (error instanceof Error ? error.message : 'erreur')
+          }
+        }
+        resultChars += result.length
+        if (resultChars > MAX_PORTABLE_RESULT_CHARS) throw new Error('Résultats trop volumineux. Les actions déjà effectuées sont conservées.')
+        responses.push({ functionResponse: { name: call.name, ...(call.id ? { id: call.id } : {}), response: { result } } })
+      }
+      assertCurrent()
+      contents.push({ role: 'model', parts: modelParts }, { role: 'user', parts: responses })
+      continue
     }
 
     // Aucun texte reçu = échec, jamais une réponse vide silencieuse. On rend
@@ -566,6 +629,9 @@ async function runGeminiStream(
     }
 
     onDone()
+    return
+    }
+    throw new Error('Limite des outils atteinte.')
   } catch (err) {
     if (err instanceof Error && err.name !== 'AbortError') {
       onError(err)

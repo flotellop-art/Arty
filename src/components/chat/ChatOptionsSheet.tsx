@@ -10,6 +10,8 @@ import { ReflectionControl } from './ReflectionControl'
 import { formatModelName, getModelRegion, getRouteExplanationKey } from '../../services/modelLabels'
 import { usePlanStatus } from '../../hooks/usePlanStatus'
 import { getAutoCheckCountToday, getFactCheckMode } from '../../services/factChecker'
+import { hasChatModelVariants } from '../../services/chatModelPreference'
+import { ChatModelVariantPicker } from './ChatModelVariantPicker'
 
 // Sheet « ⋯ » de la conversation (PR B) — regroupe modèle / style / actions
 // qui occupaient 2 rangées de chips dans ChatTopBar. Composant volontairement
@@ -161,6 +163,9 @@ export function ChatOptionsSheet({
                 </button>
               )
             })}
+            {open && hasChatModelVariants(currentModel) && (
+              <ChatModelVariantPicker key={currentModel} provider={currentModel} locked={isProviderLocked(currentModel)} />
+            )}
             {hasMistralData && (
               <div className="flex gap-2 mt-2 px-3 py-2 rounded-[11px] bg-theme-accent/[0.07] border border-theme-accent/20 text-[11px] leading-relaxed text-theme-muted">
                 <span aria-hidden="true">🛡</span>

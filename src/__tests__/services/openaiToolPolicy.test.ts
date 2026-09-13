@@ -84,3 +84,13 @@ describe('politique d\'outils OpenAI — parité', () => {
     }
   })
 })
+
+
+it('only exposes connected mail tools on explicitly private turns', () => {
+  const mail = { name: 'read_mail', description: 'Read connected mailbox', input_schema: { type: 'object', properties: {} } }
+  const getNames = (personalTools: boolean, extraTools: typeof mail[]) => buildOpenAIToolList({ webSearch: true, personalTools, extraTools }).map(tool => tool.function.name)
+  expect(getNames(false, [mail])).not.toContain('read_mail')
+  expect(getNames(true, [])).not.toContain('read_mail')
+  expect(getNames(true, [mail])).toContain('read_mail')
+  expect(getNames(true, [mail])).not.toContain('fetch_url')
+})

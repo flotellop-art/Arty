@@ -77,12 +77,16 @@ export function resolveRoute(input: RouteInput): RouteDecision {
       overrides.push({ requested: input.selectedModel, applied: 'mistral', reason: { code: 'eu_only' } })
     }
   } else if (isPrivateData) {
+    const manualPersonal = (input.selectedModel === 'gemini' || input.selectedModel === 'openai')
+      && input.availability[input.selectedModel]
+      && !input.hasFiles && !input.hasImages && !input.hasPdf && !input.hasOtherFiles
+      && !input.hasProjectContext && !input.hasOfficeHistory
     // Le contenu privé précède TOUS les carve-outs photo. Sans ce garde, une
     // image jointe à « mes mails » ou à un historique Google pouvait partir
     // chez Mistral/OpenAI avant même d'atteindre la règle private_data.
-    provider = 'claude'
-    reason = { code: 'private_data' }
-    if (input.selectedModel !== 'auto' && input.selectedModel !== 'claude') {
+    provider = manualPersonal ? input.selectedModel as 'gemini' | 'openai' : 'claude'
+    reason = { code: manualPersonal ? 'manual_selection' : 'private_data' }
+    if (!manualPersonal && input.selectedModel !== 'auto' && input.selectedModel !== 'claude') {
       overrides.push({
         requested: input.selectedModel,
         applied: 'claude',

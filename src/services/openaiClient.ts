@@ -9,10 +9,12 @@ import { createModelReporter, type ModelInvocationOptions } from './modelLabels'
 import { TEXT_DEFAULTS } from './modelCatalog'
 import { executeClientWebSearch } from './tools/clientWebSearch'
 import { collectUrlAllowlist, executeFetchUrlTool } from './tools/fetchUrlTool'
-import { buildOpenAIToolList, isToolAllowedForOpenAI } from './tools/openaiToolPolicy'
+import { buildOpenAIToolList } from './tools/openaiToolPolicy'
 import { captureAiEntitlementReceipt } from './aiEntitlementReceipt'
 import { getActiveSessionEpoch, getActiveUserId } from './userSession'
 import type { RouteReason } from './router/types'
+import { captureInvocationAuthority } from './invocationAuthority'
+import { buildPortableTools, executePortableTool, toolAttemptKey, MAX_PORTABLE_TOOL_CALLS, MAX_PORTABLE_RESULT_CHARS, PORTABLE_TOOL_RULES, type PersonalToolOptions } from './tools/personalToolPolicy'
 
 // OpenAI client — deux chemins :
 // 1. BYOK : si l'utilisateur a saisi sa clé (getOpenAIKey) → appel direct
@@ -122,7 +124,7 @@ interface ToolCall {
   function: { name: string; arguments: string }
 }
 
-interface OpenAIOptions extends ModelInvocationOptions {
+interface OpenAIOptions extends ModelInvocationOptions, PersonalToolOptions {
   systemPrompt?: string
   model?: string
   /** Petit budget pour les appels internes structurés (ex. localisation ROI). */
@@ -384,7 +386,7 @@ async function streamOnce(
   // recherche web et la lecture d'URL, elle n'est jamais absente. Le prompt
   // d'outils reste en place — c'est le seul tour concerné.
   let toolsDropped = false
-  if (!response.ok && tools && response.status === 400) {
+  if (!response.ok && tools && !options?.personalTools && response.status === 400) {
     const errText = await response.clone().text().catch(() => '')
     if (/function tools|tool_choice|tools are not supported|reasoning_effort|unsupported parameter.*tool/i.test(errText)) {
       console.warn('[openai] outils refusés par le modèle, nouvel essai sans outils:', errText.slice(0, 160))
@@ -487,6 +489,7 @@ async function streamOnce(
   let promptTokens = 0
   let completionTokens = 0
   let servedModel = ''
+  let finishReason = '', sawDone = false, malformed = false, responseChars = 0
   // Tool calls streamés incrémentalement, accumulés par index.
   const partialToolCalls = new Map<number, { id: string; name: string; args: string }>()
 
@@ -495,26 +498,34 @@ async function streamOnce(
   try {
     while (true) {
       const { done, value } = await reader.read()
-      if (done) break
-
-      buffer += decoder.decode(value, { stream: true })
+      controller.signal.throwIfAborted()
+      options?.assertRequestCurrent?.()
+      if (done && !buffer.trim()) break
+      const chunk = done ? decoder.decode() : decoder.decode(value, { stream: true })
+      responseChars += chunk.length
+      if (responseChars > 2_000_000) throw new Error('Réponse OpenAI trop volumineuse')
+      buffer += chunk
       const lines = buffer.split('\n')
-      buffer = lines.pop() || ''
+      buffer = done ? '' : lines.pop() || ''
 
       for (const line of lines) {
         if (!line.startsWith('data: ')) continue
         const data = line.slice(6).trim()
-        if (!data || data === '[DONE]') continue
+        if (!data) continue
+        if (data === '[DONE]') { sawDone = true; continue }
 
         try {
           const parsed = JSON.parse(data) as {
-            choices?: Array<{ delta?: {
+            error?: unknown
+            choices?: Array<{ finish_reason?: string; delta?: {
               content?: string
               tool_calls?: Array<{ index?: number; id?: string; function?: { name?: string; arguments?: string } }>
             } }>
             usage?: { prompt_tokens?: number; completion_tokens?: number }
             model?: string
           }
+          if (parsed.error) malformed = true
+          if (parsed.choices?.[0]?.finish_reason) finishReason = parsed.choices[0].finish_reason
           const delta = parsed.choices?.[0]?.delta
           if (delta?.content) {
             content += delta.content
@@ -551,14 +562,19 @@ async function streamOnce(
           }
           if (parsed.model) servedModel = parsed.model
         } catch {
-          // Skip malformed chunks
+          malformed = true
         }
       }
+      if (done) break
     }
   } finally {
+    try { await reader.cancel() } catch { /* closed/aborted */ }
     try { reader.releaseLock() } catch { /* already released */ }
   }
 
+  if (partialToolCalls.size > 0 && (malformed || !sawDone || finishReason !== 'tool_calls')) {
+    throw new Error('Appels d’outils OpenAI incomplets. Aucune action effectuée.')
+  }
   const toolCalls: ToolCall[] = []
   for (const [, tc] of partialToolCalls) {
     toolCalls.push({ id: tc.id, function: { name: tc.name, arguments: tc.args } })
@@ -582,8 +598,11 @@ export function sendMessageStream(
 ): AbortController {
   const controller = new AbortController()
 
+  const authority = captureInvocationAuthority({ signal: controller.signal, assertCurrent: () => options?.assertRequestCurrent?.() })
+  const assertCurrent = () => authority.assertCurrent()
   const run = async () => {
     try {
+      assertCurrent()
       // Tools actifs UNIQUEMENT avec un handler (sans lui, un tool_call
       // détecté = onDone sans texte → panneau vide, même piège que le
       // comparateur Mistral) et JAMAIS sur le transport vision : le proxy
@@ -598,7 +617,7 @@ export function sendMessageStream(
       // Décision centrale (routeDecision.webSearch) prioritaire ; fallback
       // heuristique locale pour les appelants qui ne la fournissent pas.
       const webSearchAllowed = options?.webSearch ?? shouldUseWebSearch(lastUserText)
-      let tools = toolsEnabled ? buildOpenAIToolList({ webSearch: webSearchAllowed }) : undefined
+      let tools = toolsEnabled ? buildOpenAIToolList({ ...options, webSearch: webSearchAllowed }) : undefined
 
       // Allowlist des URLs lisibles par fetch_url : celles déjà présentes
       // dans la conversation. Alimentée ensuite par les résultats de
@@ -611,7 +630,7 @@ export function sendMessageStream(
       )
       const fetchUrlCalls = { value: 0 }
 
-      const systemPrompt = (options?.systemPrompt || OPENAI_SYSTEM) + (toolsEnabled ? OPENAI_RULES : '')
+      const systemPrompt = (options?.systemPrompt || OPENAI_SYSTEM) + (toolsEnabled ? OPENAI_RULES + PORTABLE_TOOL_RULES : '')
       let model = options?.model || DEFAULT_MODEL
       // Dispatch OPTIMISTE (pré-envoi) — openaiClient était le SEUL client à
       // ne jamais dispatcher (audit visibilité modèle, F-3) : le badge restait
@@ -630,8 +649,13 @@ export function sendMessageStream(
       // le tour assistant (tool_calls) puis les résultats role:'tool'.
       const apiMessages: ApiMessage[] = buildMessages(messages, systemPrompt)
 
+      const definitions = buildPortableTools(options)
+      const executedIds = new Set<string>(), attemptedWrites = new Set<string>()
+      let totalCalls = 0, resultChars = 0
       for (let iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration++) {
-        const turn = await streamOnce(apiKey, apiMessages, model, tools, onChunk, controller, options)
+        assertCurrent()
+        const turn = await streamOnce(apiKey, apiMessages, model, tools, onChunk, controller, { ...options, assertRequestCurrent: assertCurrent })
+        assertCurrent()
         // Outils refusés par le modèle : ne pas les re-proposer aux tours
         // suivants de ce message (une seule pénalité de requête, pas huit).
         if (turn.toolsDropped) tools = undefined
@@ -665,6 +689,9 @@ export function sendMessageStream(
           return
         }
 
+        if (iteration === MAX_TOOL_ITERATIONS - 1 || totalCalls + turn.toolCalls.length > MAX_PORTABLE_TOOL_CALLS || resultChars >= MAX_PORTABLE_RESULT_CHARS) {
+          throw new Error('Limite des outils atteinte. Les actions déjà confirmées sont conservées.')
+        }
         // Tour assistant porteur des tool_calls, puis un message role:'tool'
         // par résultat — contrat Chat Completions.
         apiMessages.push({
@@ -682,29 +709,40 @@ export function sendMessageStream(
             onDone()
             return
           }
+          assertCurrent()
+          totalCalls++
           try {
             // Garde d'exécution fail-closed : la liste envoyée ne contraint
             // pas ce que le modèle DEMANDE. Un outil hors périmètre OpenAI
             // (agenda, fichiers, WordPress…) est refusé même s'il est
             // parfaitement exécutable côté handler.
-            if (!isToolAllowedForOpenAI(tc.function.name)) {
+            if (!tools?.some(tool => tool.function.name === tc.function.name)) {
               apiMessages.push({
                 role: 'tool',
                 tool_call_id: tc.id,
-                content: `Erreur: l'outil « ${tc.function.name} » n'est pas disponible sur ChatGPT dans Arty. Dis à l'utilisateur que cette action demande le mode Auto ou Claude.`,
+                content: `Erreur: l'outil « ${tc.function.name} » n'est pas disponible sur ChatGPT dans Arty. Aucune action effectuée.`,
               })
               continue
             }
             const args = JSON.parse(tc.function.arguments || '{}') as Record<string, unknown>
+            if (!args || typeof args !== 'object' || Array.isArray(args)) throw new Error('Arguments invalides : objet requis')
+            const write = /^(?:create_|update_|delete_|save_|share$|generate_)/.test(tc.function.name)
+            const fingerprint = toolAttemptKey(tc.function.name, args)
+            if (!tc.id || executedIds.has(tc.id) || (write && attemptedWrites.has(fingerprint))) {
+              apiMessages.push({ role: 'tool', tool_call_id: tc.id, content: 'Action déjà tentée ou identifiant invalide. Aucun nouvel essai automatique.' })
+              continue
+            }
+            executedIds.add(tc.id)
+            if (write) attemptedWrites.add(fingerprint)
             // web_search et fetch_url sont interceptés ici plutôt que routés
             // vers onToolCall : ils appellent nos proxys (/api/search/web,
             // /api/fetch/url) — spécifiques aux providers sans web natif.
-            let result: { result: string }
+            let result: { result: string; sourceUrls?: string[] }
             if (tc.function.name === 'web_search') {
               result = await executeClientWebSearch(args, options?.conversationId, controller.signal)
               // Les URLs des résultats deviennent lisibles par fetch_url :
               // c'est ce qui permet « ouvre le 2e résultat ».
-              for (const key of collectUrlAllowlist([result.result])) allowedUrlKeys.add(key)
+              for (const key of collectUrlAllowlist(result.sourceUrls ?? [])) allowedUrlKeys.add(key)
             } else if (tc.function.name === 'fetch_url') {
               result = await executeFetchUrlTool(args, {
                 allowedUrlKeys,
@@ -712,10 +750,16 @@ export function sendMessageStream(
                 signal: controller.signal,
               })
             } else {
-              result = await options.onToolCall(tc.function.name, args)
+              result = { result: await executePortableTool(tc.function.name, args, definitions, options.onToolCall) }
             }
+            assertCurrent()
+            resultChars += result.result.length
+            if (resultChars > MAX_PORTABLE_RESULT_CHARS) throw new Error('Résultats trop volumineux. Actions déjà effectuées conservées.')
             apiMessages.push({ role: 'tool', tool_call_id: tc.id, content: result.result })
           } catch (err) {
+            assertCurrent()
+            if (err instanceof Error && err.name === 'AbortError') throw err
+            if (resultChars > MAX_PORTABLE_RESULT_CHARS) throw err
             apiMessages.push({
               role: 'tool',
               tool_call_id: tc.id,
@@ -725,8 +769,7 @@ export function sendMessageStream(
         }
       }
 
-      // Plafond d'itérations atteint — publie ce qui a été streamé.
-      onDone()
+      throw new Error('Limite des outils atteinte.')
     } catch (err) {
       if ((err as Error).name === 'AbortError') {
         onDone()

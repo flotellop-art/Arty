@@ -269,3 +269,14 @@ describe('runFactCheckOnLatest — gardes', () => {
     expect(fetchMock.mock.calls.every(c => !String(c[0]).includes('/ai/fact-check'))).toBe(true)
   })
 })
+
+
+it('never recovers links or verifies a private conversation through public providers', async () => {
+  const conv = makeConv({ hasGoogleData: true })
+  conv.messages[1].content += ' [Lien privé non vérifié](https://example.com/private-token).'
+  const original = conv.messages[1]
+  convStore.set(conv.id, conv)
+  await runFactCheckOnLatest(conv.id, () => {})
+  expect(fetchMock).not.toHaveBeenCalled()
+  expect(convStore.get(conv.id)!.messages[1]).toBe(original)
+})

@@ -1,6 +1,6 @@
 import type { ToolHandler } from './types'
 import { openReport } from '../reportGenerator'
-import { updateMemory } from '../memoryService'
+import { readMemory, updateMemory } from '../memoryService'
 import { safeJson } from '../../utils/safeJson'
 import { apiUrl } from '../apiBase'
 import { getUserLocation, isLocationConsentEnabled } from '../native/location'
@@ -65,15 +65,25 @@ export const utilityToolDefinitions = [
     },
   },
   {
+    name: 'read_memory',
+    description: 'Lit une catégorie complète de la mémoire persistante. À utiliser avant update_memory pour préserver les entrées existantes.',
+    input_schema: {
+      type: 'object' as const,
+      properties: { category: { type: 'string' as const, enum: ['profil', 'clients', 'projets', 'notes'] } },
+      required: ['category'],
+    },
+  },
+  {
     name: 'update_memory',
-    description: "Met à jour la mémoire persistante. Catégories : profil (préférences utilisateur), clients (fiches contacts), projets (projets et dossiers suivis), notes (infos diverses). Envoie le JSON COMPLET de la catégorie (pas un diff).",
+    description: "Met à jour la mémoire persistante. Catégories : profil (préférences utilisateur), clients (fiches contacts), projets (projets et dossiers suivis), notes (infos diverses). Appelle d’abord read_memory pour cette catégorie, puis préserve ses entrées. Envoie le JSON COMPLET de la catégorie (pas un diff).",
     input_schema: {
       type: 'object' as const,
       properties: {
         category: { type: 'string' as const, enum: ['profil', 'clients', 'projets', 'notes'], description: 'Catégorie à mettre à jour' },
+        read_receipt: { type: 'string' as const, description: 'Reçu exact retourné par read_memory pour cette catégorie dans ce tour.' },
         data: { description: 'Données complètes (JSON). Pour clients/projets: tableau. Pour profil: objet. Pour notes: tableau de strings.' },
       },
-      required: ['category', 'data'],
+      required: ['category', 'data', 'read_receipt'],
     },
   },
 ]
@@ -84,10 +94,10 @@ export function buildLocalReportUrl(origin: string, reportId: string): string {
 
 export function createUtilityHandlers(): Record<string, ToolHandler> {
   return {
-    generate_report: async (input) => {
+    generate_report: async (input, context) => {
       const title = input.title as string
       const content = input.content as string
-      const reportId = await openReport(title, content)
+      const reportId = await openReport(title, content, context?.invocation?.assertCurrent)
       // Le rapport est stocké dans le silo local de l'origine courante. Tant
       // que la migration appfacade -> tryarty n'est pas terminée, changer ici
       // de domaine produirait un lien canonique mais vide sur tryarty.com.
@@ -175,11 +185,26 @@ export function createUtilityHandlers(): Record<string, ToolHandler> {
       } catch { return { result: 'Erreur météo.' } }
     },
 
-    update_memory: async (input) => {
+    read_memory: async (input, context) => {
+      const category = input.category as 'profil' | 'clients' | 'projets' | 'notes'
+      if (!['profil', 'clients', 'projets', 'notes'].includes(category)) return { result: 'Catégorie mémoire invalide.' }
+      const data = await readMemory(category, context?.invocation)
+      context?.invocation?.assertCurrent()
+      const receipt = crypto.randomUUID()
+      context?.memory?.readReceipts.set(category, receipt)
+      return { result: JSON.stringify({ category, data, read_receipt: receipt }) }
+    },
+    update_memory: async (input, context) => {
       const category = input.category as 'profil' | 'clients' | 'projets' | 'notes'
       const data = input.data
-      if (!category || !data) return { result: 'Erreur: catégorie ou données manquantes.' }
-      const res = await updateMemory(category, data)
+      if (!context?.memory?.readReceipts.has(category) || input.read_receipt !== context.memory.readReceipts.get(category)) return { result: 'Lis d’abord cette catégorie complète avec read_memory, puis préserve ses entrées existantes avant update_memory. Aucune modification effectuée.' }
+      if (!['profil', 'clients', 'projets', 'notes'].includes(category) || data == null) return { result: 'Erreur: catégorie ou données manquantes.' }
+      const valid = category === 'profil' ? typeof data === 'object' && !Array.isArray(data)
+        : Array.isArray(data) && data.every(item => category === 'notes'
+          ? typeof item === 'string' : item !== null && typeof item === 'object' && !Array.isArray(item))
+      if (!valid) return { result: 'Format de mémoire invalide. Aucune modification effectuée.' }
+      context.memory.readReceipts.delete(category) // one attempt; a same-batch write cannot know this read's nonce
+      const res = await updateMemory(category, data, context?.invocation)
       return { result: res.message }
     },
   }

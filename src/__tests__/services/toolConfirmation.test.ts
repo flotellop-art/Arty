@@ -78,6 +78,7 @@ const SAFE_TOOLS = new Set([
   'list_calendar', 'list_local_files', 'read_local_file', 'wp_list_posts',
   // Écritures réversibles dans l'espace PROPRE de l'utilisateur
   'save_local_file',
+  'read_memory', // read-only persistent memory; no external effect
   'update_memory',
   // Interaction locale / owner-only (computer-use : gate = relay owner-only +
   // serveur local durci ; share : l'humain choisit la cible dans le sheet OS)
