@@ -1,3 +1,4 @@
+import { storedLocalReportPath } from '../../services/localReportLink'
 import { memo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { MarkdownRenderer } from '../shared/MarkdownRenderer'
@@ -80,7 +81,7 @@ function ProactiveBriefCardInner({ brief, loading, onDismiss, onAction, isStream
               ))}
             </ul>
           ) : brief && 'text' in brief ? (
-            <div className="mt-1 font-display text-[16.8px] leading-snug"><MarkdownRenderer content={brief.text} /></div>
+            <div className="mt-1 font-display text-[16.8px] leading-snug"><MarkdownRenderer resolveLocalReportPath={storedLocalReportPath} content={brief.text} /></div>
           ) : (
             <p className="mt-1 font-display text-[16.8px] leading-snug">{t('proactiveBrief.empty')}</p>
           )}

@@ -67,6 +67,8 @@ export function resolveRoute(input: RouteInput): RouteDecision {
 
   let provider: AIProvider
   let reason: RouteReason
+  let textModel: string | undefined
+  let personalTools = false
 
   if (input.euOnly) {
     // Verrou Europe — court-circuit absolu, ignore même le choix manuel
@@ -77,6 +79,14 @@ export function resolveRoute(input: RouteInput): RouteDecision {
       overrides.push({ requested: input.selectedModel, applied: 'mistral', reason: { code: 'eu_only' } })
     }
   } else if (isPrivateData) {
+    const portableContext = !input.hasFiles && !input.hasImages && !input.hasPdf && !input.hasOtherFiles
+      && !input.hasProjectContext && !input.hasOfficeHistory
+    // Unknown private history, Drive, contacts and task integrations retain
+    // Claude's broader toolbox. Auto only opens the tested portable intents.
+    const portableIntent = /\b(?:agenda|calendar|mails?|emails?|mailbox|inbox|mémoire|memory)\b/i.test(text)
+      && !/\b(?:drive|contacts?|tasks?|tâches?|wordpress|ordinateur|computer|PC|écran|screen|clavier|keyboard|souris|mouse|bloc.notes)\b/i.test(text)
+    const autoPersonal = input.selectedModel === 'auto' && input.availability.openaiLuna === true
+      && portableContext && portableIntent && !input.hasPrivateHistory
     const manualPersonal = (input.selectedModel === 'gemini' || input.selectedModel === 'openai')
       && input.availability[input.selectedModel]
       && !input.hasFiles && !input.hasImages && !input.hasPdf && !input.hasOtherFiles
@@ -84,8 +94,10 @@ export function resolveRoute(input: RouteInput): RouteDecision {
     // Le contenu privé précède TOUS les carve-outs photo. Sans ce garde, une
     // image jointe à « mes mails » ou à un historique Google pouvait partir
     // chez Mistral/OpenAI avant même d'atteindre la règle private_data.
-    provider = manualPersonal ? input.selectedModel as 'gemini' | 'openai' : 'claude'
-    reason = { code: manualPersonal ? 'manual_selection' : 'private_data' }
+    provider = autoPersonal ? 'openai' : manualPersonal ? input.selectedModel as 'gemini' | 'openai' : 'claude'
+    reason = { code: autoPersonal ? 'luna_personal_tools' : manualPersonal ? 'manual_selection' : 'private_data' }
+    personalTools = autoPersonal || manualPersonal
+    if (autoPersonal) textModel = 'gpt-5.6-luna'
     if (!manualPersonal && input.selectedModel !== 'auto' && input.selectedModel !== 'claude') {
       overrides.push({
         requested: input.selectedModel,
@@ -212,11 +224,17 @@ export function resolveRoute(input: RouteInput): RouteDecision {
     } else if (a.openai && detectOpenAIIntent(text)) {
       provider = 'openai'
       reason = { code: 'openai_intent' }
+      if (a.openaiLuna) textModel = 'gpt-5.6-luna'
+      else if (a.openaiFull === false) textModel = 'gpt-5-mini'
     } else if (a.gemini && HYBRID_TRIGGERS.some((r) => r.test(text))) {
       // Rapport / comparatif / réglementation / prix → recherche Gemini puis
       // rédaction Claude.
       provider = 'hybrid'
       reason = { code: 'hybrid_research' }
+    } else if (a.openaiLuna) {
+      provider = 'openai'
+      textModel = 'gpt-5.6-luna'
+      reason = { code: 'luna_everyday' }
     } else if (isTrivialChat(text)) {
       // Salutations / micro-réponses → chemin rapide sans recherche web.
       provider = a.mistral ? 'mistral' : 'claude'
@@ -258,6 +276,8 @@ export function resolveRoute(input: RouteInput): RouteDecision {
 
   return {
     provider,
+    ...(textModel ? { textModel } : {}),
+    ...(personalTools ? { personalTools: true } : {}),
     usesOpenAIVision: provider === 'openai' && reason.code === 'image_vision_openai',
     subModel,
     thinking,

@@ -1,3 +1,4 @@
+import { storedLocalReportPath } from '../../services/localReportLink'
 import { memo, useCallback, useRef, useId, useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { AssistantAvatar } from './AssistantAvatar'
@@ -149,7 +150,7 @@ export const AssistantBubble = memo(function AssistantBubble({ content, outputRe
       >
         {historical && <p role="note" className="mb-2 text-xs text-theme-muted">{t('workspaceArchive.historicalMessage')}</p>}
         {outputNotice && <p role="status" className="mb-2 text-sm font-medium text-theme-muted">{outputNotice}</p>}
-        <MarkdownRenderer content={content} historical={historical} disableFragmentCopy={!!outputRestriction} inertActions={!!outputRestriction} />
+        <MarkdownRenderer resolveLocalReportPath={storedLocalReportPath} content={content} historical={historical} disableFragmentCopy={!!outputRestriction} inertActions={!!outputRestriction} />
         {generatedImages && <GeneratedImageGallery images={generatedImages} />}
         {pinned && (
           <span className="absolute -top-2 -left-3 text-theme-accent text-[10px]">📌</span>

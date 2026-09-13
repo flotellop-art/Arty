@@ -1,5 +1,6 @@
 import type { Env } from '../../env'
 import { isAdmissionUnavailable, admissionUnavailableResponse } from '../_lib/admission'
+import { enforceLunaTrialPolicy } from '../_lib/lunaTrialPolicy'
 import {
   checkAllowedVerifiedUser,
   isModelAllowedInTrial,
@@ -357,7 +358,6 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
     )
     if (isAdmissionUnavailable(result)) return cancelBufferedVision(admissionUnavailableResponse())
     if (
-      usesVisionTransport &&
       result &&
       !isTrialExpired(result) &&
       result.planType === 'trial' &&
@@ -479,6 +479,13 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
       if (wasTrialExhausted) return cancelBufferedVision(trialExpiredResponse())
       return cancelBufferedVision(freeModelLockedResponse(modelName))
     }
+  }
+
+  if (usingServerKey && userPlan === 'trial' && modelName === 'gpt-5.6-luna') {
+    if (!parsedPayload || !enforceLunaTrialPolicy(parsedPayload)) {
+      return cancelBufferedVision(Response.json({ error: 'trial_request_limit' }, { status: 400 }))
+    }
+    mustSerializeParsedPayload = true
   }
 
   // Ne sérialiser que si le proxy a effectivement modifié le JSON. Le body

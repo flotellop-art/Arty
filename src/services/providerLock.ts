@@ -1,6 +1,7 @@
 import { getAnthropicKey, getGeminiKey, getMistralKey, getOpenAIKey } from './activeApiKey'
 import { CHAT_PROVIDERS, type TransportProvider } from './modelCatalog'
 import type { AIModel } from './modelSelector'
+import { hasCachedLunaTrial } from './lunaTrialAccess'
 
 export function hasPersonalKey(provider: TransportProvider): boolean {
   const key = provider === 'anthropic' ? getAnthropicKey() : provider === 'gemini' ? getGeminiKey()
@@ -16,5 +17,6 @@ export function isProviderLockedForPlan(
   if (id === 'auto') return false
   const provider = CHAT_PROVIDERS.find(p => p.id === id)!
   if (hasPersonalKey(provider.transport)) return false
+  if (id === 'openai' && hasCachedLunaTrial()) return false
   return lockedFamilies.includes(provider.family)
 }

@@ -11,6 +11,20 @@ function input(overrides: Partial<RouteInput> = {}): RouteInput {
     hasFiles: false, hasImages: false, hasPdf: false, hasOtherFiles: false, euOnly: false, hasPrivateHistory: false, ...overrides }
 }
 describe('exact chat models', () => {
+  it('uses Luna by default in active trial and rejects a saved Terra choice', () => {
+    const request = input({ availability: { claude: true, openai: true, openaiLuna: true, openaiFull: false, openaiVision: false, gemini: false, mistral: false } })
+    expect(resolveChatModelPreference(request, resolveRoute(request))).toBe('gpt-5.6-luna')
+    setChatModelPreference('openai', 'gpt-5.6-terra')
+    expect(() => resolveChatModelPreference(request, resolveRoute(request))).toThrow('trial_model_restricted')
+  })
+  it('uses Mini when only provider access is proven and rejects unproven saved full models', () => {
+    const request = input({ availability: { claude: true, openai: true, openaiLuna: false, openaiFull: false, openaiVision: false, gemini: false, mistral: false } })
+    expect(resolveChatModelPreference(request, resolveRoute(request))).toBe('gpt-5-mini')
+    for (const model of ['gpt-5.6-luna', 'gpt-5.6-terra']) {
+      setChatModelPreference('openai', model)
+      expect(() => resolveChatModelPreference(request, resolveRoute(request))).toThrow('trial_model_restricted')
+    }
+  })
   it.each([['openai', 'gpt-5.6-luna'], ['openai', 'gpt-5.6-terra'], ['gemini', 'gemini-3.8-flash']] as const)('keeps %s / %s on private follow-ups', (provider, model) => {
     setChatModelPreference(provider, model)
     const request = input({ selectedModel: provider, originalText: 'Résume ça', hasPrivateHistory: true })

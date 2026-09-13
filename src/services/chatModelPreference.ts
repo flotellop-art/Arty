@@ -36,11 +36,24 @@ export function setChatModelPreference(provider: VariantProvider, model: string)
 /** Snapshot after resolveRoute, before asynchronous preparation. Never applies
  * to Auto/hybrid, EU, attachments or the Terra vision contract. */
 export function resolveChatModelPreference(input: RouteInput, route: RouteDecision): string | undefined {
+  if (route.textModel && !route.usesOpenAIVision) return route.textModel
   if (!hasChatModelVariants(input.selectedModel) || route.provider !== input.selectedModel
     || route.reason.code !== 'manual_selection' || !input.availability[input.selectedModel]
     || input.euOnly
     || input.hasFiles || input.hasImages || input.hasPdf || input.hasOtherFiles
     || input.hasOfficeHistory || input.hasProjectContext
     || route.usesOpenAIVision || route.needsHybrid) return undefined
-  return getChatModelPreference(input.selectedModel)
+  const saved = getChatModelPreference(input.selectedModel)
+  if (input.selectedModel === 'openai') {
+    if (saved === 'gpt-5.6-luna' && input.availability.openaiLuna === false) {
+      throw new Error('trial_model_restricted')
+    }
+    // A saved Terra preference is never silently upgraded or billed in trial.
+    if (saved === 'gpt-5.6-terra' && input.availability.openaiFull === false) {
+      throw new Error('trial_model_restricted')
+    }
+    if (!saved && input.availability.openaiLuna) return 'gpt-5.6-luna'
+    if (!saved && input.availability.openaiFull === false) return 'gpt-5-mini'
+  }
+  return saved
 }

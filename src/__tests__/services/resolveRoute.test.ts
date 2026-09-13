@@ -13,6 +13,26 @@ const NONE: ProviderAvailability = { claude: true, gemini: false, mistral: false
 const PAID: PlanContext = { plan: 'subscription', isPro: false, creditsCoverPremium: false }
 const FREE: PlanContext = { plan: 'free', isPro: false, creditsCoverPremium: false }
 
+describe('Luna exact access in Auto', () => {
+  const available = { ...ALL, openaiLuna: true, openaiFull: false, openaiVision: false }
+  it.each(['Bonjour', 'Recherche la date de lancement du télescope Webb'])('routes %s to Luna explicitly', text => {
+    expect(resolveRoute(input({ originalText: text, availability: available, plan: FREE })))
+      .toMatchObject({ provider: 'openai', textModel: 'gpt-5.6-luna', reason: { code: 'luna_everyday' } })
+  })
+  it('portable private tools carry a capability without enabling public search', () => {
+    expect(resolveRoute(input({ originalText: 'Lis mon agenda', availability: available })))
+      .toMatchObject({ provider: 'openai', personalTools: true, isPrivateData: true, webSearch: false })
+  })
+  it.each([{ hasPrivateHistory: true }, { hasOfficeHistory: true }, { hasProjectContext: true }, { hasFiles: true }])('preserves specialized context %j', context => {
+    expect(resolveRoute(input({ originalText: 'Lis mon agenda', availability: available, ...context })).provider).toBe('claude')
+  })
+  it('preserves broader private tools and does not infer Luna from provider access alone', () => {
+    expect(resolveRoute(input({ originalText: 'Lis mon agenda et mes contacts', availability: available })).provider).toBe('claude')
+    expect(resolveRoute(input({ originalText: 'Lis mon agenda puis ouvre le Bloc-notes sur mon PC', availability: available })).provider).toBe('claude')
+    expect(resolveRoute(input({ availability: ALL })).textModel).toBeUndefined()
+  })
+})
+
 function input(overrides: Partial<RouteInput> = {}): RouteInput {
   return {
     originalText: 'Explique-moi la loi de Moore',

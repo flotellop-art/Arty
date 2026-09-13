@@ -976,8 +976,15 @@ export function useConversation(options?: { onNavigate?: (id: string) => void })
       }
       const routeDecision = lockedVisionRouteDecision ?? resolveRoute(routeInput)
       const provider = routeDecision.provider
-      const requestedChatModel = resolveChatModelPreference(routeInput, routeDecision)
-      const portablePersonalTools = routeDecision.isPrivateData && routeDecision.reason.code === 'manual_selection'
+      let requestedChatModel: string | undefined
+      try {
+        requestedChatModel = resolveChatModelPreference(routeInput, routeDecision)
+      } catch (error) {
+        onErr(error instanceof Error ? error : new Error('trial_model_restricted'))
+        releaseVisionAutoCropLock()
+        return true
+      }
+      const portablePersonalTools = routeDecision.isPrivateData && routeDecision.personalTools === true
         && (provider === 'gemini' || provider === 'openai')
       // Documentary preparation has already captured its persisted metadata.
       // It carries its own privacy policy; do not invalidate that receipt here.

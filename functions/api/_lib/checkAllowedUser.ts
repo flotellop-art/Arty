@@ -323,6 +323,7 @@ export function isTrialExpired(r: CheckResult): r is TrialExpired {
  * matche `mistral-medium`). Mistral Small déprécié mai 2026.
  */
 export const TRIAL_ALLOWED_MODELS = [
+  'gpt-5.6-luna',
   'claude-haiku-4-5',
   'gpt-5-mini',
   'gemini-flash',
@@ -370,9 +371,10 @@ export async function ensureTrialTable(env: Env): Promise<void> {
  * simplement inutile pour le défaut Mistral.
  */
 export function isModelAllowedInTrial(model: string): boolean {
+  if (model === 'gpt-5.6-luna') return true
   const m = model.toLowerCase()
   if (m.startsWith('claude')) return m.includes('haiku')
-  if (m.startsWith('gpt')) return m.includes('mini')
+  if (m.startsWith('gpt')) return m === 'gpt-5-mini' || m === 'gpt-5-mini-2025-08-07'
   if (m.startsWith('gemini')) return m.includes('flash')
   if (m.startsWith('mistral')) return m.includes('medium')
   return false

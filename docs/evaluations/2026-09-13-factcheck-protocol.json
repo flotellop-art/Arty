@@ -1,0 +1,33 @@
+{
+  "date": "2026-09-13",
+  "mode": "Fixed evidence assessor comparison; real provider APIs, no web tools, no fallback, one attempt per cell. Not a phone or full Arty-chain score.",
+  "maxOutputTokens": 3000,
+  "maxReservedUsd": 4,
+  "models": [
+    { "provider": "anthropic", "id": "claude-haiku-4-5-20251001", "input": 1, "output": 5 },
+    { "provider": "anthropic", "id": "claude-sonnet-4-6", "input": 3, "output": 15 },
+    { "provider": "gemini", "id": "gemini-3.6-flash", "input": 0.75, "output": 3.75 },
+    { "provider": "anthropic", "id": "claude-sonnet-5", "input": 2, "output": 10 },
+    { "provider": "gemini", "id": "gemini-3.8-flash", "input": 0.75, "output": 3.75 },
+    { "provider": "openai", "id": "gpt-5.6-luna", "input": 0.2, "output": 1.2 },
+    { "provider": "openai", "id": "gpt-5.6-terra", "input": 2, "output": 12 }
+  ],
+  "sources": {
+    "eiffel": { "url": "https://www.toureiffel.paris/fr/actualites/histoire-et-culture/de-300-330-metres-lhistoire-de-la-taille-de-la-tour", "readAt": "2026-09-13", "summary": "L'antenne UHF installée en 2000 porte la hauteur à 324 mètres. L'ajout de l'antenne DAB+ le 15 mars 2022 porte la hauteur à 330 mètres." },
+    "bipm": { "url": "https://www.bipm.org/en/si-base-units/metre", "readAt": "2026-09-13", "summary": "La vitesse de la lumière dans le vide a la valeur exacte c = 299 792 458 m/s. Cette constante définit le mètre." },
+    "commission": { "url": "https://commission.europa.eu/news-and-media/news/eu-common-charger-rules-power-all-your-devices-single-charger-2024-12-28_en", "readAt": "2026-09-13", "summary": "Les règles UE sur le chargeur commun s'appliquent depuis le 28 décembre 2024 aux nouveaux appareils concernés. L'USB-C est le port commun. Les ordinateurs portables sont concernés à partir du 28 avril 2026." },
+    "dge": { "url": "https://www.entreprises.gouv.fr/la-dge/actualites/le-chargeur-universel-devient-obligatoire-pour-les-appareils-electroniques-de", "readAt": "2026-09-13", "summary": "Cette page de la Direction générale des Entreprises indique le 26 avril 2026 pour les ordinateurs portables. Elle contredit donc la date donnée par la Commission européenne." },
+    "louvre": { "url": "https://www.louvre.fr/visiter/horaires-tarifs", "readAt": "2026-09-13", "summary": "Horaires actuels du musée : mardi fermé ; mercredi et vendredi, 9 h à 21 h. L'entrée est gratuite pour les moins de 18 ans de toutes nationalités." },
+    "ingres": { "url": "https://mini-site.louvre.fr/ingres/1.8_fr.html", "readAt": "2026-09-13", "summary": "Archive du mini-site de l'exposition Ingres de 2006 : horaires de cette ancienne exposition, avec nocturnes jusqu'à 22 h. Ce document ne décrit pas les horaires actuels du musée." }
+  },
+  "cases": [
+    { "id": "F01", "topic": "Actualisation", "question": "Quelle était la hauteur de la tour Eiffel juste après la pose de l'antenne du 15 mars 2022 ?", "answer": "Après la pose de l'antenne du 15 mars 2022, la tour Eiffel mesurait **324 mètres**.", "sources": ["eiffel"], "expected": "wrong", "correctionMustContain": "330", "originalMustContain": "324", "rationale": "Corriger la valeur dans le contexte temporel demandé, avec une cible de remplacement exacte." },
+    { "id": "F02", "topic": "Contexte historique", "question": "Quelle hauteur avait la tour Eiffel après l'installation de l'antenne en 2000 ?", "answer": "Après l'installation de l'antenne en 2000, la tour Eiffel mesurait 324 mètres.", "sources": ["eiffel"], "expected": "verified", "rationale": "Ne pas remplacer un fait historique exact par la hauteur actuelle." },
+    { "id": "F03", "topic": "Unités", "question": "Quelle est la vitesse exacte de la lumière dans le vide ?", "answer": "La vitesse exacte de la lumière dans le vide est de **299 792 458 km/s**.", "sources": ["bipm"], "expected": "wrong", "correctionMustContain": "m/s", "originalMustContain": "km/s", "rationale": "Corriger l'unité ou convertir la valeur, sans perdre le markdown de la cible." },
+    { "id": "F04", "topic": "Approximation légitime", "question": "Donne un ordre de grandeur de la vitesse de la lumière dans le vide.", "answer": "La lumière se déplace dans le vide à environ 300 000 km/s.", "sources": ["bipm"], "expected": "verified", "rationale": "Une approximation explicitement demandée ne constitue pas une erreur." },
+    { "id": "F05", "topic": "Propos rapportés", "question": "Rapporte fidèlement les propos du témoin dans cet exercice fictif, sans les prendre à ton compte.", "answer": "Dans cet exercice fictif, le témoin affirme : « La tour Eiffel mesurait encore 324 mètres après le 15 mars 2022. » Cette affirmation n'est pas présentée comme vraie.", "sources": ["eiffel"], "extraEvidence": "Transcription fictive fournie pour le test : le témoin dit exactement « La tour Eiffel mesurait encore 324 mètres après le 15 mars 2022. »", "expected": "verified", "rationale": "Ne pas réécrire une citation fidèlement attribuée ; expliquer sa fausseté est permis." },
+    { "id": "F06", "topic": "Preuve manquante", "question": "Vérifie l'horaire du Parc Zéphyr décrit dans ce dossier fictif.", "answer": "Le Parc Zéphyr de ce dossier fictif ferme à 19 h le 13 septembre 2026.", "sources": [], "extraEvidence": "Aucune source disponible : la page du dossier est inaccessible. Aucun horaire vérifiable n'est fourni.", "expected": "uncertain", "rationale": "Ne pas inventer confirmation, horaire de remplacement ou URL." },
+    { "id": "F07", "topic": "Sources officielles contradictoires", "question": "À quelle date les nouvelles règles UE USB-C s'appliquent-elles aux ordinateurs portables concernés ?", "answer": "Pour les ordinateurs portables concernés, la date d'application est le 26 avril 2026.", "sources": ["dge", "commission"], "expected": "wrong", "correctionMustContain": "28 avril 2026", "originalMustContain": "26 avril 2026", "rationale": "La source primaire européenne donne le 28 ; une abstention justifiée par le conflit sera distinguée d'une fausse validation." },
+    { "id": "F08", "topic": "Page actuelle contre archive", "question": "Quels sont les horaires des nocturnes actuelles du Louvre ?", "answer": "Les nocturnes du Louvre ont lieu le mercredi et le vendredi jusqu'à 21 h. [Horaires officiels](https://www.louvre.fr/visiter/horaires-tarifs)", "sources": ["ingres", "louvre"], "expected": "verified", "rationale": "Préserver les faits et le lien actuel ; ne pas les remplacer par les horaires de 2006." }
+  ]
+}

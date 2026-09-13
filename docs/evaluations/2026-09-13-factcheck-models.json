@@ -1,0 +1,3347 @@
+{
+  "scope": "Fixed evidence assessor comparison; real provider APIs, no web tools, no fallback, one attempt per cell. Not a phone or full Arty-chain score.",
+  "protocol": "2026-09-13-factcheck-protocol.json",
+  "run": {
+    "startedAt": "2026-09-13T19:13:25.209Z",
+    "protocolSha256": "155c2ca520b6f2d537b1973478a1c3aa5cad668e31328f2b182515424b243f7e",
+    "systemSha256": "844742a7e0712e6a647b7a2345318b518896fbd6d1b961031e485bd391d856d8",
+    "maxCells": 56,
+    "maxReservedUsd": 4
+  },
+  "completed": {
+    "completedAt": "2026-09-13T19:16:17.346Z",
+    "reservedUsd": 1.7477391999999996,
+    "cells": 56
+  },
+  "scoring": "Fixed expected outcomes; real Arty parser permits fenced JSON and removes meaningless correction fields on verified/uncertain claims. A truncated output or empty claim list fails. No provider retry or fallback. Times include the complete HTTP response, not UI streaming. Costs use current standard rates without cache discounts and are not invoices.",
+  "summary": [
+    {
+      "model": "claude-haiku-4-5-20251001",
+      "passed": 7,
+      "total": 8,
+      "medianMsAllAttempts": 2233.5,
+      "estimatedUncachedUsd": 0.02556,
+      "parserAccepted": 8,
+      "rawJson": 0,
+      "confidenceConflicts": 4,
+      "servedModels": [
+        "claude-haiku-4-5-20251001"
+      ]
+    },
+    {
+      "model": "claude-sonnet-4-6",
+      "passed": 7,
+      "total": 8,
+      "medianMsAllAttempts": 3365,
+      "estimatedUncachedUsd": 0.073599,
+      "parserAccepted": 8,
+      "rawJson": 7,
+      "confidenceConflicts": 0,
+      "servedModels": [
+        "claude-sonnet-4-6"
+      ]
+    },
+    {
+      "model": "gemini-3.6-flash",
+      "passed": 8,
+      "total": 8,
+      "medianMsAllAttempts": 3594,
+      "estimatedUncachedUsd": 0.03149325,
+      "parserAccepted": 8,
+      "rawJson": 8,
+      "confidenceConflicts": 0,
+      "servedModels": [
+        "gemini-3.6-flash"
+      ]
+    },
+    {
+      "model": "claude-sonnet-5",
+      "passed": 8,
+      "total": 8,
+      "medianMsAllAttempts": 2505,
+      "estimatedUncachedUsd": 0.079926,
+      "parserAccepted": 8,
+      "rawJson": 8,
+      "confidenceConflicts": 1,
+      "servedModels": [
+        "claude-sonnet-5"
+      ]
+    },
+    {
+      "model": "gemini-3.8-flash",
+      "passed": 7,
+      "total": 8,
+      "medianMsAllAttempts": 1843.5,
+      "estimatedUncachedUsd": 0.03208949999999999,
+      "parserAccepted": 7,
+      "rawJson": 7,
+      "confidenceConflicts": 0,
+      "servedModels": [
+        "gemini-3.8-flash"
+      ]
+    },
+    {
+      "model": "gpt-5.6-luna",
+      "passed": 7,
+      "total": 8,
+      "medianMsAllAttempts": 2501,
+      "estimatedUncachedUsd": 0.0045722,
+      "parserAccepted": 8,
+      "rawJson": 8,
+      "confidenceConflicts": 0,
+      "servedModels": [
+        "gpt-5.6-luna"
+      ]
+    },
+    {
+      "model": "gpt-5.6-terra",
+      "passed": 7,
+      "total": 8,
+      "medianMsAllAttempts": 2092.5,
+      "estimatedUncachedUsd": 0.03939800000000001,
+      "parserAccepted": 8,
+      "rawJson": 8,
+      "confidenceConflicts": 1,
+      "servedModels": [
+        "gpt-5.6-terra"
+      ]
+    }
+  ],
+  "results": [
+    {
+      "caseId": "F01",
+      "requestedModel": "claude-haiku-4-5-20251001",
+      "provider": "anthropic",
+      "startedAt": "2026-09-13T19:13:25.211Z",
+      "inputSha256": "e06163a888e9dbb9d9f6eaed35bb9e1ce4275e60f39c999561a52ef192cae6d9",
+      "reservedUsd": 0.021796,
+      "elapsedMs": 1989,
+      "httpStatus": 200,
+      "status": "invalid_json",
+      "servedModel": "claude-haiku-4-5-20251001",
+      "finish": "end_turn",
+      "usage": {
+        "input_tokens": 2077,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 252,
+        "service_tier": "standard",
+        "inference_geo": "not_available"
+      },
+      "text": "```json\n{\n  \"overall_confidence\": \"high\",\n  \"claims\": [\n    {\n      \"claim\": \"Après la pose de l'antenne du 15 mars 2022, la tour Eiffel mesurait 324 mètres\",\n      \"verdict\": \"wrong\",\n      \"explanation\": \"La source officielle indique que l'ajout de l'antenne DAB+ le 15 mars 2022 a porté la hauteur à 330 mètres, non 324 mètres. Les 324 mètres correspondent à la hauteur après l'installation de l'antenne UHF en 2000.\",\n      \"originalText\": \"Après la pose de l'antenne du 15 mars 2022, la tour Eiffel mesurait **324 mètres**.\",\n      \"correction\": \"Après la pose de l'antenne du 15 mars 2022, la tour Eiffel mesurait **330 mètres**.\"\n    }\n  ]\n}\n```",
+      "inputTokens": 2077,
+      "outputTokens": 252,
+      "estimatedUncachedUsd": 0.003337,
+      "acceptedByArtyParser": true,
+      "complete": true,
+      "pass": true,
+      "normalizedClaims": [
+        {
+          "claim": "Après la pose de l'antenne du 15 mars 2022, la tour Eiffel mesurait 324 mètres",
+          "verdict": "wrong",
+          "explanation": "La source officielle indique que l'ajout de l'antenne DAB+ le 15 mars 2022 a porté la hauteur à 330 mètres, non 324 mètres. Les 324 mètres correspondent à la hauteur après l'installation de l'antenne UHF en 2000.",
+          "originalText": "Après la pose de l'antenne du 15 mars 2022, la tour Eiffel mesurait **324 mètres**.",
+          "correction": "Après la pose de l'antenne du 15 mars 2022, la tour Eiffel mesurait **330 mètres**.",
+          "evidenceUrls": [],
+          "sensitive": false
+        }
+      ],
+      "confidenceConflict": true,
+      "failure": null
+    },
+    {
+      "caseId": "F01",
+      "requestedModel": "claude-sonnet-4-6",
+      "provider": "anthropic",
+      "startedAt": "2026-09-13T19:13:27.200Z",
+      "inputSha256": "e06163a888e9dbb9d9f6eaed35bb9e1ce4275e60f39c999561a52ef192cae6d9",
+      "reservedUsd": 0.065388,
+      "elapsedMs": 3741,
+      "httpStatus": 200,
+      "status": "completed",
+      "servedModel": "claude-sonnet-4-6",
+      "finish": "end_turn",
+      "usage": {
+        "input_tokens": 2078,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 252,
+        "service_tier": "standard",
+        "inference_geo": "global"
+      },
+      "text": "{\n  \"overall_confidence\": \"low\",\n  \"claims\": [\n    {\n      \"claim\": \"Après la pose de l'antenne du 15 mars 2022, la tour Eiffel mesurait 324 mètres.\",\n      \"verdict\": \"wrong\",\n      \"explanation\": \"Selon la source officielle du site de la tour Eiffel, c'est l'antenne UHF installée en 2000 qui avait porté la hauteur à 324 mètres. L'ajout de l'antenne DAB+ le 15 mars 2022 a porté la hauteur à 330 mètres.\",\n      \"originalText\": \"Après la pose de l'antenne du 15 mars 2022, la tour Eiffel mesurait **324 mètres**.\",\n      \"correction\": \"Après la pose de l'antenne du 15 mars 2022, la tour Eiffel mesurait **330 mètres**.\"\n    }\n  ]\n}",
+      "verdict": {
+        "overall_confidence": "low",
+        "claims": [
+          {
+            "claim": "Après la pose de l'antenne du 15 mars 2022, la tour Eiffel mesurait 324 mètres.",
+            "verdict": "wrong",
+            "explanation": "Selon la source officielle du site de la tour Eiffel, c'est l'antenne UHF installée en 2000 qui avait porté la hauteur à 324 mètres. L'ajout de l'antenne DAB+ le 15 mars 2022 a porté la hauteur à 330 mètres.",
+            "originalText": "Après la pose de l'antenne du 15 mars 2022, la tour Eiffel mesurait **324 mètres**.",
+            "correction": "Après la pose de l'antenne du 15 mars 2022, la tour Eiffel mesurait **330 mètres**."
+          }
+        ]
+      },
+      "inputTokens": 2078,
+      "outputTokens": 252,
+      "estimatedUncachedUsd": 0.010014,
+      "acceptedByArtyParser": true,
+      "complete": true,
+      "pass": true,
+      "normalizedClaims": [
+        {
+          "claim": "Après la pose de l'antenne du 15 mars 2022, la tour Eiffel mesurait 324 mètres.",
+          "verdict": "wrong",
+          "explanation": "Selon la source officielle du site de la tour Eiffel, c'est l'antenne UHF installée en 2000 qui avait porté la hauteur à 324 mètres. L'ajout de l'antenne DAB+ le 15 mars 2022 a porté la hauteur à 330 mètres.",
+          "originalText": "Après la pose de l'antenne du 15 mars 2022, la tour Eiffel mesurait **324 mètres**.",
+          "correction": "Après la pose de l'antenne du 15 mars 2022, la tour Eiffel mesurait **330 mètres**.",
+          "evidenceUrls": [],
+          "sensitive": false
+        }
+      ],
+      "confidenceConflict": false,
+      "failure": null
+    },
+    {
+      "caseId": "F01",
+      "requestedModel": "gemini-3.6-flash",
+      "provider": "gemini",
+      "startedAt": "2026-09-13T19:13:30.942Z",
+      "inputSha256": "e06163a888e9dbb9d9f6eaed35bb9e1ce4275e60f39c999561a52ef192cae6d9",
+      "reservedUsd": 0.016347,
+      "elapsedMs": 4256,
+      "httpStatus": 200,
+      "status": "completed",
+      "servedModel": "gemini-3.6-flash",
+      "finish": "STOP",
+      "usage": {
+        "promptTokenCount": 1819,
+        "candidatesTokenCount": 148,
+        "totalTokenCount": 2491,
+        "promptTokensDetails": [
+          {
+            "modality": "TEXT",
+            "tokenCount": 1819
+          }
+        ],
+        "thoughtsTokenCount": 524,
+        "serviceTier": "standard"
+      },
+      "text": "{\n  \"overall_confidence\": \"low\",\n  \"claims\": [\n    {\n      \"claim\": \"Après la pose de l'antenne du 15 mars 2022, la tour Eiffel mesurait 324 mètres.\",\n      \"verdict\": \"wrong\",\n      \"explanation\": \"L'installation de la nouvelle antenne radio DAB+ le 15 mars 2022 a fait passer la hauteur de la tour Eiffel de 324 mètres à 330 mètres.\",\n      \"originalText\": \"**324 mètres**\",\n      \"correction\": \"**330 mètres**\"\n    }\n  ]\n}",
+      "verdict": {
+        "overall_confidence": "low",
+        "claims": [
+          {
+            "claim": "Après la pose de l'antenne du 15 mars 2022, la tour Eiffel mesurait 324 mètres.",
+            "verdict": "wrong",
+            "explanation": "L'installation de la nouvelle antenne radio DAB+ le 15 mars 2022 a fait passer la hauteur de la tour Eiffel de 324 mètres à 330 mètres.",
+            "originalText": "**324 mètres**",
+            "correction": "**330 mètres**"
+          }
+        ]
+      },
+      "inputTokens": 1819,
+      "outputTokens": 672,
+      "estimatedUncachedUsd": 0.00388425,
+      "acceptedByArtyParser": true,
+      "complete": true,
+      "pass": true,
+      "normalizedClaims": [
+        {
+          "claim": "Après la pose de l'antenne du 15 mars 2022, la tour Eiffel mesurait 324 mètres.",
+          "verdict": "wrong",
+          "explanation": "L'installation de la nouvelle antenne radio DAB+ le 15 mars 2022 a fait passer la hauteur de la tour Eiffel de 324 mètres à 330 mètres.",
+          "originalText": "**324 mètres**",
+          "correction": "**330 mètres**",
+          "evidenceUrls": [],
+          "sensitive": false
+        }
+      ],
+      "confidenceConflict": false,
+      "failure": null
+    },
+    {
+      "caseId": "F01",
+      "requestedModel": "claude-sonnet-5",
+      "provider": "anthropic",
+      "startedAt": "2026-09-13T19:13:35.198Z",
+      "inputSha256": "e06163a888e9dbb9d9f6eaed35bb9e1ce4275e60f39c999561a52ef192cae6d9",
+      "reservedUsd": 0.043592,
+      "elapsedMs": 2687,
+      "httpStatus": 200,
+      "status": "completed",
+      "servedModel": "claude-sonnet-5",
+      "finish": "end_turn",
+      "usage": {
+        "input_tokens": 2860,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 270,
+        "output_tokens_details": {
+          "thinking_tokens": 0
+        },
+        "service_tier": "standard",
+        "inference_geo": "global"
+      },
+      "text": "{\"overall_confidence\":\"high\",\"claims\":[{\"claim\":\"Après la pose de l'antenne du 15 mars 2022, la tour Eiffel mesurait 324 mètres\",\"verdict\":\"wrong\",\"explanation\":\"Selon la source officielle de la Tour Eiffel, l'ajout de l'antenne DAB+ le 15 mars 2022 a porté la hauteur à 330 mètres, et non 324 mètres (qui correspondait à la hauteur après l'antenne UHF de 2000).\",\"originalText\":\"Après la pose de l'antenne du 15 mars 2022, la tour Eiffel mesurait **324 mètres**.\",\"correction\":\"Après la pose de l'antenne du 15 mars 2022, la tour Eiffel mesurait **330 mètres**.\"}]}",
+      "verdict": {
+        "overall_confidence": "high",
+        "claims": [
+          {
+            "claim": "Après la pose de l'antenne du 15 mars 2022, la tour Eiffel mesurait 324 mètres",
+            "verdict": "wrong",
+            "explanation": "Selon la source officielle de la Tour Eiffel, l'ajout de l'antenne DAB+ le 15 mars 2022 a porté la hauteur à 330 mètres, et non 324 mètres (qui correspondait à la hauteur après l'antenne UHF de 2000).",
+            "originalText": "Après la pose de l'antenne du 15 mars 2022, la tour Eiffel mesurait **324 mètres**.",
+            "correction": "Après la pose de l'antenne du 15 mars 2022, la tour Eiffel mesurait **330 mètres**."
+          }
+        ]
+      },
+      "inputTokens": 2860,
+      "outputTokens": 270,
+      "estimatedUncachedUsd": 0.00842,
+      "acceptedByArtyParser": true,
+      "complete": true,
+      "pass": true,
+      "normalizedClaims": [
+        {
+          "claim": "Après la pose de l'antenne du 15 mars 2022, la tour Eiffel mesurait 324 mètres",
+          "verdict": "wrong",
+          "explanation": "Selon la source officielle de la Tour Eiffel, l'ajout de l'antenne DAB+ le 15 mars 2022 a porté la hauteur à 330 mètres, et non 324 mètres (qui correspondait à la hauteur après l'antenne UHF de 2000).",
+          "originalText": "Après la pose de l'antenne du 15 mars 2022, la tour Eiffel mesurait **324 mètres**.",
+          "correction": "Après la pose de l'antenne du 15 mars 2022, la tour Eiffel mesurait **330 mètres**.",
+          "evidenceUrls": [],
+          "sensitive": false
+        }
+      ],
+      "confidenceConflict": true,
+      "failure": null
+    },
+    {
+      "caseId": "F01",
+      "requestedModel": "gemini-3.8-flash",
+      "provider": "gemini",
+      "startedAt": "2026-09-13T19:13:37.885Z",
+      "inputSha256": "e06163a888e9dbb9d9f6eaed35bb9e1ce4275e60f39c999561a52ef192cae6d9",
+      "reservedUsd": 0.016347,
+      "elapsedMs": 1884,
+      "httpStatus": 200,
+      "status": "completed",
+      "servedModel": "gemini-3.8-flash",
+      "finish": "STOP",
+      "usage": {
+        "promptTokenCount": 1819,
+        "candidatesTokenCount": 148,
+        "totalTokenCount": 2334,
+        "promptTokensDetails": [
+          {
+            "modality": "TEXT",
+            "tokenCount": 1819
+          }
+        ],
+        "thoughtsTokenCount": 367,
+        "serviceTier": "standard"
+      },
+      "text": "{\n  \"overall_confidence\": \"low\",\n  \"claims\": [\n    {\n      \"claim\": \"Après la pose de l'antenne du 15 mars 2022, la tour Eiffel mesurait 324 mètres.\",\n      \"verdict\": \"wrong\",\n      \"explanation\": \"L'installation de la nouvelle antenne le 15 mars 2022 a porté la hauteur de la tour Eiffel à 330 mètres (324 mètres était sa hauteur antérieure).\",\n      \"originalText\": \"**324 mètres**\",\n      \"correction\": \"**330 mètres**\"\n    }\n  ]\n}",
+      "verdict": {
+        "overall_confidence": "low",
+        "claims": [
+          {
+            "claim": "Après la pose de l'antenne du 15 mars 2022, la tour Eiffel mesurait 324 mètres.",
+            "verdict": "wrong",
+            "explanation": "L'installation de la nouvelle antenne le 15 mars 2022 a porté la hauteur de la tour Eiffel à 330 mètres (324 mètres était sa hauteur antérieure).",
+            "originalText": "**324 mètres**",
+            "correction": "**330 mètres**"
+          }
+        ]
+      },
+      "inputTokens": 1819,
+      "outputTokens": 515,
+      "estimatedUncachedUsd": 0.0032955,
+      "acceptedByArtyParser": true,
+      "complete": true,
+      "pass": true,
+      "normalizedClaims": [
+        {
+          "claim": "Après la pose de l'antenne du 15 mars 2022, la tour Eiffel mesurait 324 mètres.",
+          "verdict": "wrong",
+          "explanation": "L'installation de la nouvelle antenne le 15 mars 2022 a porté la hauteur de la tour Eiffel à 330 mètres (324 mètres était sa hauteur antérieure).",
+          "originalText": "**324 mètres**",
+          "correction": "**330 mètres**",
+          "evidenceUrls": [],
+          "sensitive": false
+        }
+      ],
+      "confidenceConflict": false,
+      "failure": null
+    },
+    {
+      "caseId": "F01",
+      "requestedModel": "gpt-5.6-luna",
+      "provider": "openai",
+      "startedAt": "2026-09-13T19:13:39.770Z",
+      "inputSha256": "e06163a888e9dbb9d9f6eaed35bb9e1ce4275e60f39c999561a52ef192cae6d9",
+      "reservedUsd": 0.0049591999999999995,
+      "elapsedMs": 3434,
+      "httpStatus": 200,
+      "status": "completed",
+      "servedModel": "gpt-5.6-luna",
+      "finish": "stop",
+      "usage": {
+        "prompt_tokens": 1687,
+        "completion_tokens": 194,
+        "total_tokens": 1881,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "cache_write_tokens": 1684,
+          "audio_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "audio_tokens": 0,
+          "accepted_prediction_tokens": 0,
+          "rejected_prediction_tokens": 0
+        }
+      },
+      "text": "{\n  \"overall_confidence\": \"low\",\n  \"claims\": [\n    {\n      \"claim\": \"Après la pose de l'antenne du 15 mars 2022, la tour Eiffel mesurait 324 mètres.\",\n      \"verdict\": \"wrong\",\n      \"explanation\": \"La source indique que l'antenne DAB+ installée le 15 mars 2022 a porté la hauteur de la tour Eiffel à 330 mètres. Les 324 mètres correspondaient à la hauteur après l'installation de l'antenne UHF en 2000.\",\n      \"originalText\": \"Après la pose de l'antenne du 15 mars 2022, la tour Eiffel mesurait **324 mètres**.\",\n      \"correction\": \"Après la pose de l'antenne du 15 mars 2022, la tour Eiffel mesurait **330 mètres**.\"\n    }\n  ]\n}",
+      "verdict": {
+        "overall_confidence": "low",
+        "claims": [
+          {
+            "claim": "Après la pose de l'antenne du 15 mars 2022, la tour Eiffel mesurait 324 mètres.",
+            "verdict": "wrong",
+            "explanation": "La source indique que l'antenne DAB+ installée le 15 mars 2022 a porté la hauteur de la tour Eiffel à 330 mètres. Les 324 mètres correspondaient à la hauteur après l'installation de l'antenne UHF en 2000.",
+            "originalText": "Après la pose de l'antenne du 15 mars 2022, la tour Eiffel mesurait **324 mètres**.",
+            "correction": "Après la pose de l'antenne du 15 mars 2022, la tour Eiffel mesurait **330 mètres**."
+          }
+        ]
+      },
+      "inputTokens": 1687,
+      "outputTokens": 194,
+      "estimatedUncachedUsd": 0.0005702000000000001,
+      "acceptedByArtyParser": true,
+      "complete": true,
+      "pass": true,
+      "normalizedClaims": [
+        {
+          "claim": "Après la pose de l'antenne du 15 mars 2022, la tour Eiffel mesurait 324 mètres.",
+          "verdict": "wrong",
+          "explanation": "La source indique que l'antenne DAB+ installée le 15 mars 2022 a porté la hauteur de la tour Eiffel à 330 mètres. Les 324 mètres correspondaient à la hauteur après l'installation de l'antenne UHF en 2000.",
+          "originalText": "Après la pose de l'antenne du 15 mars 2022, la tour Eiffel mesurait **324 mètres**.",
+          "correction": "Après la pose de l'antenne du 15 mars 2022, la tour Eiffel mesurait **330 mètres**.",
+          "evidenceUrls": [],
+          "sensitive": false
+        }
+      ],
+      "confidenceConflict": false,
+      "failure": null
+    },
+    {
+      "caseId": "F01",
+      "requestedModel": "gpt-5.6-terra",
+      "provider": "openai",
+      "startedAt": "2026-09-13T19:13:43.204Z",
+      "inputSha256": "e06163a888e9dbb9d9f6eaed35bb9e1ce4275e60f39c999561a52ef192cae6d9",
+      "reservedUsd": 0.049592,
+      "elapsedMs": 2205,
+      "httpStatus": 200,
+      "status": "completed",
+      "servedModel": "gpt-5.6-terra",
+      "finish": "stop",
+      "usage": {
+        "prompt_tokens": 1687,
+        "completion_tokens": 149,
+        "total_tokens": 1836,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "cache_write_tokens": 1684,
+          "audio_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "audio_tokens": 0,
+          "accepted_prediction_tokens": 0,
+          "rejected_prediction_tokens": 0
+        }
+      },
+      "text": "{\n  \"overall_confidence\": \"low\",\n  \"claims\": [\n    {\n      \"claim\": \"Après la pose de l’antenne DAB+ le 15 mars 2022, la tour Eiffel mesurait 324 mètres.\",\n      \"verdict\": \"wrong\",\n      \"explanation\": \"La source officielle de la tour Eiffel indique que l’antenne DAB+ ajoutée le 15 mars 2022 a porté sa hauteur à 330 mètres ; 324 mètres correspondait à la hauteur après l’antenne UHF installée en 2000.\",\n      \"originalText\": \"**324 mètres**\",\n      \"correction\": \"**330 mètres**\"\n    }\n  ]\n}",
+      "verdict": {
+        "overall_confidence": "low",
+        "claims": [
+          {
+            "claim": "Après la pose de l’antenne DAB+ le 15 mars 2022, la tour Eiffel mesurait 324 mètres.",
+            "verdict": "wrong",
+            "explanation": "La source officielle de la tour Eiffel indique que l’antenne DAB+ ajoutée le 15 mars 2022 a porté sa hauteur à 330 mètres ; 324 mètres correspondait à la hauteur après l’antenne UHF installée en 2000.",
+            "originalText": "**324 mètres**",
+            "correction": "**330 mètres**"
+          }
+        ]
+      },
+      "inputTokens": 1687,
+      "outputTokens": 149,
+      "estimatedUncachedUsd": 0.005162,
+      "acceptedByArtyParser": true,
+      "complete": true,
+      "pass": true,
+      "normalizedClaims": [
+        {
+          "claim": "Après la pose de l’antenne DAB+ le 15 mars 2022, la tour Eiffel mesurait 324 mètres.",
+          "verdict": "wrong",
+          "explanation": "La source officielle de la tour Eiffel indique que l’antenne DAB+ ajoutée le 15 mars 2022 a porté sa hauteur à 330 mètres ; 324 mètres correspondait à la hauteur après l’antenne UHF installée en 2000.",
+          "originalText": "**324 mètres**",
+          "correction": "**330 mètres**",
+          "evidenceUrls": [],
+          "sensitive": false
+        }
+      ],
+      "confidenceConflict": false,
+      "failure": null
+    },
+    {
+      "caseId": "F02",
+      "requestedModel": "claude-sonnet-4-6",
+      "provider": "anthropic",
+      "startedAt": "2026-09-13T19:13:45.409Z",
+      "inputSha256": "338be5bcf2d22c40a765aab39afba916e818127b6af8f976c2dc21480a7c81ec",
+      "reservedUsd": 0.065331,
+      "elapsedMs": 2441,
+      "httpStatus": 200,
+      "status": "completed",
+      "servedModel": "claude-sonnet-4-6",
+      "finish": "end_turn",
+      "usage": {
+        "input_tokens": 2069,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 128,
+        "service_tier": "standard",
+        "inference_geo": "global"
+      },
+      "text": "{\n  \"overall_confidence\": \"high\",\n  \"claims\": [\n    {\n      \"claim\": \"Après l'installation de l'antenne en 2000, la tour Eiffel mesurait 324 mètres.\",\n      \"verdict\": \"verified\",\n      \"explanation\": \"La source officielle du site de la tour Eiffel confirme explicitement que l'antenne UHF installée en 2000 a porté la hauteur à 324 mètres.\"\n    }\n  ]\n}",
+      "verdict": {
+        "overall_confidence": "high",
+        "claims": [
+          {
+            "claim": "Après l'installation de l'antenne en 2000, la tour Eiffel mesurait 324 mètres.",
+            "verdict": "verified",
+            "explanation": "La source officielle du site de la tour Eiffel confirme explicitement que l'antenne UHF installée en 2000 a porté la hauteur à 324 mètres."
+          }
+        ]
+      },
+      "inputTokens": 2069,
+      "outputTokens": 128,
+      "estimatedUncachedUsd": 0.008127,
+      "acceptedByArtyParser": true,
+      "complete": true,
+      "pass": true,
+      "normalizedClaims": [
+        {
+          "claim": "Après l'installation de l'antenne en 2000, la tour Eiffel mesurait 324 mètres.",
+          "verdict": "verified",
+          "explanation": "La source officielle du site de la tour Eiffel confirme explicitement que l'antenne UHF installée en 2000 a porté la hauteur à 324 mètres.",
+          "evidenceUrls": [],
+          "sensitive": false
+        }
+      ],
+      "confidenceConflict": false,
+      "failure": null
+    },
+    {
+      "caseId": "F02",
+      "requestedModel": "gemini-3.6-flash",
+      "provider": "gemini",
+      "startedAt": "2026-09-13T19:13:47.850Z",
+      "inputSha256": "338be5bcf2d22c40a765aab39afba916e818127b6af8f976c2dc21480a7c81ec",
+      "reservedUsd": 0.01633275,
+      "elapsedMs": 2748,
+      "httpStatus": 200,
+      "status": "completed",
+      "servedModel": "gemini-3.6-flash",
+      "finish": "STOP",
+      "usage": {
+        "promptTokenCount": 1810,
+        "candidatesTokenCount": 112,
+        "totalTokenCount": 2321,
+        "promptTokensDetails": [
+          {
+            "modality": "TEXT",
+            "tokenCount": 1810
+          }
+        ],
+        "thoughtsTokenCount": 399,
+        "serviceTier": "standard"
+      },
+      "text": "{\n  \"overall_confidence\": \"high\",\n  \"claims\": [\n    {\n      \"claim\": \"Après l'installation de l'antenne en 2000, la tour Eiffel mesurait 324 mètres.\",\n      \"verdict\": \"verified\",\n      \"explanation\": \"Confirmé par la source officielle : l'antenne UHF installée en 2000 a porté la hauteur de la tour Eiffel à 324 mètres.\"\n    }\n  ]\n}",
+      "verdict": {
+        "overall_confidence": "high",
+        "claims": [
+          {
+            "claim": "Après l'installation de l'antenne en 2000, la tour Eiffel mesurait 324 mètres.",
+            "verdict": "verified",
+            "explanation": "Confirmé par la source officielle : l'antenne UHF installée en 2000 a porté la hauteur de la tour Eiffel à 324 mètres."
+          }
+        ]
+      },
+      "inputTokens": 1810,
+      "outputTokens": 511,
+      "estimatedUncachedUsd": 0.00327375,
+      "acceptedByArtyParser": true,
+      "complete": true,
+      "pass": true,
+      "normalizedClaims": [
+        {
+          "claim": "Après l'installation de l'antenne en 2000, la tour Eiffel mesurait 324 mètres.",
+          "verdict": "verified",
+          "explanation": "Confirmé par la source officielle : l'antenne UHF installée en 2000 a porté la hauteur de la tour Eiffel à 324 mètres.",
+          "evidenceUrls": [],
+          "sensitive": false
+        }
+      ],
+      "confidenceConflict": false,
+      "failure": null
+    },
+    {
+      "caseId": "F02",
+      "requestedModel": "claude-sonnet-5",
+      "provider": "anthropic",
+      "startedAt": "2026-09-13T19:13:50.598Z",
+      "inputSha256": "338be5bcf2d22c40a765aab39afba916e818127b6af8f976c2dc21480a7c81ec",
+      "reservedUsd": 0.043554,
+      "elapsedMs": 1713,
+      "httpStatus": 200,
+      "status": "completed",
+      "servedModel": "claude-sonnet-5",
+      "finish": "end_turn",
+      "usage": {
+        "input_tokens": 2848,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 128,
+        "output_tokens_details": {
+          "thinking_tokens": 0
+        },
+        "service_tier": "standard",
+        "inference_geo": "global"
+      },
+      "text": "{\"overall_confidence\":\"high\",\"claims\":[{\"claim\":\"Après l'installation de l'antenne en 2000, la tour Eiffel mesurait 324 mètres\",\"verdict\":\"verified\",\"explanation\":\"Confirmé par la source officielle de la tour Eiffel qui indique que l'antenne installée en 2000 porte la hauteur à 324 mètres.\"}]}",
+      "verdict": {
+        "overall_confidence": "high",
+        "claims": [
+          {
+            "claim": "Après l'installation de l'antenne en 2000, la tour Eiffel mesurait 324 mètres",
+            "verdict": "verified",
+            "explanation": "Confirmé par la source officielle de la tour Eiffel qui indique que l'antenne installée en 2000 porte la hauteur à 324 mètres."
+          }
+        ]
+      },
+      "inputTokens": 2848,
+      "outputTokens": 128,
+      "estimatedUncachedUsd": 0.006976,
+      "acceptedByArtyParser": true,
+      "complete": true,
+      "pass": true,
+      "normalizedClaims": [
+        {
+          "claim": "Après l'installation de l'antenne en 2000, la tour Eiffel mesurait 324 mètres",
+          "verdict": "verified",
+          "explanation": "Confirmé par la source officielle de la tour Eiffel qui indique que l'antenne installée en 2000 porte la hauteur à 324 mètres.",
+          "evidenceUrls": [],
+          "sensitive": false
+        }
+      ],
+      "confidenceConflict": false,
+      "failure": null
+    },
+    {
+      "caseId": "F02",
+      "requestedModel": "gemini-3.8-flash",
+      "provider": "gemini",
+      "startedAt": "2026-09-13T19:13:52.311Z",
+      "inputSha256": "338be5bcf2d22c40a765aab39afba916e818127b6af8f976c2dc21480a7c81ec",
+      "reservedUsd": 0.01633275,
+      "elapsedMs": 1664,
+      "httpStatus": 200,
+      "status": "completed",
+      "servedModel": "gemini-3.8-flash",
+      "finish": "STOP",
+      "usage": {
+        "promptTokenCount": 1810,
+        "candidatesTokenCount": 109,
+        "totalTokenCount": 2118,
+        "promptTokensDetails": [
+          {
+            "modality": "TEXT",
+            "tokenCount": 1810
+          }
+        ],
+        "thoughtsTokenCount": 199,
+        "serviceTier": "standard"
+      },
+      "text": "{\n  \"overall_confidence\": \"high\",\n  \"claims\": [\n    {\n      \"claim\": \"Après l'installation de l'antenne en 2000, la tour Eiffel mesurait 324 mètres.\",\n      \"verdict\": \"verified\",\n      \"explanation\": \"La source officielle confirme que l'antenne installée en 2000 a porté la hauteur de la tour Eiffel à 324 mètres.\"\n    }\n  ]\n}",
+      "verdict": {
+        "overall_confidence": "high",
+        "claims": [
+          {
+            "claim": "Après l'installation de l'antenne en 2000, la tour Eiffel mesurait 324 mètres.",
+            "verdict": "verified",
+            "explanation": "La source officielle confirme que l'antenne installée en 2000 a porté la hauteur de la tour Eiffel à 324 mètres."
+          }
+        ]
+      },
+      "inputTokens": 1810,
+      "outputTokens": 308,
+      "estimatedUncachedUsd": 0.0025125,
+      "acceptedByArtyParser": true,
+      "complete": true,
+      "pass": true,
+      "normalizedClaims": [
+        {
+          "claim": "Après l'installation de l'antenne en 2000, la tour Eiffel mesurait 324 mètres.",
+          "verdict": "verified",
+          "explanation": "La source officielle confirme que l'antenne installée en 2000 a porté la hauteur de la tour Eiffel à 324 mètres.",
+          "evidenceUrls": [],
+          "sensitive": false
+        }
+      ],
+      "confidenceConflict": false,
+      "failure": null
+    },
+    {
+      "caseId": "F02",
+      "requestedModel": "gpt-5.6-luna",
+      "provider": "openai",
+      "startedAt": "2026-09-13T19:13:53.976Z",
+      "inputSha256": "338be5bcf2d22c40a765aab39afba916e818127b6af8f976c2dc21480a7c81ec",
+      "reservedUsd": 0.0049553999999999996,
+      "elapsedMs": 2218,
+      "httpStatus": 200,
+      "status": "completed",
+      "servedModel": "gpt-5.6-luna",
+      "finish": "stop",
+      "usage": {
+        "prompt_tokens": 1677,
+        "completion_tokens": 135,
+        "total_tokens": 1812,
+        "prompt_tokens_details": {
+          "cached_tokens": 1487,
+          "cache_write_tokens": 187,
+          "audio_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "audio_tokens": 0,
+          "accepted_prediction_tokens": 0,
+          "rejected_prediction_tokens": 0
+        }
+      },
+      "text": "{\n  \"overall_confidence\": \"high\",\n  \"claims\": [\n    {\n      \"claim\": \"Après l'installation de l'antenne en 2000, la tour Eiffel mesurait 324 mètres.\",\n      \"verdict\": \"verified\",\n      \"explanation\": \"La source officielle de la tour Eiffel indique que l'antenne UHF installée en 2000 a porté la hauteur de la tour à 324 mètres.\",\n      \"originalText\": \"Après l'installation de l'antenne en 2000, la tour Eiffel mesurait 324 mètres.\",\n      \"correction\": \"\"\n    }\n  ]\n}",
+      "verdict": {
+        "overall_confidence": "high",
+        "claims": [
+          {
+            "claim": "Après l'installation de l'antenne en 2000, la tour Eiffel mesurait 324 mètres.",
+            "verdict": "verified",
+            "explanation": "La source officielle de la tour Eiffel indique que l'antenne UHF installée en 2000 a porté la hauteur de la tour à 324 mètres.",
+            "originalText": "Après l'installation de l'antenne en 2000, la tour Eiffel mesurait 324 mètres.",
+            "correction": ""
+          }
+        ]
+      },
+      "inputTokens": 1677,
+      "outputTokens": 135,
+      "estimatedUncachedUsd": 0.0004974000000000001,
+      "acceptedByArtyParser": true,
+      "complete": true,
+      "pass": true,
+      "normalizedClaims": [
+        {
+          "claim": "Après l'installation de l'antenne en 2000, la tour Eiffel mesurait 324 mètres.",
+          "verdict": "verified",
+          "explanation": "La source officielle de la tour Eiffel indique que l'antenne UHF installée en 2000 a porté la hauteur de la tour à 324 mètres.",
+          "evidenceUrls": [],
+          "sensitive": false
+        }
+      ],
+      "confidenceConflict": false,
+      "failure": null
+    },
+    {
+      "caseId": "F02",
+      "requestedModel": "gpt-5.6-terra",
+      "provider": "openai",
+      "startedAt": "2026-09-13T19:13:56.193Z",
+      "inputSha256": "338be5bcf2d22c40a765aab39afba916e818127b6af8f976c2dc21480a7c81ec",
+      "reservedUsd": 0.049554,
+      "elapsedMs": 1980,
+      "httpStatus": 200,
+      "status": "completed",
+      "servedModel": "gpt-5.6-terra",
+      "finish": "stop",
+      "usage": {
+        "prompt_tokens": 1677,
+        "completion_tokens": 80,
+        "total_tokens": 1757,
+        "prompt_tokens_details": {
+          "cached_tokens": 1487,
+          "cache_write_tokens": 187,
+          "audio_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "audio_tokens": 0,
+          "accepted_prediction_tokens": 0,
+          "rejected_prediction_tokens": 0
+        }
+      },
+      "text": "{\"overall_confidence\":\"high\",\"claims\":[{\"claim\":\"Après l'installation de l'antenne UHF en 2000, la tour Eiffel mesurait 324 mètres.\",\"verdict\":\"verified\",\"explanation\":\"La source officielle de la tour Eiffel indique que l’antenne UHF installée en 2000 a porté sa hauteur à 324 mètres.\"}]}",
+      "verdict": {
+        "overall_confidence": "high",
+        "claims": [
+          {
+            "claim": "Après l'installation de l'antenne UHF en 2000, la tour Eiffel mesurait 324 mètres.",
+            "verdict": "verified",
+            "explanation": "La source officielle de la tour Eiffel indique que l’antenne UHF installée en 2000 a porté sa hauteur à 324 mètres."
+          }
+        ]
+      },
+      "inputTokens": 1677,
+      "outputTokens": 80,
+      "estimatedUncachedUsd": 0.004314,
+      "acceptedByArtyParser": true,
+      "complete": true,
+      "pass": true,
+      "normalizedClaims": [
+        {
+          "claim": "Après l'installation de l'antenne UHF en 2000, la tour Eiffel mesurait 324 mètres.",
+          "verdict": "verified",
+          "explanation": "La source officielle de la tour Eiffel indique que l’antenne UHF installée en 2000 a porté sa hauteur à 324 mètres.",
+          "evidenceUrls": [],
+          "sensitive": false
+        }
+      ],
+      "confidenceConflict": false,
+      "failure": null
+    },
+    {
+      "caseId": "F02",
+      "requestedModel": "claude-haiku-4-5-20251001",
+      "provider": "anthropic",
+      "startedAt": "2026-09-13T19:13:58.174Z",
+      "inputSha256": "338be5bcf2d22c40a765aab39afba916e818127b6af8f976c2dc21480a7c81ec",
+      "reservedUsd": 0.021777,
+      "elapsedMs": 2300,
+      "httpStatus": 200,
+      "status": "invalid_json",
+      "servedModel": "claude-haiku-4-5-20251001",
+      "finish": "end_turn",
+      "usage": {
+        "input_tokens": 2068,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 154,
+        "service_tier": "standard",
+        "inference_geo": "not_available"
+      },
+      "text": "```json\n{\n  \"overall_confidence\": \"high\",\n  \"claims\": [\n    {\n      \"claim\": \"Après l'installation de l'antenne en 2000, la tour Eiffel mesurait 324 mètres\",\n      \"verdict\": \"verified\",\n      \"explanation\": \"La source officielle du site de la tour Eiffel (toureiffel.paris) confirme explicitement que l'antenne UHF installée en 2000 porte la hauteur à 324 mètres.\",\n      \"originalText\": null,\n      \"correction\": null\n    }\n  ]\n}\n```",
+      "inputTokens": 2068,
+      "outputTokens": 154,
+      "estimatedUncachedUsd": 0.002838,
+      "acceptedByArtyParser": true,
+      "complete": true,
+      "pass": true,
+      "normalizedClaims": [
+        {
+          "claim": "Après l'installation de l'antenne en 2000, la tour Eiffel mesurait 324 mètres",
+          "verdict": "verified",
+          "explanation": "La source officielle du site de la tour Eiffel (toureiffel.paris) confirme explicitement que l'antenne UHF installée en 2000 porte la hauteur à 324 mètres.",
+          "evidenceUrls": [],
+          "sensitive": false
+        }
+      ],
+      "confidenceConflict": false,
+      "failure": null
+    },
+    {
+      "caseId": "F03",
+      "requestedModel": "gemini-3.6-flash",
+      "provider": "gemini",
+      "startedAt": "2026-09-13T19:14:00.475Z",
+      "inputSha256": "b7d180c550c6ad838db83b31c05f606d40cbf7dbe73108cf4dd4af0df09ed10f",
+      "reservedUsd": 0.016239,
+      "elapsedMs": 3921,
+      "httpStatus": 200,
+      "status": "completed",
+      "servedModel": "gemini-3.6-flash",
+      "finish": "STOP",
+      "usage": {
+        "promptTokenCount": 1752,
+        "candidatesTokenCount": 189,
+        "totalTokenCount": 2512,
+        "promptTokensDetails": [
+          {
+            "modality": "TEXT",
+            "tokenCount": 1752
+          }
+        ],
+        "thoughtsTokenCount": 571,
+        "serviceTier": "standard"
+      },
+      "text": "{\n  \"overall_confidence\": \"low\",\n  \"claims\": [\n    {\n      \"claim\": \"La vitesse exacte de la lumière dans le vide est de 299 792 458 km/s.\",\n      \"verdict\": \"wrong\",\n      \"explanation\": \"La vitesse exacte de la lumière dans le vide est de 299 792 458 mètres par seconde (m/s), et non kilomètres par seconde (km/s). En kilomètres par seconde, cela équivaut à environ 299 792,458 km/s.\",\n      \"originalText\": \"**299 792 458 km/s**\",\n      \"correction\": \"**299 792 458 m/s**\"\n    }\n  ]\n}",
+      "verdict": {
+        "overall_confidence": "low",
+        "claims": [
+          {
+            "claim": "La vitesse exacte de la lumière dans le vide est de 299 792 458 km/s.",
+            "verdict": "wrong",
+            "explanation": "La vitesse exacte de la lumière dans le vide est de 299 792 458 mètres par seconde (m/s), et non kilomètres par seconde (km/s). En kilomètres par seconde, cela équivaut à environ 299 792,458 km/s.",
+            "originalText": "**299 792 458 km/s**",
+            "correction": "**299 792 458 m/s**"
+          }
+        ]
+      },
+      "inputTokens": 1752,
+      "outputTokens": 760,
+      "estimatedUncachedUsd": 0.004164,
+      "acceptedByArtyParser": true,
+      "complete": true,
+      "pass": true,
+      "normalizedClaims": [
+        {
+          "claim": "La vitesse exacte de la lumière dans le vide est de 299 792 458 km/s.",
+          "verdict": "wrong",
+          "explanation": "La vitesse exacte de la lumière dans le vide est de 299 792 458 mètres par seconde (m/s), et non kilomètres par seconde (km/s). En kilomètres par seconde, cela équivaut à environ 299 792,458 km/s.",
+          "originalText": "**299 792 458 km/s**",
+          "correction": "**299 792 458 m/s**",
+          "evidenceUrls": [],
+          "sensitive": false
+        }
+      ],
+      "confidenceConflict": false,
+      "failure": null
+    },
+    {
+      "caseId": "F03",
+      "requestedModel": "claude-sonnet-5",
+      "provider": "anthropic",
+      "startedAt": "2026-09-13T19:14:04.396Z",
+      "inputSha256": "b7d180c550c6ad838db83b31c05f606d40cbf7dbe73108cf4dd4af0df09ed10f",
+      "reservedUsd": 0.043304,
+      "elapsedMs": 1989,
+      "httpStatus": 200,
+      "status": "completed",
+      "servedModel": "claude-sonnet-5",
+      "finish": "end_turn",
+      "usage": {
+        "input_tokens": 2773,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 164,
+        "output_tokens_details": {
+          "thinking_tokens": 0
+        },
+        "service_tier": "standard",
+        "inference_geo": "global"
+      },
+      "text": "{\"overall_confidence\":\"low\",\"claims\":[{\"claim\":\"La vitesse de la lumière dans le vide est de 299 792 458 km/s\",\"verdict\":\"wrong\",\"explanation\":\"La source (BIPM) indique 299 792 458 m/s, pas km/s. La réponse confond l'unité, ce qui correspond à une valeur 1000 fois trop grande.\",\"originalText\":\"**299 792 458 km/s**\",\"correction\":\"**299 792 458 m/s**\"}]}",
+      "verdict": {
+        "overall_confidence": "low",
+        "claims": [
+          {
+            "claim": "La vitesse de la lumière dans le vide est de 299 792 458 km/s",
+            "verdict": "wrong",
+            "explanation": "La source (BIPM) indique 299 792 458 m/s, pas km/s. La réponse confond l'unité, ce qui correspond à une valeur 1000 fois trop grande.",
+            "originalText": "**299 792 458 km/s**",
+            "correction": "**299 792 458 m/s**"
+          }
+        ]
+      },
+      "inputTokens": 2773,
+      "outputTokens": 164,
+      "estimatedUncachedUsd": 0.007186,
+      "acceptedByArtyParser": true,
+      "complete": true,
+      "pass": true,
+      "normalizedClaims": [
+        {
+          "claim": "La vitesse de la lumière dans le vide est de 299 792 458 km/s",
+          "verdict": "wrong",
+          "explanation": "La source (BIPM) indique 299 792 458 m/s, pas km/s. La réponse confond l'unité, ce qui correspond à une valeur 1000 fois trop grande.",
+          "originalText": "**299 792 458 km/s**",
+          "correction": "**299 792 458 m/s**",
+          "evidenceUrls": [],
+          "sensitive": false
+        }
+      ],
+      "confidenceConflict": false,
+      "failure": null
+    },
+    {
+      "caseId": "F03",
+      "requestedModel": "gemini-3.8-flash",
+      "provider": "gemini",
+      "startedAt": "2026-09-13T19:14:06.385Z",
+      "inputSha256": "b7d180c550c6ad838db83b31c05f606d40cbf7dbe73108cf4dd4af0df09ed10f",
+      "reservedUsd": 0.016239,
+      "elapsedMs": 1870,
+      "httpStatus": 200,
+      "status": "completed",
+      "servedModel": "gemini-3.8-flash",
+      "finish": "STOP",
+      "usage": {
+        "promptTokenCount": 1752,
+        "candidatesTokenCount": 158,
+        "totalTokenCount": 2147,
+        "promptTokensDetails": [
+          {
+            "modality": "TEXT",
+            "tokenCount": 1752
+          }
+        ],
+        "thoughtsTokenCount": 237,
+        "serviceTier": "standard"
+      },
+      "text": "{\n  \"overall_confidence\": \"low\",\n  \"claims\": [\n    {\n      \"claim\": \"La vitesse exacte de la lumière dans le vide est de 299 792 458 km/s\",\n      \"verdict\": \"wrong\",\n      \"explanation\": \"La vitesse exacte de la lumière dans le vide est de 299 792 458 mètres par seconde (m/s), et non kilomètres par seconde.\",\n      \"originalText\": \"**299 792 458 km/s**\",\n      \"correction\": \"**299 792 458 m/s**\"\n    }\n  ]\n}",
+      "verdict": {
+        "overall_confidence": "low",
+        "claims": [
+          {
+            "claim": "La vitesse exacte de la lumière dans le vide est de 299 792 458 km/s",
+            "verdict": "wrong",
+            "explanation": "La vitesse exacte de la lumière dans le vide est de 299 792 458 mètres par seconde (m/s), et non kilomètres par seconde.",
+            "originalText": "**299 792 458 km/s**",
+            "correction": "**299 792 458 m/s**"
+          }
+        ]
+      },
+      "inputTokens": 1752,
+      "outputTokens": 395,
+      "estimatedUncachedUsd": 0.00279525,
+      "acceptedByArtyParser": true,
+      "complete": true,
+      "pass": true,
+      "normalizedClaims": [
+        {
+          "claim": "La vitesse exacte de la lumière dans le vide est de 299 792 458 km/s",
+          "verdict": "wrong",
+          "explanation": "La vitesse exacte de la lumière dans le vide est de 299 792 458 mètres par seconde (m/s), et non kilomètres par seconde.",
+          "originalText": "**299 792 458 km/s**",
+          "correction": "**299 792 458 m/s**",
+          "evidenceUrls": [],
+          "sensitive": false
+        }
+      ],
+      "confidenceConflict": false,
+      "failure": null
+    },
+    {
+      "caseId": "F03",
+      "requestedModel": "gpt-5.6-luna",
+      "provider": "openai",
+      "startedAt": "2026-09-13T19:14:08.255Z",
+      "inputSha256": "b7d180c550c6ad838db83b31c05f606d40cbf7dbe73108cf4dd4af0df09ed10f",
+      "reservedUsd": 0.0049304,
+      "elapsedMs": 1766,
+      "httpStatus": 200,
+      "status": "completed",
+      "servedModel": "gpt-5.6-luna",
+      "finish": "stop",
+      "usage": {
+        "prompt_tokens": 1633,
+        "completion_tokens": 157,
+        "total_tokens": 1790,
+        "prompt_tokens_details": {
+          "cached_tokens": 1487,
+          "cache_write_tokens": 143,
+          "audio_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "audio_tokens": 0,
+          "accepted_prediction_tokens": 0,
+          "rejected_prediction_tokens": 0
+        }
+      },
+      "text": "{\n  \"overall_confidence\": \"low\",\n  \"claims\": [\n    {\n      \"claim\": \"La vitesse exacte de la lumière dans le vide est de 299 792 458 km/s.\",\n      \"verdict\": \"wrong\",\n      \"explanation\": \"La source indique la valeur exacte de 299 792 458 m/s, soit 299 792,458 km/s. La réponse est trop grande d’un facteur 1 000.\",\n      \"originalText\": \"La vitesse exacte de la lumière dans le vide est de **299 792 458 km/s**.\",\n      \"correction\": \"La vitesse exacte de la lumière dans le vide est de **299 792,458 km/s**.\"\n    }\n  ]\n}",
+      "verdict": {
+        "overall_confidence": "low",
+        "claims": [
+          {
+            "claim": "La vitesse exacte de la lumière dans le vide est de 299 792 458 km/s.",
+            "verdict": "wrong",
+            "explanation": "La source indique la valeur exacte de 299 792 458 m/s, soit 299 792,458 km/s. La réponse est trop grande d’un facteur 1 000.",
+            "originalText": "La vitesse exacte de la lumière dans le vide est de **299 792 458 km/s**.",
+            "correction": "La vitesse exacte de la lumière dans le vide est de **299 792,458 km/s**."
+          }
+        ]
+      },
+      "inputTokens": 1633,
+      "outputTokens": 157,
+      "estimatedUncachedUsd": 0.000515,
+      "acceptedByArtyParser": true,
+      "complete": true,
+      "pass": true,
+      "normalizedClaims": [
+        {
+          "claim": "La vitesse exacte de la lumière dans le vide est de 299 792 458 km/s.",
+          "verdict": "wrong",
+          "explanation": "La source indique la valeur exacte de 299 792 458 m/s, soit 299 792,458 km/s. La réponse est trop grande d’un facteur 1 000.",
+          "originalText": "La vitesse exacte de la lumière dans le vide est de **299 792 458 km/s**.",
+          "correction": "La vitesse exacte de la lumière dans le vide est de **299 792,458 km/s**.",
+          "evidenceUrls": [],
+          "sensitive": false
+        }
+      ],
+      "confidenceConflict": false,
+      "failure": null
+    },
+    {
+      "caseId": "F03",
+      "requestedModel": "gpt-5.6-terra",
+      "provider": "openai",
+      "startedAt": "2026-09-13T19:14:10.021Z",
+      "inputSha256": "b7d180c550c6ad838db83b31c05f606d40cbf7dbe73108cf4dd4af0df09ed10f",
+      "reservedUsd": 0.049304,
+      "elapsedMs": 2283,
+      "httpStatus": 200,
+      "status": "completed",
+      "servedModel": "gpt-5.6-terra",
+      "finish": "stop",
+      "usage": {
+        "prompt_tokens": 1633,
+        "completion_tokens": 106,
+        "total_tokens": 1739,
+        "prompt_tokens_details": {
+          "cached_tokens": 1487,
+          "cache_write_tokens": 143,
+          "audio_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "audio_tokens": 0,
+          "accepted_prediction_tokens": 0,
+          "rejected_prediction_tokens": 0
+        }
+      },
+      "text": "{\"overall_confidence\":\"low\",\"claims\":[{\"claim\":\"La vitesse exacte de la lumière dans le vide est de 299 792 458 km/s.\",\"verdict\":\"wrong\",\"explanation\":\"La source du BIPM donne exactement 299 792 458 m/s, et non km/s. La valeur indiquée en km/s est donc mille fois trop élevée.\",\"originalText\":\"**299 792 458 km/s**\",\"correction\":\"**299 792 458 m/s**\"}]}",
+      "verdict": {
+        "overall_confidence": "low",
+        "claims": [
+          {
+            "claim": "La vitesse exacte de la lumière dans le vide est de 299 792 458 km/s.",
+            "verdict": "wrong",
+            "explanation": "La source du BIPM donne exactement 299 792 458 m/s, et non km/s. La valeur indiquée en km/s est donc mille fois trop élevée.",
+            "originalText": "**299 792 458 km/s**",
+            "correction": "**299 792 458 m/s**"
+          }
+        ]
+      },
+      "inputTokens": 1633,
+      "outputTokens": 106,
+      "estimatedUncachedUsd": 0.004538,
+      "acceptedByArtyParser": true,
+      "complete": true,
+      "pass": true,
+      "normalizedClaims": [
+        {
+          "claim": "La vitesse exacte de la lumière dans le vide est de 299 792 458 km/s.",
+          "verdict": "wrong",
+          "explanation": "La source du BIPM donne exactement 299 792 458 m/s, et non km/s. La valeur indiquée en km/s est donc mille fois trop élevée.",
+          "originalText": "**299 792 458 km/s**",
+          "correction": "**299 792 458 m/s**",
+          "evidenceUrls": [],
+          "sensitive": false
+        }
+      ],
+      "confidenceConflict": false,
+      "failure": null
+    },
+    {
+      "caseId": "F03",
+      "requestedModel": "claude-haiku-4-5-20251001",
+      "provider": "anthropic",
+      "startedAt": "2026-09-13T19:14:12.304Z",
+      "inputSha256": "b7d180c550c6ad838db83b31c05f606d40cbf7dbe73108cf4dd4af0df09ed10f",
+      "reservedUsd": 0.021652,
+      "elapsedMs": 1971,
+      "httpStatus": 200,
+      "status": "invalid_json",
+      "servedModel": "claude-haiku-4-5-20251001",
+      "finish": "end_turn",
+      "usage": {
+        "input_tokens": 2004,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 273,
+        "service_tier": "standard",
+        "inference_geo": "not_available"
+      },
+      "text": "```json\n{\n  \"overall_confidence\": \"high\",\n  \"claims\": [\n    {\n      \"claim\": \"La vitesse exacte de la lumière dans le vide est de 299 792 458 km/s\",\n      \"verdict\": \"wrong\",\n      \"explanation\": \"La source officielle du BIPM (Bureau International des Poids et Mesures) spécifie que c = 299 792 458 m/s, soit environ 299 792,458 km/s. La réponse omit les décimales et arrondit incorrectement. La valeur exacte en km/s est 299 792,458 km/s (avec virgule), pas 299 792 458 km/s (nombre entier).\",\n      \"originalText\": \"La vitesse exacte de la lumière dans le vide est de **299 792 458 km/s**.\",\n      \"correction\": \"La vitesse exacte de la lumière dans le vide est de **299 792,458 km/s** (ou 299 792 458 m/s).\"\n    }\n  ]\n}\n```",
+      "inputTokens": 2004,
+      "outputTokens": 273,
+      "estimatedUncachedUsd": 0.003369,
+      "acceptedByArtyParser": true,
+      "complete": true,
+      "pass": true,
+      "normalizedClaims": [
+        {
+          "claim": "La vitesse exacte de la lumière dans le vide est de 299 792 458 km/s",
+          "verdict": "wrong",
+          "explanation": "La source officielle du BIPM (Bureau International des Poids et Mesures) spécifie que c = 299 792 458 m/s, soit environ 299 792,458 km/s. La réponse omit les décimales et arrondit incorrectement. La valeur exacte en km/s est 299 792,458 km/s (avec virgule), pas 299 792 458 km/s (nombre entier).",
+          "originalText": "La vitesse exacte de la lumière dans le vide est de **299 792 458 km/s**.",
+          "correction": "La vitesse exacte de la lumière dans le vide est de **299 792,458 km/s** (ou 299 792 458 m/s).",
+          "evidenceUrls": [],
+          "sensitive": false
+        }
+      ],
+      "confidenceConflict": true,
+      "failure": null
+    },
+    {
+      "caseId": "F03",
+      "requestedModel": "claude-sonnet-4-6",
+      "provider": "anthropic",
+      "startedAt": "2026-09-13T19:14:14.275Z",
+      "inputSha256": "b7d180c550c6ad838db83b31c05f606d40cbf7dbe73108cf4dd4af0df09ed10f",
+      "reservedUsd": 0.064956,
+      "elapsedMs": 3247,
+      "httpStatus": 200,
+      "status": "completed",
+      "servedModel": "claude-sonnet-4-6",
+      "finish": "end_turn",
+      "usage": {
+        "input_tokens": 2005,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 194,
+        "service_tier": "standard",
+        "inference_geo": "global"
+      },
+      "text": "{\n  \"overall_confidence\": \"low\",\n  \"claims\": [\n    {\n      \"claim\": \"La vitesse exacte de la lumière dans le vide est de 299 792 458 km/s\",\n      \"verdict\": \"wrong\",\n      \"explanation\": \"La valeur numérique 299 792 458 est correcte, mais l'unité est fausse. Il s'agit de mètres par seconde (m/s), pas de kilomètres par seconde (km/s). La source du BIPM confirme explicitement c = 299 792 458 m/s.\",\n      \"originalText\": \"**299 792 458 km/s**\",\n      \"correction\": \"**299 792 458 m/s**\"\n    }\n  ]\n}",
+      "verdict": {
+        "overall_confidence": "low",
+        "claims": [
+          {
+            "claim": "La vitesse exacte de la lumière dans le vide est de 299 792 458 km/s",
+            "verdict": "wrong",
+            "explanation": "La valeur numérique 299 792 458 est correcte, mais l'unité est fausse. Il s'agit de mètres par seconde (m/s), pas de kilomètres par seconde (km/s). La source du BIPM confirme explicitement c = 299 792 458 m/s.",
+            "originalText": "**299 792 458 km/s**",
+            "correction": "**299 792 458 m/s**"
+          }
+        ]
+      },
+      "inputTokens": 2005,
+      "outputTokens": 194,
+      "estimatedUncachedUsd": 0.008925,
+      "acceptedByArtyParser": true,
+      "complete": true,
+      "pass": true,
+      "normalizedClaims": [
+        {
+          "claim": "La vitesse exacte de la lumière dans le vide est de 299 792 458 km/s",
+          "verdict": "wrong",
+          "explanation": "La valeur numérique 299 792 458 est correcte, mais l'unité est fausse. Il s'agit de mètres par seconde (m/s), pas de kilomètres par seconde (km/s). La source du BIPM confirme explicitement c = 299 792 458 m/s.",
+          "originalText": "**299 792 458 km/s**",
+          "correction": "**299 792 458 m/s**",
+          "evidenceUrls": [],
+          "sensitive": false
+        }
+      ],
+      "confidenceConflict": false,
+      "failure": null
+    },
+    {
+      "caseId": "F04",
+      "requestedModel": "claude-sonnet-5",
+      "provider": "anthropic",
+      "startedAt": "2026-09-13T19:14:17.523Z",
+      "inputSha256": "cecd42cd14ff060d3c3cf6c5f076e779ea2e8a04d39a10499dc0b5b0c51d1811",
+      "reservedUsd": 0.0433,
+      "elapsedMs": 1817,
+      "httpStatus": 200,
+      "status": "completed",
+      "servedModel": "claude-sonnet-5",
+      "finish": "end_turn",
+      "usage": {
+        "input_tokens": 2770,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 132,
+        "output_tokens_details": {
+          "thinking_tokens": 0
+        },
+        "service_tier": "standard",
+        "inference_geo": "global"
+      },
+      "text": "{\"overall_confidence\":\"high\",\"claims\":[{\"claim\":\"La lumière se déplace dans le vide à environ 300 000 km/s.\",\"verdict\":\"verified\",\"explanation\":\"La valeur exacte est 299 792 458 m/s, soit environ 299 792 km/s, ce qui correspond bien à l'ordre de grandeur de 300 000 km/s annoncé.\"}]}",
+      "verdict": {
+        "overall_confidence": "high",
+        "claims": [
+          {
+            "claim": "La lumière se déplace dans le vide à environ 300 000 km/s.",
+            "verdict": "verified",
+            "explanation": "La valeur exacte est 299 792 458 m/s, soit environ 299 792 km/s, ce qui correspond bien à l'ordre de grandeur de 300 000 km/s annoncé."
+          }
+        ]
+      },
+      "inputTokens": 2770,
+      "outputTokens": 132,
+      "estimatedUncachedUsd": 0.00686,
+      "acceptedByArtyParser": true,
+      "complete": true,
+      "pass": true,
+      "normalizedClaims": [
+        {
+          "claim": "La lumière se déplace dans le vide à environ 300 000 km/s.",
+          "verdict": "verified",
+          "explanation": "La valeur exacte est 299 792 458 m/s, soit environ 299 792 km/s, ce qui correspond bien à l'ordre de grandeur de 300 000 km/s annoncé.",
+          "evidenceUrls": [],
+          "sensitive": false
+        }
+      ],
+      "confidenceConflict": false,
+      "failure": null
+    },
+    {
+      "caseId": "F04",
+      "requestedModel": "gemini-3.8-flash",
+      "provider": "gemini",
+      "startedAt": "2026-09-13T19:14:19.340Z",
+      "inputSha256": "cecd42cd14ff060d3c3cf6c5f076e779ea2e8a04d39a10499dc0b5b0c51d1811",
+      "reservedUsd": 0.0162375,
+      "elapsedMs": 1496,
+      "httpStatus": 200,
+      "status": "completed",
+      "servedModel": "gemini-3.8-flash",
+      "finish": "STOP",
+      "usage": {
+        "promptTokenCount": 1750,
+        "candidatesTokenCount": 106,
+        "totalTokenCount": 1972,
+        "promptTokensDetails": [
+          {
+            "modality": "TEXT",
+            "tokenCount": 1750
+          }
+        ],
+        "thoughtsTokenCount": 116,
+        "serviceTier": "standard"
+      },
+      "text": "{\n  \"overall_confidence\": \"high\",\n  \"claims\": [\n    {\n      \"claim\": \"La lumière se déplace dans le vide à environ 300 000 km/s\",\n      \"verdict\": \"verified\",\n      \"explanation\": \"La vitesse exacte est de 299 792 458 m/s, soit environ 300 000 km/s.\"\n    }\n  ]\n}",
+      "verdict": {
+        "overall_confidence": "high",
+        "claims": [
+          {
+            "claim": "La lumière se déplace dans le vide à environ 300 000 km/s",
+            "verdict": "verified",
+            "explanation": "La vitesse exacte est de 299 792 458 m/s, soit environ 300 000 km/s."
+          }
+        ]
+      },
+      "inputTokens": 1750,
+      "outputTokens": 222,
+      "estimatedUncachedUsd": 0.002145,
+      "acceptedByArtyParser": true,
+      "complete": true,
+      "pass": true,
+      "normalizedClaims": [
+        {
+          "claim": "La lumière se déplace dans le vide à environ 300 000 km/s",
+          "verdict": "verified",
+          "explanation": "La vitesse exacte est de 299 792 458 m/s, soit environ 300 000 km/s.",
+          "evidenceUrls": [],
+          "sensitive": false
+        }
+      ],
+      "confidenceConflict": false,
+      "failure": null
+    },
+    {
+      "caseId": "F04",
+      "requestedModel": "gpt-5.6-luna",
+      "provider": "openai",
+      "startedAt": "2026-09-13T19:14:20.836Z",
+      "inputSha256": "cecd42cd14ff060d3c3cf6c5f076e779ea2e8a04d39a10499dc0b5b0c51d1811",
+      "reservedUsd": 0.00493,
+      "elapsedMs": 2406,
+      "httpStatus": 200,
+      "status": "completed",
+      "servedModel": "gpt-5.6-luna",
+      "finish": "stop",
+      "usage": {
+        "prompt_tokens": 1633,
+        "completion_tokens": 149,
+        "total_tokens": 1782,
+        "prompt_tokens_details": {
+          "cached_tokens": 1487,
+          "cache_write_tokens": 143,
+          "audio_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "audio_tokens": 0,
+          "accepted_prediction_tokens": 0,
+          "rejected_prediction_tokens": 0
+        }
+      },
+      "text": "{\n  \"overall_confidence\": \"high\",\n  \"claims\": [\n    {\n      \"claim\": \"La vitesse de la lumière dans le vide est d'environ 300 000 km/s.\",\n      \"verdict\": \"verified\",\n      \"explanation\": \"La source indique une valeur exacte de 299 792 458 m/s, soit 299 792,458 km/s, ce qui s'arrondit à environ 300 000 km/s.\",\n      \"originalText\": \"La lumière se déplace dans le vide à environ 300 000 km/s.\",\n      \"correction\": \"La lumière se déplace dans le vide à environ 300 000 km/s.\"\n    }\n  ]\n}",
+      "verdict": {
+        "overall_confidence": "high",
+        "claims": [
+          {
+            "claim": "La vitesse de la lumière dans le vide est d'environ 300 000 km/s.",
+            "verdict": "verified",
+            "explanation": "La source indique une valeur exacte de 299 792 458 m/s, soit 299 792,458 km/s, ce qui s'arrondit à environ 300 000 km/s.",
+            "originalText": "La lumière se déplace dans le vide à environ 300 000 km/s.",
+            "correction": "La lumière se déplace dans le vide à environ 300 000 km/s."
+          }
+        ]
+      },
+      "inputTokens": 1633,
+      "outputTokens": 149,
+      "estimatedUncachedUsd": 0.0005053999999999999,
+      "acceptedByArtyParser": true,
+      "complete": true,
+      "pass": true,
+      "normalizedClaims": [
+        {
+          "claim": "La vitesse de la lumière dans le vide est d'environ 300 000 km/s.",
+          "verdict": "verified",
+          "explanation": "La source indique une valeur exacte de 299 792 458 m/s, soit 299 792,458 km/s, ce qui s'arrondit à environ 300 000 km/s.",
+          "evidenceUrls": [],
+          "sensitive": false
+        }
+      ],
+      "confidenceConflict": false,
+      "failure": null
+    },
+    {
+      "caseId": "F04",
+      "requestedModel": "gpt-5.6-terra",
+      "provider": "openai",
+      "startedAt": "2026-09-13T19:14:23.242Z",
+      "inputSha256": "cecd42cd14ff060d3c3cf6c5f076e779ea2e8a04d39a10499dc0b5b0c51d1811",
+      "reservedUsd": 0.0493,
+      "elapsedMs": 1616,
+      "httpStatus": 200,
+      "status": "completed",
+      "servedModel": "gpt-5.6-terra",
+      "finish": "stop",
+      "usage": {
+        "prompt_tokens": 1633,
+        "completion_tokens": 82,
+        "total_tokens": 1715,
+        "prompt_tokens_details": {
+          "cached_tokens": 1487,
+          "cache_write_tokens": 143,
+          "audio_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "audio_tokens": 0,
+          "accepted_prediction_tokens": 0,
+          "rejected_prediction_tokens": 0
+        }
+      },
+      "text": "{\"overall_confidence\":\"high\",\"claims\":[{\"claim\":\"La vitesse de la lumière dans le vide est d’environ 300 000 km/s.\",\"verdict\":\"verified\",\"explanation\":\"La source du BIPM donne exactement 299 792 458 m/s, soit 299 792,458 km/s, arrondi à environ 300 000 km/s.\"}]}",
+      "verdict": {
+        "overall_confidence": "high",
+        "claims": [
+          {
+            "claim": "La vitesse de la lumière dans le vide est d’environ 300 000 km/s.",
+            "verdict": "verified",
+            "explanation": "La source du BIPM donne exactement 299 792 458 m/s, soit 299 792,458 km/s, arrondi à environ 300 000 km/s."
+          }
+        ]
+      },
+      "inputTokens": 1633,
+      "outputTokens": 82,
+      "estimatedUncachedUsd": 0.00425,
+      "acceptedByArtyParser": true,
+      "complete": true,
+      "pass": true,
+      "normalizedClaims": [
+        {
+          "claim": "La vitesse de la lumière dans le vide est d’environ 300 000 km/s.",
+          "verdict": "verified",
+          "explanation": "La source du BIPM donne exactement 299 792 458 m/s, soit 299 792,458 km/s, arrondi à environ 300 000 km/s.",
+          "evidenceUrls": [],
+          "sensitive": false
+        }
+      ],
+      "confidenceConflict": false,
+      "failure": null
+    },
+    {
+      "caseId": "F04",
+      "requestedModel": "claude-haiku-4-5-20251001",
+      "provider": "anthropic",
+      "startedAt": "2026-09-13T19:14:24.859Z",
+      "inputSha256": "cecd42cd14ff060d3c3cf6c5f076e779ea2e8a04d39a10499dc0b5b0c51d1811",
+      "reservedUsd": 0.02165,
+      "elapsedMs": 2331,
+      "httpStatus": 200,
+      "status": "invalid_json",
+      "servedModel": "claude-haiku-4-5-20251001",
+      "finish": "end_turn",
+      "usage": {
+        "input_tokens": 2002,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 196,
+        "service_tier": "standard",
+        "inference_geo": "not_available"
+      },
+      "text": "```json\n{\n  \"overall_confidence\": \"high\",\n  \"claims\": [\n    {\n      \"claim\": \"La lumière se déplace dans le vide à environ 300 000 km/s\",\n      \"verdict\": \"verified\",\n      \"explanation\": \"La source du BIPM (Bureau International des Poids et Mesures) indique c = 299 792 458 m/s, soit environ 299 792 km/s. L'affirmation de « 300 000 km/s » est une approximation correcte et appropriée pour un ordre de grandeur. L'utilisation du mot « environ » confirme que la réponse reconnaît le caractère approché de cette valeur.\",\n      \"originalText\": null,\n      \"correction\": null\n    }\n  ]\n}\n```",
+      "inputTokens": 2002,
+      "outputTokens": 196,
+      "estimatedUncachedUsd": 0.002982,
+      "acceptedByArtyParser": true,
+      "complete": true,
+      "pass": true,
+      "normalizedClaims": [
+        {
+          "claim": "La lumière se déplace dans le vide à environ 300 000 km/s",
+          "verdict": "verified",
+          "explanation": "La source du BIPM (Bureau International des Poids et Mesures) indique c = 299 792 458 m/s, soit environ 299 792 km/s. L'affirmation de « 300 000 km/s » est une approximation correcte et appropriée pour un ordre de grandeur. L'utilisation du mot « environ » confirme que la réponse reconnaît le caractère approché de cette valeur.",
+          "evidenceUrls": [],
+          "sensitive": false
+        }
+      ],
+      "confidenceConflict": false,
+      "failure": null
+    },
+    {
+      "caseId": "F04",
+      "requestedModel": "claude-sonnet-4-6",
+      "provider": "anthropic",
+      "startedAt": "2026-09-13T19:14:27.190Z",
+      "inputSha256": "cecd42cd14ff060d3c3cf6c5f076e779ea2e8a04d39a10499dc0b5b0c51d1811",
+      "reservedUsd": 0.06495,
+      "elapsedMs": 2806,
+      "httpStatus": 200,
+      "status": "completed",
+      "servedModel": "claude-sonnet-4-6",
+      "finish": "end_turn",
+      "usage": {
+        "input_tokens": 2003,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 134,
+        "service_tier": "standard",
+        "inference_geo": "global"
+      },
+      "text": "{\n  \"overall_confidence\": \"high\",\n  \"claims\": [\n    {\n      \"claim\": \"La lumière se déplace dans le vide à environ 300 000 km/s\",\n      \"verdict\": \"verified\",\n      \"explanation\": \"La valeur exacte est 299 792 458 m/s, soit environ 299 792 km/s, ce qui est correctement arrondi à 300 000 km/s comme ordre de grandeur. La source BIPM confirme cette valeur.\"\n    }\n  ]\n}",
+      "verdict": {
+        "overall_confidence": "high",
+        "claims": [
+          {
+            "claim": "La lumière se déplace dans le vide à environ 300 000 km/s",
+            "verdict": "verified",
+            "explanation": "La valeur exacte est 299 792 458 m/s, soit environ 299 792 km/s, ce qui est correctement arrondi à 300 000 km/s comme ordre de grandeur. La source BIPM confirme cette valeur."
+          }
+        ]
+      },
+      "inputTokens": 2003,
+      "outputTokens": 134,
+      "estimatedUncachedUsd": 0.008019,
+      "acceptedByArtyParser": true,
+      "complete": true,
+      "pass": true,
+      "normalizedClaims": [
+        {
+          "claim": "La lumière se déplace dans le vide à environ 300 000 km/s",
+          "verdict": "verified",
+          "explanation": "La valeur exacte est 299 792 458 m/s, soit environ 299 792 km/s, ce qui est correctement arrondi à 300 000 km/s comme ordre de grandeur. La source BIPM confirme cette valeur.",
+          "evidenceUrls": [],
+          "sensitive": false
+        }
+      ],
+      "confidenceConflict": false,
+      "failure": null
+    },
+    {
+      "caseId": "F04",
+      "requestedModel": "gemini-3.6-flash",
+      "provider": "gemini",
+      "startedAt": "2026-09-13T19:14:29.997Z",
+      "inputSha256": "cecd42cd14ff060d3c3cf6c5f076e779ea2e8a04d39a10499dc0b5b0c51d1811",
+      "reservedUsd": 0.0162375,
+      "elapsedMs": 2709,
+      "httpStatus": 200,
+      "status": "completed",
+      "servedModel": "gemini-3.6-flash",
+      "finish": "STOP",
+      "usage": {
+        "promptTokenCount": 1750,
+        "candidatesTokenCount": 136,
+        "totalTokenCount": 2208,
+        "promptTokensDetails": [
+          {
+            "modality": "TEXT",
+            "tokenCount": 1750
+          }
+        ],
+        "thoughtsTokenCount": 322,
+        "serviceTier": "standard"
+      },
+      "text": "{\n  \"overall_confidence\": \"high\",\n  \"claims\": [\n    {\n      \"claim\": \"La lumière se déplace dans le vide à environ 300 000 km/s\",\n      \"verdict\": \"verified\",\n      \"explanation\": \"La vitesse exacte de la lumière dans le vide est de 299 792 458 m/s (soit environ 299 792 km/s), ce qui correspond parfaitement à l'ordre de grandeur de 300 000 km/s.\"\n    }\n  ]\n}",
+      "verdict": {
+        "overall_confidence": "high",
+        "claims": [
+          {
+            "claim": "La lumière se déplace dans le vide à environ 300 000 km/s",
+            "verdict": "verified",
+            "explanation": "La vitesse exacte de la lumière dans le vide est de 299 792 458 m/s (soit environ 299 792 km/s), ce qui correspond parfaitement à l'ordre de grandeur de 300 000 km/s."
+          }
+        ]
+      },
+      "inputTokens": 1750,
+      "outputTokens": 458,
+      "estimatedUncachedUsd": 0.00303,
+      "acceptedByArtyParser": true,
+      "complete": true,
+      "pass": true,
+      "normalizedClaims": [
+        {
+          "claim": "La lumière se déplace dans le vide à environ 300 000 km/s",
+          "verdict": "verified",
+          "explanation": "La vitesse exacte de la lumière dans le vide est de 299 792 458 m/s (soit environ 299 792 km/s), ce qui correspond parfaitement à l'ordre de grandeur de 300 000 km/s.",
+          "evidenceUrls": [],
+          "sensitive": false
+        }
+      ],
+      "confidenceConflict": false,
+      "failure": null
+    },
+    {
+      "caseId": "F05",
+      "requestedModel": "gemini-3.8-flash",
+      "provider": "gemini",
+      "startedAt": "2026-09-13T19:14:32.706Z",
+      "inputSha256": "7c2cae679864575cd935c07b9bb434dabe1b63e3514544fd084f13a187eef9e5",
+      "reservedUsd": 0.016524,
+      "elapsedMs": 1936,
+      "httpStatus": 200,
+      "status": "completed",
+      "servedModel": "gemini-3.8-flash",
+      "finish": "STOP",
+      "usage": {
+        "promptTokenCount": 1869,
+        "candidatesTokenCount": 113,
+        "totalTokenCount": 2354,
+        "promptTokensDetails": [
+          {
+            "modality": "TEXT",
+            "tokenCount": 1869
+          }
+        ],
+        "thoughtsTokenCount": 372,
+        "serviceTier": "standard"
+      },
+      "text": "{\n  \"overall_confidence\": \"high\",\n  \"claims\": [\n    {\n      \"claim\": \"Le témoin affirme dans cet exercice fictif : « La tour Eiffel mesurait encore 324 mètres après le 15 mars 2022. »\",\n      \"verdict\": \"verified\",\n      \"explanation\": \"Les propos rapportés sont fidèles à la transcription fictive fournie, qui précise que le témoin a dit exactement cette phrase.\"\n    }\n  ]\n}",
+      "verdict": {
+        "overall_confidence": "high",
+        "claims": [
+          {
+            "claim": "Le témoin affirme dans cet exercice fictif : « La tour Eiffel mesurait encore 324 mètres après le 15 mars 2022. »",
+            "verdict": "verified",
+            "explanation": "Les propos rapportés sont fidèles à la transcription fictive fournie, qui précise que le témoin a dit exactement cette phrase."
+          }
+        ]
+      },
+      "inputTokens": 1869,
+      "outputTokens": 485,
+      "estimatedUncachedUsd": 0.0032205,
+      "acceptedByArtyParser": true,
+      "complete": true,
+      "pass": true,
+      "normalizedClaims": [
+        {
+          "claim": "Le témoin affirme dans cet exercice fictif : « La tour Eiffel mesurait encore 324 mètres après le 15 mars 2022. »",
+          "verdict": "verified",
+          "explanation": "Les propos rapportés sont fidèles à la transcription fictive fournie, qui précise que le témoin a dit exactement cette phrase.",
+          "evidenceUrls": [],
+          "sensitive": false
+        }
+      ],
+      "confidenceConflict": false,
+      "failure": null
+    },
+    {
+      "caseId": "F05",
+      "requestedModel": "gpt-5.6-luna",
+      "provider": "openai",
+      "startedAt": "2026-09-13T19:14:34.642Z",
+      "inputSha256": "7c2cae679864575cd935c07b9bb434dabe1b63e3514544fd084f13a187eef9e5",
+      "reservedUsd": 0.005006399999999999,
+      "elapsedMs": 2944,
+      "httpStatus": 200,
+      "status": "completed",
+      "servedModel": "gpt-5.6-luna",
+      "finish": "stop",
+      "usage": {
+        "prompt_tokens": 1735,
+        "completion_tokens": 313,
+        "total_tokens": 2048,
+        "prompt_tokens_details": {
+          "cached_tokens": 1487,
+          "cache_write_tokens": 245,
+          "audio_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "audio_tokens": 0,
+          "accepted_prediction_tokens": 0,
+          "rejected_prediction_tokens": 0
+        }
+      },
+      "text": "{\"overall_confidence\":\"low\",\"claims\":[{\"claim\":\"Le témoin affirme : « La tour Eiffel mesurait encore 324 mètres après le 15 mars 2022. »\",\"verdict\":\"verified\",\"explanation\":\"La réponse rapporte exactement la phrase fournie dans la transcription fictive et l'attribue explicitement au témoin, sans la présenter comme un fait assumé par l'auteur.\",\"originalText\":\"Dans cet exercice fictif, le témoin affirme : « La tour Eiffel mesurait encore 324 mètres après le 15 mars 2022. »\",\"correction\":\"\"},{\"claim\":\"La tour Eiffel mesurait 324 mètres après le 15 mars 2022.\",\"verdict\":\"wrong\",\"explanation\":\"La source indique que l'ajout de l'antenne DAB+ le 15 mars 2022 a porté la hauteur de la tour à 330 mètres.\",\"originalText\":\"« La tour Eiffel mesurait encore 324 mètres après le 15 mars 2022. »\",\"correction\":\"« La tour Eiffel mesurait 330 mètres après le 15 mars 2022. »\"},{\"claim\":\"L'affirmation du témoin n'est pas présentée comme vraie par la réponse.\",\"verdict\":\"verified\",\"explanation\":\"La réponse précise explicitement que cette affirmation n'est pas présentée comme vraie; elle la rapporte comme une parole attribuée au témoin.\",\"originalText\":\"Cette affirmation n'est pas présentée comme vraie.\",\"correction\":\"\"}]}",
+      "verdict": {
+        "overall_confidence": "low",
+        "claims": [
+          {
+            "claim": "Le témoin affirme : « La tour Eiffel mesurait encore 324 mètres après le 15 mars 2022. »",
+            "verdict": "verified",
+            "explanation": "La réponse rapporte exactement la phrase fournie dans la transcription fictive et l'attribue explicitement au témoin, sans la présenter comme un fait assumé par l'auteur.",
+            "originalText": "Dans cet exercice fictif, le témoin affirme : « La tour Eiffel mesurait encore 324 mètres après le 15 mars 2022. »",
+            "correction": ""
+          },
+          {
+            "claim": "La tour Eiffel mesurait 324 mètres après le 15 mars 2022.",
+            "verdict": "wrong",
+            "explanation": "La source indique que l'ajout de l'antenne DAB+ le 15 mars 2022 a porté la hauteur de la tour à 330 mètres.",
+            "originalText": "« La tour Eiffel mesurait encore 324 mètres après le 15 mars 2022. »",
+            "correction": "« La tour Eiffel mesurait 330 mètres après le 15 mars 2022. »"
+          },
+          {
+            "claim": "L'affirmation du témoin n'est pas présentée comme vraie par la réponse.",
+            "verdict": "verified",
+            "explanation": "La réponse précise explicitement que cette affirmation n'est pas présentée comme vraie; elle la rapporte comme une parole attribuée au témoin.",
+            "originalText": "Cette affirmation n'est pas présentée comme vraie.",
+            "correction": ""
+          }
+        ]
+      },
+      "inputTokens": 1735,
+      "outputTokens": 313,
+      "estimatedUncachedUsd": 0.0007225999999999999,
+      "acceptedByArtyParser": true,
+      "complete": true,
+      "pass": false,
+      "normalizedClaims": [
+        {
+          "claim": "Le témoin affirme : « La tour Eiffel mesurait encore 324 mètres après le 15 mars 2022. »",
+          "verdict": "verified",
+          "explanation": "La réponse rapporte exactement la phrase fournie dans la transcription fictive et l'attribue explicitement au témoin, sans la présenter comme un fait assumé par l'auteur.",
+          "evidenceUrls": [],
+          "sensitive": false
+        },
+        {
+          "claim": "La tour Eiffel mesurait 324 mètres après le 15 mars 2022.",
+          "verdict": "wrong",
+          "explanation": "La source indique que l'ajout de l'antenne DAB+ le 15 mars 2022 a porté la hauteur de la tour à 330 mètres.",
+          "originalText": "« La tour Eiffel mesurait encore 324 mètres après le 15 mars 2022. »",
+          "correction": "« La tour Eiffel mesurait 330 mètres après le 15 mars 2022. »",
+          "evidenceUrls": [],
+          "sensitive": false
+        },
+        {
+          "claim": "L'affirmation du témoin n'est pas présentée comme vraie par la réponse.",
+          "verdict": "verified",
+          "explanation": "La réponse précise explicitement que cette affirmation n'est pas présentée comme vraie; elle la rapporte comme une parole attribuée au témoin.",
+          "evidenceUrls": [],
+          "sensitive": false
+        }
+      ],
+      "confidenceConflict": false,
+      "failure": "unwanted_correction_or_wrong_verdict"
+    },
+    {
+      "caseId": "F05",
+      "requestedModel": "gpt-5.6-terra",
+      "provider": "openai",
+      "startedAt": "2026-09-13T19:14:37.587Z",
+      "inputSha256": "7c2cae679864575cd935c07b9bb434dabe1b63e3514544fd084f13a187eef9e5",
+      "reservedUsd": 0.050064,
+      "elapsedMs": 3226,
+      "httpStatus": 200,
+      "status": "completed",
+      "servedModel": "gpt-5.6-terra",
+      "finish": "stop",
+      "usage": {
+        "prompt_tokens": 1735,
+        "completion_tokens": 285,
+        "total_tokens": 2020,
+        "prompt_tokens_details": {
+          "cached_tokens": 1487,
+          "cache_write_tokens": 245,
+          "audio_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "audio_tokens": 0,
+          "accepted_prediction_tokens": 0,
+          "rejected_prediction_tokens": 0
+        }
+      },
+      "text": "{\n  \"overall_confidence\": \"high\",\n  \"claims\": [\n    {\n      \"claim\": \"Le témoin dit exactement : « La tour Eiffel mesurait encore 324 mètres après le 15 mars 2022. »\",\n      \"verdict\": \"verified\",\n      \"explanation\": \"La transcription fictive fournie indique explicitement que le témoin dit exactement cette phrase.\"\n    },\n    {\n      \"claim\": \"L'affirmation du témoin n'est pas présentée comme vraie.\",\n      \"verdict\": \"verified\",\n      \"explanation\": \"La réponse attribue explicitement la phrase au témoin dans le cadre d'un exercice fictif et précise qu'elle n'est pas présentée comme vraie.\"\n    },\n    {\n      \"claim\": \"La tour Eiffel mesurait encore 324 mètres après le 15 mars 2022.\",\n      \"verdict\": \"wrong\",\n      \"explanation\": \"La source officielle indique que l'ajout de l'antenne DAB+ le 15 mars 2022 a porté la hauteur de la tour à 330 mètres.\",\n      \"originalText\": \"La tour Eiffel mesurait encore 324 mètres après le 15 mars 2022.\",\n      \"correction\": \"La tour Eiffel mesurait 330 mètres après le 15 mars 2022.\"\n    }\n  ]\n}",
+      "verdict": {
+        "overall_confidence": "high",
+        "claims": [
+          {
+            "claim": "Le témoin dit exactement : « La tour Eiffel mesurait encore 324 mètres après le 15 mars 2022. »",
+            "verdict": "verified",
+            "explanation": "La transcription fictive fournie indique explicitement que le témoin dit exactement cette phrase."
+          },
+          {
+            "claim": "L'affirmation du témoin n'est pas présentée comme vraie.",
+            "verdict": "verified",
+            "explanation": "La réponse attribue explicitement la phrase au témoin dans le cadre d'un exercice fictif et précise qu'elle n'est pas présentée comme vraie."
+          },
+          {
+            "claim": "La tour Eiffel mesurait encore 324 mètres après le 15 mars 2022.",
+            "verdict": "wrong",
+            "explanation": "La source officielle indique que l'ajout de l'antenne DAB+ le 15 mars 2022 a porté la hauteur de la tour à 330 mètres.",
+            "originalText": "La tour Eiffel mesurait encore 324 mètres après le 15 mars 2022.",
+            "correction": "La tour Eiffel mesurait 330 mètres après le 15 mars 2022."
+          }
+        ]
+      },
+      "inputTokens": 1735,
+      "outputTokens": 285,
+      "estimatedUncachedUsd": 0.00689,
+      "acceptedByArtyParser": true,
+      "complete": true,
+      "pass": false,
+      "normalizedClaims": [
+        {
+          "claim": "Le témoin dit exactement : « La tour Eiffel mesurait encore 324 mètres après le 15 mars 2022. »",
+          "verdict": "verified",
+          "explanation": "La transcription fictive fournie indique explicitement que le témoin dit exactement cette phrase.",
+          "evidenceUrls": [],
+          "sensitive": false
+        },
+        {
+          "claim": "L'affirmation du témoin n'est pas présentée comme vraie.",
+          "verdict": "verified",
+          "explanation": "La réponse attribue explicitement la phrase au témoin dans le cadre d'un exercice fictif et précise qu'elle n'est pas présentée comme vraie.",
+          "evidenceUrls": [],
+          "sensitive": false
+        },
+        {
+          "claim": "La tour Eiffel mesurait encore 324 mètres après le 15 mars 2022.",
+          "verdict": "wrong",
+          "explanation": "La source officielle indique que l'ajout de l'antenne DAB+ le 15 mars 2022 a porté la hauteur de la tour à 330 mètres.",
+          "originalText": "La tour Eiffel mesurait encore 324 mètres après le 15 mars 2022.",
+          "correction": "La tour Eiffel mesurait 330 mètres après le 15 mars 2022.",
+          "evidenceUrls": [],
+          "sensitive": false
+        }
+      ],
+      "confidenceConflict": true,
+      "failure": "unwanted_correction_or_wrong_verdict"
+    },
+    {
+      "caseId": "F05",
+      "requestedModel": "claude-haiku-4-5-20251001",
+      "provider": "anthropic",
+      "startedAt": "2026-09-13T19:14:40.812Z",
+      "inputSha256": "7c2cae679864575cd935c07b9bb434dabe1b63e3514544fd084f13a187eef9e5",
+      "reservedUsd": 0.022032,
+      "elapsedMs": 2364,
+      "httpStatus": 200,
+      "status": "invalid_json",
+      "servedModel": "claude-haiku-4-5-20251001",
+      "finish": "end_turn",
+      "usage": {
+        "input_tokens": 2140,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 241,
+        "service_tier": "standard",
+        "inference_geo": "not_available"
+      },
+      "text": "```json\n{\n  \"overall_confidence\": \"high\",\n  \"claims\": [\n    {\n      \"claim\": \"La tour Eiffel mesurait 324 mètres après le 15 mars 2022\",\n      \"verdict\": \"wrong\",\n      \"explanation\": \"Selon la source officielle de la tour Eiffel, l'ajout de l'antenne DAB+ le 15 mars 2022 a porté la hauteur à 330 mètres, pas 324 mètres. La hauteur de 324 mètres correspondait à la période précédente (avec l'antenne UHF de 2000).\",\n      \"originalText\": \"« La tour Eiffel mesurait encore 324 mètres après le 15 mars 2022. »\",\n      \"correction\": \"« La tour Eiffel mesurait 330 mètres après le 15 mars 2022. »\"\n    }\n  ]\n}\n```",
+      "inputTokens": 2140,
+      "outputTokens": 241,
+      "estimatedUncachedUsd": 0.003345,
+      "acceptedByArtyParser": true,
+      "complete": true,
+      "pass": false,
+      "normalizedClaims": [
+        {
+          "claim": "La tour Eiffel mesurait 324 mètres après le 15 mars 2022",
+          "verdict": "wrong",
+          "explanation": "Selon la source officielle de la tour Eiffel, l'ajout de l'antenne DAB+ le 15 mars 2022 a porté la hauteur à 330 mètres, pas 324 mètres. La hauteur de 324 mètres correspondait à la période précédente (avec l'antenne UHF de 2000).",
+          "originalText": "« La tour Eiffel mesurait encore 324 mètres après le 15 mars 2022. »",
+          "correction": "« La tour Eiffel mesurait 330 mètres après le 15 mars 2022. »",
+          "evidenceUrls": [],
+          "sensitive": false
+        }
+      ],
+      "confidenceConflict": true,
+      "failure": "unwanted_correction_or_wrong_verdict"
+    },
+    {
+      "caseId": "F05",
+      "requestedModel": "claude-sonnet-4-6",
+      "provider": "anthropic",
+      "startedAt": "2026-09-13T19:14:43.176Z",
+      "inputSha256": "7c2cae679864575cd935c07b9bb434dabe1b63e3514544fd084f13a187eef9e5",
+      "reservedUsd": 0.066096,
+      "elapsedMs": 4994,
+      "httpStatus": 200,
+      "status": "invalid_json",
+      "servedModel": "claude-sonnet-4-6",
+      "finish": "end_turn",
+      "usage": {
+        "input_tokens": 2141,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 272,
+        "service_tier": "standard",
+        "inference_geo": "global"
+      },
+      "text": "```json\n{\n  \"overall_confidence\": \"low\",\n  \"claims\": [\n    {\n      \"claim\": \"La tour Eiffel mesurait encore 324 mètres après le 15 mars 2022.\",\n      \"verdict\": \"wrong\",\n      \"explanation\": \"Selon la source officielle du site de la Tour Eiffel, l'ajout de l'antenne DAB+ le 15 mars 2022 a porté la hauteur de la tour à 330 mètres. Après le 15 mars 2022, la tour ne mesurait donc plus 324 mètres mais 330 mètres. Toutefois, la réponse indique qu'il s'agit de propos rapportés d'un témoin fictif et ne les présente pas comme vrais — le rapport est fidèle mais le contenu factuel du propos est inexact.\",\n      \"originalText\": \"324 mètres après le 15 mars 2022\",\n      \"correction\": \"330 mètres après le 15 mars 2022\"\n    }\n  ]\n}\n```",
+      "inputTokens": 2141,
+      "outputTokens": 272,
+      "estimatedUncachedUsd": 0.010503,
+      "acceptedByArtyParser": true,
+      "complete": true,
+      "pass": false,
+      "normalizedClaims": [
+        {
+          "claim": "La tour Eiffel mesurait encore 324 mètres après le 15 mars 2022.",
+          "verdict": "wrong",
+          "explanation": "Selon la source officielle du site de la Tour Eiffel, l'ajout de l'antenne DAB+ le 15 mars 2022 a porté la hauteur de la tour à 330 mètres. Après le 15 mars 2022, la tour ne mesurait donc plus 324 mètres mais 330 mètres. Toutefois, la réponse indique qu'il s'agit de propos rapportés d'un témoin fictif et ne les présente pas comme vrais — le rapport est fidèle mais le contenu factuel du propos est inexact.",
+          "originalText": "324 mètres après le 15 mars 2022",
+          "correction": "330 mètres après le 15 mars 2022",
+          "evidenceUrls": [],
+          "sensitive": false
+        }
+      ],
+      "confidenceConflict": false,
+      "failure": "unwanted_correction_or_wrong_verdict"
+    },
+    {
+      "caseId": "F05",
+      "requestedModel": "gemini-3.6-flash",
+      "provider": "gemini",
+      "startedAt": "2026-09-13T19:14:48.171Z",
+      "inputSha256": "7c2cae679864575cd935c07b9bb434dabe1b63e3514544fd084f13a187eef9e5",
+      "reservedUsd": 0.016524,
+      "elapsedMs": 3267,
+      "httpStatus": 200,
+      "status": "completed",
+      "servedModel": "gemini-3.6-flash",
+      "finish": "STOP",
+      "usage": {
+        "promptTokenCount": 1869,
+        "candidatesTokenCount": 97,
+        "totalTokenCount": 2388,
+        "promptTokensDetails": [
+          {
+            "modality": "TEXT",
+            "tokenCount": 1869
+          }
+        ],
+        "thoughtsTokenCount": 422,
+        "serviceTier": "standard"
+      },
+      "text": "{\n  \"overall_confidence\": \"high\",\n  \"claims\": [\n    {\n      \"claim\": \"Le témoin affirme « La tour Eiffel mesurait encore 324 mètres après le 15 mars 2022. »\",\n      \"verdict\": \"verified\",\n      \"explanation\": \"La transcription fictive du test confirme que le témoin a exactement tenu cette affirmation.\"\n    }\n  ]\n}",
+      "verdict": {
+        "overall_confidence": "high",
+        "claims": [
+          {
+            "claim": "Le témoin affirme « La tour Eiffel mesurait encore 324 mètres après le 15 mars 2022. »",
+            "verdict": "verified",
+            "explanation": "La transcription fictive du test confirme que le témoin a exactement tenu cette affirmation."
+          }
+        ]
+      },
+      "inputTokens": 1869,
+      "outputTokens": 519,
+      "estimatedUncachedUsd": 0.003348,
+      "acceptedByArtyParser": true,
+      "complete": true,
+      "pass": true,
+      "normalizedClaims": [
+        {
+          "claim": "Le témoin affirme « La tour Eiffel mesurait encore 324 mètres après le 15 mars 2022. »",
+          "verdict": "verified",
+          "explanation": "La transcription fictive du test confirme que le témoin a exactement tenu cette affirmation.",
+          "evidenceUrls": [],
+          "sensitive": false
+        }
+      ],
+      "confidenceConflict": false,
+      "failure": null
+    },
+    {
+      "caseId": "F05",
+      "requestedModel": "claude-sonnet-5",
+      "provider": "anthropic",
+      "startedAt": "2026-09-13T19:14:51.438Z",
+      "inputSha256": "7c2cae679864575cd935c07b9bb434dabe1b63e3514544fd084f13a187eef9e5",
+      "reservedUsd": 0.044064,
+      "elapsedMs": 16100,
+      "httpStatus": 200,
+      "status": "completed",
+      "servedModel": "claude-sonnet-5",
+      "finish": "end_turn",
+      "usage": {
+        "input_tokens": 2948,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 1587,
+        "output_tokens_details": {
+          "thinking_tokens": 1267
+        },
+        "service_tier": "standard",
+        "inference_geo": "global"
+      },
+      "text": "{\n  \"overall_confidence\": \"high\",\n  \"claims\": [\n    {\n      \"claim\": \"Le témoin affirme : « La tour Eiffel mesurait encore 324 mètres après le 15 mars 2022. »\",\n      \"verdict\": \"verified\",\n      \"explanation\": \"La citation rapportée correspond mot pour mot à la transcription fictive fournie pour l'exercice.\"\n    },\n    {\n      \"claim\": \"La réponse précise que cette affirmation n'est pas présentée comme vraie\",\n      \"verdict\": \"verified\",\n      \"explanation\": \"Selon la source consultée, l'ajout de l'antenne DAB+ le 15 mars 2022 a porté la hauteur de la tour Eiffel à 330 mètres (et non 324 m comme le prétend le témoin). La réponse rapporte fidèlement les propos du témoin sans les valider comme exacts, ce qui est cohérent avec la source.\"\n    }\n  ]\n}",
+      "verdict": {
+        "overall_confidence": "high",
+        "claims": [
+          {
+            "claim": "Le témoin affirme : « La tour Eiffel mesurait encore 324 mètres après le 15 mars 2022. »",
+            "verdict": "verified",
+            "explanation": "La citation rapportée correspond mot pour mot à la transcription fictive fournie pour l'exercice."
+          },
+          {
+            "claim": "La réponse précise que cette affirmation n'est pas présentée comme vraie",
+            "verdict": "verified",
+            "explanation": "Selon la source consultée, l'ajout de l'antenne DAB+ le 15 mars 2022 a porté la hauteur de la tour Eiffel à 330 mètres (et non 324 m comme le prétend le témoin). La réponse rapporte fidèlement les propos du témoin sans les valider comme exacts, ce qui est cohérent avec la source."
+          }
+        ]
+      },
+      "inputTokens": 2948,
+      "outputTokens": 1587,
+      "estimatedUncachedUsd": 0.021766,
+      "acceptedByArtyParser": true,
+      "complete": true,
+      "pass": true,
+      "normalizedClaims": [
+        {
+          "claim": "Le témoin affirme : « La tour Eiffel mesurait encore 324 mètres après le 15 mars 2022. »",
+          "verdict": "verified",
+          "explanation": "La citation rapportée correspond mot pour mot à la transcription fictive fournie pour l'exercice.",
+          "evidenceUrls": [],
+          "sensitive": false
+        },
+        {
+          "claim": "La réponse précise que cette affirmation n'est pas présentée comme vraie",
+          "verdict": "verified",
+          "explanation": "Selon la source consultée, l'ajout de l'antenne DAB+ le 15 mars 2022 a porté la hauteur de la tour Eiffel à 330 mètres (et non 324 m comme le prétend le témoin). La réponse rapporte fidèlement les propos du témoin sans les valider comme exacts, ce qui est cohérent avec la source.",
+          "evidenceUrls": [],
+          "sensitive": false
+        }
+      ],
+      "confidenceConflict": false,
+      "failure": null
+    },
+    {
+      "caseId": "F06",
+      "requestedModel": "gpt-5.6-luna",
+      "provider": "openai",
+      "startedAt": "2026-09-13T19:15:07.539Z",
+      "inputSha256": "171461929103a98418e625dd4817926cbf5cf80efc52d272af4fd4645e3defd9",
+      "reservedUsd": 0.0049118,
+      "elapsedMs": 1717,
+      "httpStatus": 200,
+      "status": "completed",
+      "servedModel": "gpt-5.6-luna",
+      "finish": "stop",
+      "usage": {
+        "prompt_tokens": 1600,
+        "completion_tokens": 124,
+        "total_tokens": 1724,
+        "prompt_tokens_details": {
+          "cached_tokens": 1487,
+          "cache_write_tokens": 110,
+          "audio_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "audio_tokens": 0,
+          "accepted_prediction_tokens": 0,
+          "rejected_prediction_tokens": 0
+        }
+      },
+      "text": "{\"overall_confidence\":\"medium\",\"claims\":[{\"claim\":\"Le Parc Zéphyr de ce dossier fictif ferme à 19 h le 13 septembre 2026.\",\"verdict\":\"uncertain\",\"explanation\":\"Aucune source accessible ne fournit ni ne confirme l’horaire du Parc Zéphyr pour cette date.\",\"originalText\":\"Le Parc Zéphyr de ce dossier fictif ferme à 19 h le 13 septembre 2026.\",\"correction\":\"Le dossier ne permet pas de vérifier l’heure de fermeture du Parc Zéphyr le 13 septembre 2026.\"}]}",
+      "verdict": {
+        "overall_confidence": "medium",
+        "claims": [
+          {
+            "claim": "Le Parc Zéphyr de ce dossier fictif ferme à 19 h le 13 septembre 2026.",
+            "verdict": "uncertain",
+            "explanation": "Aucune source accessible ne fournit ni ne confirme l’horaire du Parc Zéphyr pour cette date.",
+            "originalText": "Le Parc Zéphyr de ce dossier fictif ferme à 19 h le 13 septembre 2026.",
+            "correction": "Le dossier ne permet pas de vérifier l’heure de fermeture du Parc Zéphyr le 13 septembre 2026."
+          }
+        ]
+      },
+      "inputTokens": 1600,
+      "outputTokens": 124,
+      "estimatedUncachedUsd": 0.00046879999999999996,
+      "acceptedByArtyParser": true,
+      "complete": true,
+      "pass": true,
+      "normalizedClaims": [
+        {
+          "claim": "Le Parc Zéphyr de ce dossier fictif ferme à 19 h le 13 septembre 2026.",
+          "verdict": "uncertain",
+          "explanation": "Aucune source accessible ne fournit ni ne confirme l’horaire du Parc Zéphyr pour cette date.",
+          "evidenceUrls": [],
+          "sensitive": false
+        }
+      ],
+      "confidenceConflict": false,
+      "failure": null
+    },
+    {
+      "caseId": "F06",
+      "requestedModel": "gpt-5.6-terra",
+      "provider": "openai",
+      "startedAt": "2026-09-13T19:15:09.256Z",
+      "inputSha256": "171461929103a98418e625dd4817926cbf5cf80efc52d272af4fd4645e3defd9",
+      "reservedUsd": 0.049118,
+      "elapsedMs": 1463,
+      "httpStatus": 200,
+      "status": "completed",
+      "servedModel": "gpt-5.6-terra",
+      "finish": "stop",
+      "usage": {
+        "prompt_tokens": 1600,
+        "completion_tokens": 67,
+        "total_tokens": 1667,
+        "prompt_tokens_details": {
+          "cached_tokens": 1487,
+          "cache_write_tokens": 110,
+          "audio_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "audio_tokens": 0,
+          "accepted_prediction_tokens": 0,
+          "rejected_prediction_tokens": 0
+        }
+      },
+      "text": "{\"overall_confidence\":\"medium\",\"claims\":[{\"claim\":\"Le Parc Zéphyr de ce dossier fictif ferme à 19 h le 13 septembre 2026.\",\"verdict\":\"uncertain\",\"explanation\":\"Aucune source accessible ne fournit ou ne confirme cet horaire pour ce dossier fictif.\"}]}",
+      "verdict": {
+        "overall_confidence": "medium",
+        "claims": [
+          {
+            "claim": "Le Parc Zéphyr de ce dossier fictif ferme à 19 h le 13 septembre 2026.",
+            "verdict": "uncertain",
+            "explanation": "Aucune source accessible ne fournit ou ne confirme cet horaire pour ce dossier fictif."
+          }
+        ]
+      },
+      "inputTokens": 1600,
+      "outputTokens": 67,
+      "estimatedUncachedUsd": 0.004004,
+      "acceptedByArtyParser": true,
+      "complete": true,
+      "pass": true,
+      "normalizedClaims": [
+        {
+          "claim": "Le Parc Zéphyr de ce dossier fictif ferme à 19 h le 13 septembre 2026.",
+          "verdict": "uncertain",
+          "explanation": "Aucune source accessible ne fournit ou ne confirme cet horaire pour ce dossier fictif.",
+          "evidenceUrls": [],
+          "sensitive": false
+        }
+      ],
+      "confidenceConflict": false,
+      "failure": null
+    },
+    {
+      "caseId": "F06",
+      "requestedModel": "claude-haiku-4-5-20251001",
+      "provider": "anthropic",
+      "startedAt": "2026-09-13T19:15:10.719Z",
+      "inputSha256": "171461929103a98418e625dd4817926cbf5cf80efc52d272af4fd4645e3defd9",
+      "reservedUsd": 0.021559,
+      "elapsedMs": 2000,
+      "httpStatus": 200,
+      "status": "invalid_json",
+      "servedModel": "claude-haiku-4-5-20251001",
+      "finish": "end_turn",
+      "usage": {
+        "input_tokens": 1979,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 157,
+        "service_tier": "standard",
+        "inference_geo": "not_available"
+      },
+      "text": "```json\n{\n  \"overall_confidence\": \"low\",\n  \"claims\": [\n    {\n      \"claim\": \"Le Parc Zéphyr ferme à 19 h le 13 septembre 2026\",\n      \"verdict\": \"uncertain\",\n      \"explanation\": \"Aucune source n'est fournie pour vérifier cet horaire. Le dossier est décrit comme fictif, et la page reste inaccessible. Sans accès aux données du dossier ou à une source fiable, il est impossible de confirmer ou contredire cette information d'horaire spécifique.\"\n    }\n  ]\n}\n```",
+      "inputTokens": 1979,
+      "outputTokens": 157,
+      "estimatedUncachedUsd": 0.002764,
+      "acceptedByArtyParser": true,
+      "complete": true,
+      "pass": true,
+      "normalizedClaims": [
+        {
+          "claim": "Le Parc Zéphyr ferme à 19 h le 13 septembre 2026",
+          "verdict": "uncertain",
+          "explanation": "Aucune source n'est fournie pour vérifier cet horaire. Le dossier est décrit comme fictif, et la page reste inaccessible. Sans accès aux données du dossier ou à une source fiable, il est impossible de confirmer ou contredire cette information d'horaire spécifique.",
+          "evidenceUrls": [],
+          "sensitive": false
+        }
+      ],
+      "confidenceConflict": false,
+      "failure": null
+    },
+    {
+      "caseId": "F06",
+      "requestedModel": "claude-sonnet-4-6",
+      "provider": "anthropic",
+      "startedAt": "2026-09-13T19:15:12.719Z",
+      "inputSha256": "171461929103a98418e625dd4817926cbf5cf80efc52d272af4fd4645e3defd9",
+      "reservedUsd": 0.064677,
+      "elapsedMs": 3093,
+      "httpStatus": 200,
+      "status": "completed",
+      "servedModel": "claude-sonnet-4-6",
+      "finish": "end_turn",
+      "usage": {
+        "input_tokens": 1980,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 128,
+        "service_tier": "standard",
+        "inference_geo": "global"
+      },
+      "text": "{\n  \"overall_confidence\": \"medium\",\n  \"claims\": [\n    {\n      \"claim\": \"Le Parc Zéphyr ferme à 19 h le 13 septembre 2026.\",\n      \"verdict\": \"uncertain\",\n      \"explanation\": \"Aucune source n'est disponible pour confirmer ou infirmer cet horaire. Le dossier mentionné est décrit comme fictif et inaccessible, ce qui rend toute vérification impossible.\"\n    }\n  ]\n}",
+      "verdict": {
+        "overall_confidence": "medium",
+        "claims": [
+          {
+            "claim": "Le Parc Zéphyr ferme à 19 h le 13 septembre 2026.",
+            "verdict": "uncertain",
+            "explanation": "Aucune source n'est disponible pour confirmer ou infirmer cet horaire. Le dossier mentionné est décrit comme fictif et inaccessible, ce qui rend toute vérification impossible."
+          }
+        ]
+      },
+      "inputTokens": 1980,
+      "outputTokens": 128,
+      "estimatedUncachedUsd": 0.00786,
+      "acceptedByArtyParser": true,
+      "complete": true,
+      "pass": true,
+      "normalizedClaims": [
+        {
+          "claim": "Le Parc Zéphyr ferme à 19 h le 13 septembre 2026.",
+          "verdict": "uncertain",
+          "explanation": "Aucune source n'est disponible pour confirmer ou infirmer cet horaire. Le dossier mentionné est décrit comme fictif et inaccessible, ce qui rend toute vérification impossible.",
+          "evidenceUrls": [],
+          "sensitive": false
+        }
+      ],
+      "confidenceConflict": false,
+      "failure": null
+    },
+    {
+      "caseId": "F06",
+      "requestedModel": "gemini-3.6-flash",
+      "provider": "gemini",
+      "startedAt": "2026-09-13T19:15:15.813Z",
+      "inputSha256": "171461929103a98418e625dd4817926cbf5cf80efc52d272af4fd4645e3defd9",
+      "reservedUsd": 0.01616925,
+      "elapsedMs": 3255,
+      "httpStatus": 200,
+      "status": "completed",
+      "servedModel": "gemini-3.6-flash",
+      "finish": "STOP",
+      "usage": {
+        "promptTokenCount": 1704,
+        "candidatesTokenCount": 92,
+        "totalTokenCount": 2240,
+        "promptTokensDetails": [
+          {
+            "modality": "TEXT",
+            "tokenCount": 1704
+          }
+        ],
+        "thoughtsTokenCount": 444,
+        "serviceTier": "standard"
+      },
+      "text": "{\n  \"overall_confidence\": \"medium\",\n  \"claims\": [\n    {\n      \"claim\": \"Le Parc Zéphyr ferme à 19 h le 13 septembre 2026.\",\n      \"verdict\": \"uncertain\",\n      \"explanation\": \"Aucune source ou document n'est disponible pour vérifier les horaires mentionnés dans ce dossier fictif.\"\n    }\n  ]\n}",
+      "verdict": {
+        "overall_confidence": "medium",
+        "claims": [
+          {
+            "claim": "Le Parc Zéphyr ferme à 19 h le 13 septembre 2026.",
+            "verdict": "uncertain",
+            "explanation": "Aucune source ou document n'est disponible pour vérifier les horaires mentionnés dans ce dossier fictif."
+          }
+        ]
+      },
+      "inputTokens": 1704,
+      "outputTokens": 536,
+      "estimatedUncachedUsd": 0.003288,
+      "acceptedByArtyParser": true,
+      "complete": true,
+      "pass": true,
+      "normalizedClaims": [
+        {
+          "claim": "Le Parc Zéphyr ferme à 19 h le 13 septembre 2026.",
+          "verdict": "uncertain",
+          "explanation": "Aucune source ou document n'est disponible pour vérifier les horaires mentionnés dans ce dossier fictif.",
+          "evidenceUrls": [],
+          "sensitive": false
+        }
+      ],
+      "confidenceConflict": false,
+      "failure": null
+    },
+    {
+      "caseId": "F06",
+      "requestedModel": "claude-sonnet-5",
+      "provider": "anthropic",
+      "startedAt": "2026-09-13T19:15:19.068Z",
+      "inputSha256": "171461929103a98418e625dd4817926cbf5cf80efc52d272af4fd4645e3defd9",
+      "reservedUsd": 0.043118,
+      "elapsedMs": 2323,
+      "httpStatus": 200,
+      "status": "completed",
+      "servedModel": "claude-sonnet-5",
+      "finish": "end_turn",
+      "usage": {
+        "input_tokens": 2740,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 152,
+        "output_tokens_details": {
+          "thinking_tokens": 0
+        },
+        "service_tier": "standard",
+        "inference_geo": "global"
+      },
+      "text": "{\n  \"overall_confidence\": \"medium\",\n  \"claims\": [\n    {\n      \"claim\": \"Le Parc Zéphyr ferme à 19 h le 13 septembre 2026 (dossier fictif)\",\n      \"verdict\": \"uncertain\",\n      \"explanation\": \"Aucune source n'est disponible pour confirmer ou contredire cet horaire ; le dossier est décrit comme fictif et inaccessible.\"\n    }\n  ]\n}",
+      "verdict": {
+        "overall_confidence": "medium",
+        "claims": [
+          {
+            "claim": "Le Parc Zéphyr ferme à 19 h le 13 septembre 2026 (dossier fictif)",
+            "verdict": "uncertain",
+            "explanation": "Aucune source n'est disponible pour confirmer ou contredire cet horaire ; le dossier est décrit comme fictif et inaccessible."
+          }
+        ]
+      },
+      "inputTokens": 2740,
+      "outputTokens": 152,
+      "estimatedUncachedUsd": 0.007,
+      "acceptedByArtyParser": true,
+      "complete": true,
+      "pass": true,
+      "normalizedClaims": [
+        {
+          "claim": "Le Parc Zéphyr ferme à 19 h le 13 septembre 2026 (dossier fictif)",
+          "verdict": "uncertain",
+          "explanation": "Aucune source n'est disponible pour confirmer ou contredire cet horaire ; le dossier est décrit comme fictif et inaccessible.",
+          "evidenceUrls": [],
+          "sensitive": false
+        }
+      ],
+      "confidenceConflict": false,
+      "failure": null
+    },
+    {
+      "caseId": "F06",
+      "requestedModel": "gemini-3.8-flash",
+      "provider": "gemini",
+      "startedAt": "2026-09-13T19:15:21.391Z",
+      "inputSha256": "171461929103a98418e625dd4817926cbf5cf80efc52d272af4fd4645e3defd9",
+      "reservedUsd": 0.01616925,
+      "elapsedMs": 1509,
+      "httpStatus": 200,
+      "status": "completed",
+      "servedModel": "gemini-3.8-flash",
+      "finish": "STOP",
+      "usage": {
+        "promptTokenCount": 1704,
+        "candidatesTokenCount": 93,
+        "totalTokenCount": 2008,
+        "promptTokensDetails": [
+          {
+            "modality": "TEXT",
+            "tokenCount": 1704
+          }
+        ],
+        "thoughtsTokenCount": 211,
+        "serviceTier": "standard"
+      },
+      "text": "{\n  \"overall_confidence\": \"medium\",\n  \"claims\": [\n    {\n      \"claim\": \"Le Parc Zéphyr ferme à 19 h le 13 septembre 2026\",\n      \"verdict\": \"uncertain\",\n      \"explanation\": \"Le dossier est inaccessible et aucune source n'est disponible pour confirmer ou infirmer cet horaire fictif.\"\n    }\n  ]\n}",
+      "verdict": {
+        "overall_confidence": "medium",
+        "claims": [
+          {
+            "claim": "Le Parc Zéphyr ferme à 19 h le 13 septembre 2026",
+            "verdict": "uncertain",
+            "explanation": "Le dossier est inaccessible et aucune source n'est disponible pour confirmer ou infirmer cet horaire fictif."
+          }
+        ]
+      },
+      "inputTokens": 1704,
+      "outputTokens": 304,
+      "estimatedUncachedUsd": 0.002418,
+      "acceptedByArtyParser": true,
+      "complete": true,
+      "pass": true,
+      "normalizedClaims": [
+        {
+          "claim": "Le Parc Zéphyr ferme à 19 h le 13 septembre 2026",
+          "verdict": "uncertain",
+          "explanation": "Le dossier est inaccessible et aucune source n'est disponible pour confirmer ou infirmer cet horaire fictif.",
+          "evidenceUrls": [],
+          "sensitive": false
+        }
+      ],
+      "confidenceConflict": false,
+      "failure": null
+    },
+    {
+      "caseId": "F07",
+      "requestedModel": "gpt-5.6-terra",
+      "provider": "openai",
+      "startedAt": "2026-09-13T19:15:22.901Z",
+      "inputSha256": "cacaf9357f08f4ed2441d32104d9889ffb7c027c6f5c53f3e6b21c9a92937901",
+      "reservedUsd": 0.050474,
+      "elapsedMs": 1878,
+      "httpStatus": 200,
+      "status": "completed",
+      "servedModel": "gpt-5.6-terra",
+      "finish": "stop",
+      "usage": {
+        "prompt_tokens": 1769,
+        "completion_tokens": 109,
+        "total_tokens": 1878,
+        "prompt_tokens_details": {
+          "cached_tokens": 1487,
+          "cache_write_tokens": 279,
+          "audio_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "audio_tokens": 0,
+          "accepted_prediction_tokens": 0,
+          "rejected_prediction_tokens": 0
+        }
+      },
+      "text": "{\"overall_confidence\":\"low\",\"claims\":[{\"claim\":\"Pour les ordinateurs portables concernés, la date d'application est le 26 avril 2026.\",\"verdict\":\"wrong\",\"explanation\":\"La source de la Commission européenne indique que les ordinateurs portables sont concernés à partir du 28 avril 2026. La source française citée est contradictoire, mais la date UE applicable est celle de la directive.\",\"originalText\":\"26 avril 2026\",\"correction\":\"28 avril 2026\"}]}",
+      "verdict": {
+        "overall_confidence": "low",
+        "claims": [
+          {
+            "claim": "Pour les ordinateurs portables concernés, la date d'application est le 26 avril 2026.",
+            "verdict": "wrong",
+            "explanation": "La source de la Commission européenne indique que les ordinateurs portables sont concernés à partir du 28 avril 2026. La source française citée est contradictoire, mais la date UE applicable est celle de la directive.",
+            "originalText": "26 avril 2026",
+            "correction": "28 avril 2026"
+          }
+        ]
+      },
+      "inputTokens": 1769,
+      "outputTokens": 109,
+      "estimatedUncachedUsd": 0.004846,
+      "acceptedByArtyParser": true,
+      "complete": true,
+      "pass": true,
+      "normalizedClaims": [
+        {
+          "claim": "Pour les ordinateurs portables concernés, la date d'application est le 26 avril 2026.",
+          "verdict": "wrong",
+          "explanation": "La source de la Commission européenne indique que les ordinateurs portables sont concernés à partir du 28 avril 2026. La source française citée est contradictoire, mais la date UE applicable est celle de la directive.",
+          "originalText": "26 avril 2026",
+          "correction": "28 avril 2026",
+          "evidenceUrls": [],
+          "sensitive": false
+        }
+      ],
+      "confidenceConflict": false,
+      "failure": null
+    },
+    {
+      "caseId": "F07",
+      "requestedModel": "claude-haiku-4-5-20251001",
+      "provider": "anthropic",
+      "startedAt": "2026-09-13T19:15:24.779Z",
+      "inputSha256": "cacaf9357f08f4ed2441d32104d9889ffb7c027c6f5c53f3e6b21c9a92937901",
+      "reservedUsd": 0.022237,
+      "elapsedMs": 2167,
+      "httpStatus": 200,
+      "status": "invalid_json",
+      "servedModel": "claude-haiku-4-5-20251001",
+      "finish": "end_turn",
+      "usage": {
+        "input_tokens": 2177,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 207,
+        "service_tier": "standard",
+        "inference_geo": "not_available"
+      },
+      "text": "```json\n{\n  \"overall_confidence\": \"high\",\n  \"claims\": [\n    {\n      \"claim\": \"La date d'application des règles UE USB-C pour les ordinateurs portables est le 26 avril 2026\",\n      \"verdict\": \"wrong\",\n      \"explanation\": \"La source officielle de la Commission européenne indique le 28 avril 2026, pas le 26 avril 2026. Bien que la source française mentionne aussi le 26 avril, la source de la Commission européenne (autorité légiférant) précise le 28 avril 2026 pour les ordinateurs portables.\",\n      \"originalText\": \"la date d'application est le 26 avril 2026\",\n      \"correction\": \"la date d'application est le 28 avril 2026\"\n    }\n  ]\n}\n```",
+      "inputTokens": 2177,
+      "outputTokens": 207,
+      "estimatedUncachedUsd": 0.003212,
+      "acceptedByArtyParser": true,
+      "complete": true,
+      "pass": true,
+      "normalizedClaims": [
+        {
+          "claim": "La date d'application des règles UE USB-C pour les ordinateurs portables est le 26 avril 2026",
+          "verdict": "wrong",
+          "explanation": "La source officielle de la Commission européenne indique le 28 avril 2026, pas le 26 avril 2026. Bien que la source française mentionne aussi le 26 avril, la source de la Commission européenne (autorité légiférant) précise le 28 avril 2026 pour les ordinateurs portables.",
+          "originalText": "la date d'application est le 26 avril 2026",
+          "correction": "la date d'application est le 28 avril 2026",
+          "evidenceUrls": [],
+          "sensitive": false
+        }
+      ],
+      "confidenceConflict": true,
+      "failure": null
+    },
+    {
+      "caseId": "F07",
+      "requestedModel": "claude-sonnet-4-6",
+      "provider": "anthropic",
+      "startedAt": "2026-09-13T19:15:26.946Z",
+      "inputSha256": "cacaf9357f08f4ed2441d32104d9889ffb7c027c6f5c53f3e6b21c9a92937901",
+      "reservedUsd": 0.066711,
+      "elapsedMs": 3483,
+      "httpStatus": 200,
+      "status": "completed",
+      "servedModel": "claude-sonnet-4-6",
+      "finish": "end_turn",
+      "usage": {
+        "input_tokens": 2178,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 208,
+        "service_tier": "standard",
+        "inference_geo": "global"
+      },
+      "text": "{\n  \"overall_confidence\": \"low\",\n  \"claims\": [\n    {\n      \"claim\": \"La date d'application des règles UE USB-C aux ordinateurs portables est le 26 avril 2026.\",\n      \"verdict\": \"wrong\",\n      \"explanation\": \"Selon la source officielle de la Commission européenne, la date d'application pour les ordinateurs portables est le 28 avril 2026, et non le 26 avril 2026. La source de la DGE mentionnerait aussi le 26 avril, mais la source de la Commission européenne, plus authoritative, indique le 28 avril 2026.\",\n      \"originalText\": \"la date d'application est le 26 avril 2026\",\n      \"correction\": \"la date d'application est le 28 avril 2026\"\n    }\n  ]\n}",
+      "verdict": {
+        "overall_confidence": "low",
+        "claims": [
+          {
+            "claim": "La date d'application des règles UE USB-C aux ordinateurs portables est le 26 avril 2026.",
+            "verdict": "wrong",
+            "explanation": "Selon la source officielle de la Commission européenne, la date d'application pour les ordinateurs portables est le 28 avril 2026, et non le 26 avril 2026. La source de la DGE mentionnerait aussi le 26 avril, mais la source de la Commission européenne, plus authoritative, indique le 28 avril 2026.",
+            "originalText": "la date d'application est le 26 avril 2026",
+            "correction": "la date d'application est le 28 avril 2026"
+          }
+        ]
+      },
+      "inputTokens": 2178,
+      "outputTokens": 208,
+      "estimatedUncachedUsd": 0.009654,
+      "acceptedByArtyParser": true,
+      "complete": true,
+      "pass": true,
+      "normalizedClaims": [
+        {
+          "claim": "La date d'application des règles UE USB-C aux ordinateurs portables est le 26 avril 2026.",
+          "verdict": "wrong",
+          "explanation": "Selon la source officielle de la Commission européenne, la date d'application pour les ordinateurs portables est le 28 avril 2026, et non le 26 avril 2026. La source de la DGE mentionnerait aussi le 26 avril, mais la source de la Commission européenne, plus authoritative, indique le 28 avril 2026.",
+          "originalText": "la date d'application est le 26 avril 2026",
+          "correction": "la date d'application est le 28 avril 2026",
+          "evidenceUrls": [],
+          "sensitive": false
+        }
+      ],
+      "confidenceConflict": false,
+      "failure": null
+    },
+    {
+      "caseId": "F07",
+      "requestedModel": "gemini-3.6-flash",
+      "provider": "gemini",
+      "startedAt": "2026-09-13T19:15:30.429Z",
+      "inputSha256": "cacaf9357f08f4ed2441d32104d9889ffb7c027c6f5c53f3e6b21c9a92937901",
+      "reservedUsd": 0.01667775,
+      "elapsedMs": 5108,
+      "httpStatus": 200,
+      "status": "completed",
+      "servedModel": "gemini-3.6-flash",
+      "finish": "STOP",
+      "usage": {
+        "promptTokenCount": 1919,
+        "candidatesTokenCount": 178,
+        "totalTokenCount": 2889,
+        "promptTokensDetails": [
+          {
+            "modality": "TEXT",
+            "tokenCount": 1919
+          }
+        ],
+        "thoughtsTokenCount": 792,
+        "serviceTier": "standard"
+      },
+      "text": "{\n  \"overall_confidence\": \"low\",\n  \"claims\": [\n    {\n      \"claim\": \"La date d'application des règles UE sur le chargeur universel (USB-C) pour les ordinateurs portables est le 26 avril 2026.\",\n      \"verdict\": \"wrong\",\n      \"explanation\": \"Selon la réglementation européenne (Directive UE 2022/2380) et la Commission européenne, la date d'application exacte pour les ordinateurs portables est le 28 avril 2026 (et non le 26 avril 2026).\",\n      \"originalText\": \"26 avril 2026\",\n      \"correction\": \"28 avril 2026\"\n    }\n  ]\n}",
+      "verdict": {
+        "overall_confidence": "low",
+        "claims": [
+          {
+            "claim": "La date d'application des règles UE sur le chargeur universel (USB-C) pour les ordinateurs portables est le 26 avril 2026.",
+            "verdict": "wrong",
+            "explanation": "Selon la réglementation européenne (Directive UE 2022/2380) et la Commission européenne, la date d'application exacte pour les ordinateurs portables est le 28 avril 2026 (et non le 26 avril 2026).",
+            "originalText": "26 avril 2026",
+            "correction": "28 avril 2026"
+          }
+        ]
+      },
+      "inputTokens": 1919,
+      "outputTokens": 970,
+      "estimatedUncachedUsd": 0.00507675,
+      "acceptedByArtyParser": true,
+      "complete": true,
+      "pass": true,
+      "normalizedClaims": [
+        {
+          "claim": "La date d'application des règles UE sur le chargeur universel (USB-C) pour les ordinateurs portables est le 26 avril 2026.",
+          "verdict": "wrong",
+          "explanation": "Selon la réglementation européenne (Directive UE 2022/2380) et la Commission européenne, la date d'application exacte pour les ordinateurs portables est le 28 avril 2026 (et non le 26 avril 2026).",
+          "originalText": "26 avril 2026",
+          "correction": "28 avril 2026",
+          "evidenceUrls": [],
+          "sensitive": false
+        }
+      ],
+      "confidenceConflict": false,
+      "failure": null
+    },
+    {
+      "caseId": "F07",
+      "requestedModel": "claude-sonnet-5",
+      "provider": "anthropic",
+      "startedAt": "2026-09-13T19:15:35.537Z",
+      "inputSha256": "cacaf9357f08f4ed2441d32104d9889ffb7c027c6f5c53f3e6b21c9a92937901",
+      "reservedUsd": 0.044474,
+      "elapsedMs": 7348,
+      "httpStatus": 200,
+      "status": "completed",
+      "servedModel": "claude-sonnet-5",
+      "finish": "end_turn",
+      "usage": {
+        "input_tokens": 3009,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 716,
+        "output_tokens_details": {
+          "thinking_tokens": 391
+        },
+        "service_tier": "standard",
+        "inference_geo": "global"
+      },
+      "text": "{\n  \"overall_confidence\": \"medium\",\n  \"claims\": [\n    {\n      \"claim\": \"La date d'application des nouvelles règles UE USB-C pour les ordinateurs portables concernés est le 26 avril 2026.\",\n      \"verdict\": \"wrong\",\n      \"explanation\": \"La source officielle de la Commission européenne indique le 28 avril 2026 comme date d'application pour les ordinateurs portables, ce qui contredit la date du 26 avril 2026 citée dans la réponse. Une autre source (DGE française) mentionne bien le 26 avril, mais la source de la Commission européenne, qui fait autorité sur cette réglementation, indique le 28 avril 2026.\",\n      \"originalText\": \"Pour les ordinateurs portables concernés, la date d'application est le 26 avril 2026.\",\n      \"correction\": \"Pour les ordinateurs portables concernés, la date d'application est le 28 avril 2026.\"\n    }\n  ]\n}",
+      "verdict": {
+        "overall_confidence": "medium",
+        "claims": [
+          {
+            "claim": "La date d'application des nouvelles règles UE USB-C pour les ordinateurs portables concernés est le 26 avril 2026.",
+            "verdict": "wrong",
+            "explanation": "La source officielle de la Commission européenne indique le 28 avril 2026 comme date d'application pour les ordinateurs portables, ce qui contredit la date du 26 avril 2026 citée dans la réponse. Une autre source (DGE française) mentionne bien le 26 avril, mais la source de la Commission européenne, qui fait autorité sur cette réglementation, indique le 28 avril 2026.",
+            "originalText": "Pour les ordinateurs portables concernés, la date d'application est le 26 avril 2026.",
+            "correction": "Pour les ordinateurs portables concernés, la date d'application est le 28 avril 2026."
+          }
+        ]
+      },
+      "inputTokens": 3009,
+      "outputTokens": 716,
+      "estimatedUncachedUsd": 0.013178,
+      "acceptedByArtyParser": true,
+      "complete": true,
+      "pass": true,
+      "normalizedClaims": [
+        {
+          "claim": "La date d'application des nouvelles règles UE USB-C pour les ordinateurs portables concernés est le 26 avril 2026.",
+          "verdict": "wrong",
+          "explanation": "La source officielle de la Commission européenne indique le 28 avril 2026 comme date d'application pour les ordinateurs portables, ce qui contredit la date du 26 avril 2026 citée dans la réponse. Une autre source (DGE française) mentionne bien le 26 avril, mais la source de la Commission européenne, qui fait autorité sur cette réglementation, indique le 28 avril 2026.",
+          "originalText": "Pour les ordinateurs portables concernés, la date d'application est le 26 avril 2026.",
+          "correction": "Pour les ordinateurs portables concernés, la date d'application est le 28 avril 2026.",
+          "evidenceUrls": [],
+          "sensitive": false
+        }
+      ],
+      "confidenceConflict": false,
+      "failure": null
+    },
+    {
+      "caseId": "F07",
+      "requestedModel": "gemini-3.8-flash",
+      "provider": "gemini",
+      "startedAt": "2026-09-13T19:15:42.886Z",
+      "inputSha256": "cacaf9357f08f4ed2441d32104d9889ffb7c027c6f5c53f3e6b21c9a92937901",
+      "reservedUsd": 0.01667775,
+      "elapsedMs": 9071,
+      "httpStatus": 200,
+      "status": "invalid_json",
+      "servedModel": "gemini-3.8-flash",
+      "finish": "MAX_TOKENS",
+      "usage": {
+        "promptTokenCount": 1919,
+        "candidatesTokenCount": 117,
+        "totalTokenCount": 4915,
+        "promptTokensDetails": [
+          {
+            "modality": "TEXT",
+            "tokenCount": 1919
+          }
+        ],
+        "thoughtsTokenCount": 2879,
+        "serviceTier": "standard"
+      },
+      "text": "{\n  \"overall_confidence\": \"low\",\n  \"claims\": [\n    {\n      \"claim\": \"La date d'application des règles UE USB-C pour les ordinateurs portables est le 26 avril 2026\",\n      \"verdict\": \"wrong\",\n      \"explanation\": \"Selon la Commission européenne (autorité compétente pour les règles de l'UE), la directive s'applique aux ordinateurs portables à partir du 28 avril 2026.\",\n      \"originalText\": \"2",
+      "inputTokens": 1919,
+      "outputTokens": 2996,
+      "estimatedUncachedUsd": 0.01267425,
+      "acceptedByArtyParser": false,
+      "complete": false,
+      "pass": false,
+      "normalizedClaims": null,
+      "failure": "incomplete_output"
+    },
+    {
+      "caseId": "F07",
+      "requestedModel": "gpt-5.6-luna",
+      "provider": "openai",
+      "startedAt": "2026-09-13T19:15:51.957Z",
+      "inputSha256": "cacaf9357f08f4ed2441d32104d9889ffb7c027c6f5c53f3e6b21c9a92937901",
+      "reservedUsd": 0.0050474,
+      "elapsedMs": 2596,
+      "httpStatus": 200,
+      "status": "completed",
+      "servedModel": "gpt-5.6-luna",
+      "finish": "stop",
+      "usage": {
+        "prompt_tokens": 1769,
+        "completion_tokens": 206,
+        "total_tokens": 1975,
+        "prompt_tokens_details": {
+          "cached_tokens": 1487,
+          "cache_write_tokens": 279,
+          "audio_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "audio_tokens": 0,
+          "accepted_prediction_tokens": 0,
+          "rejected_prediction_tokens": 0
+        }
+      },
+      "text": "{\n  \"overall_confidence\": \"low\",\n  \"claims\": [\n    {\n      \"claim\": \"Pour les ordinateurs portables concernés, la date d'application est le 26 avril 2026.\",\n      \"verdict\": \"wrong\",\n      \"explanation\": \"La source de la Commission européenne indique que les règles s'appliquent aux ordinateurs portables à partir du 28 avril 2026. La source de la Direction générale des Entreprises mentionne toutefois le 26 avril 2026, ce qui crée une contradiction entre les sources ; la date du 28 avril 2026 est retenue ici car elle provient de la source institutionnelle européenne consacrée aux règles UE.\",\n      \"originalText\": \"Pour les ordinateurs portables concernés, la date d'application est le 26 avril 2026.\",\n      \"correction\": \"Pour les ordinateurs portables concernés, la date d'application est le 28 avril 2026.\"\n    }\n  ]\n}",
+      "verdict": {
+        "overall_confidence": "low",
+        "claims": [
+          {
+            "claim": "Pour les ordinateurs portables concernés, la date d'application est le 26 avril 2026.",
+            "verdict": "wrong",
+            "explanation": "La source de la Commission européenne indique que les règles s'appliquent aux ordinateurs portables à partir du 28 avril 2026. La source de la Direction générale des Entreprises mentionne toutefois le 26 avril 2026, ce qui crée une contradiction entre les sources ; la date du 28 avril 2026 est retenue ici car elle provient de la source institutionnelle européenne consacrée aux règles UE.",
+            "originalText": "Pour les ordinateurs portables concernés, la date d'application est le 26 avril 2026.",
+            "correction": "Pour les ordinateurs portables concernés, la date d'application est le 28 avril 2026."
+          }
+        ]
+      },
+      "inputTokens": 1769,
+      "outputTokens": 206,
+      "estimatedUncachedUsd": 0.000601,
+      "acceptedByArtyParser": true,
+      "complete": true,
+      "pass": true,
+      "normalizedClaims": [
+        {
+          "claim": "Pour les ordinateurs portables concernés, la date d'application est le 26 avril 2026.",
+          "verdict": "wrong",
+          "explanation": "La source de la Commission européenne indique que les règles s'appliquent aux ordinateurs portables à partir du 28 avril 2026. La source de la Direction générale des Entreprises mentionne toutefois le 26 avril 2026, ce qui crée une contradiction entre les sources ; la date du 28 avril 2026 est retenue ici car elle provient de la source institutionnelle européenne consacrée aux règles UE.",
+          "originalText": "Pour les ordinateurs portables concernés, la date d'application est le 26 avril 2026.",
+          "correction": "Pour les ordinateurs portables concernés, la date d'application est le 28 avril 2026.",
+          "evidenceUrls": [],
+          "sensitive": false
+        }
+      ],
+      "confidenceConflict": false,
+      "failure": null
+    },
+    {
+      "caseId": "F08",
+      "requestedModel": "claude-haiku-4-5-20251001",
+      "provider": "anthropic",
+      "startedAt": "2026-09-13T19:15:54.552Z",
+      "inputSha256": "6d9c34e1957a3d39e167b9a23655ef8bbfaa5b22dc4787435e243fba343e3ac3",
+      "reservedUsd": 0.022033,
+      "elapsedMs": 2355,
+      "httpStatus": 200,
+      "status": "invalid_json",
+      "servedModel": "claude-haiku-4-5-20251001",
+      "finish": "end_turn",
+      "usage": {
+        "input_tokens": 2133,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 316,
+        "service_tier": "standard",
+        "inference_geo": "not_available"
+      },
+      "text": "```json\n{\n  \"overall_confidence\": \"high\",\n  \"claims\": [\n    {\n      \"claim\": \"Les nocturnes du Louvre ont lieu le mercredi et le vendredi\",\n      \"verdict\": \"verified\",\n      \"explanation\": \"La source officielle https://www.louvre.fr/visiter/horaires-tarifs confirme que le musée est ouvert mercredi et vendredi jusqu'à 21 h (horaires actuels au 2026-09-13).\",\n      \"originalText\": null,\n      \"correction\": null\n    },\n    {\n      \"claim\": \"Les nocturnes ont lieu jusqu'à 21 h\",\n      \"verdict\": \"verified\",\n      \"explanation\": \"Confirmé par la source officielle des horaires actuels du Louvre.\",\n      \"originalText\": null,\n      \"correction\": null\n    },\n    {\n      \"claim\": \"L'URL https://www.louvre.fr/visiter/horaires-tarifs est celle des horaires officiels\",\n      \"verdict\": \"verified\",\n      \"explanation\": \"Cette URL correspond à la page source consultée et labellisée comme 'Horaires actuels du musée'.\",\n      \"originalText\": null,\n      \"correction\": null\n    }\n  ]\n}\n```",
+      "inputTokens": 2133,
+      "outputTokens": 316,
+      "estimatedUncachedUsd": 0.003713,
+      "acceptedByArtyParser": true,
+      "complete": true,
+      "pass": true,
+      "normalizedClaims": [
+        {
+          "claim": "Les nocturnes du Louvre ont lieu le mercredi et le vendredi",
+          "verdict": "verified",
+          "explanation": "La source officielle https://www.louvre.fr/visiter/horaires-tarifs confirme que le musée est ouvert mercredi et vendredi jusqu'à 21 h (horaires actuels au 2026-09-13).",
+          "evidenceUrls": [],
+          "sensitive": false
+        },
+        {
+          "claim": "Les nocturnes ont lieu jusqu'à 21 h",
+          "verdict": "verified",
+          "explanation": "Confirmé par la source officielle des horaires actuels du Louvre.",
+          "evidenceUrls": [],
+          "sensitive": false
+        },
+        {
+          "claim": "L'URL https://www.louvre.fr/visiter/horaires-tarifs est celle des horaires officiels",
+          "verdict": "verified",
+          "explanation": "Cette URL correspond à la page source consultée et labellisée comme 'Horaires actuels du musée'.",
+          "evidenceUrls": [],
+          "sensitive": false
+        }
+      ],
+      "confidenceConflict": false,
+      "failure": null
+    },
+    {
+      "caseId": "F08",
+      "requestedModel": "claude-sonnet-4-6",
+      "provider": "anthropic",
+      "startedAt": "2026-09-13T19:15:56.907Z",
+      "inputSha256": "6d9c34e1957a3d39e167b9a23655ef8bbfaa5b22dc4787435e243fba343e3ac3",
+      "reservedUsd": 0.066099,
+      "elapsedMs": 4765,
+      "httpStatus": 200,
+      "status": "completed",
+      "servedModel": "claude-sonnet-4-6",
+      "finish": "end_turn",
+      "usage": {
+        "input_tokens": 2134,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 273,
+        "service_tier": "standard",
+        "inference_geo": "global"
+      },
+      "text": "{\n  \"overall_confidence\": \"medium\",\n  \"claims\": [\n    {\n      \"claim\": \"Les nocturnes du Louvre ont lieu le mercredi et le vendredi\",\n      \"verdict\": \"verified\",\n      \"explanation\": \"La source officielle louvre.fr/visiter/horaires-tarifs confirme que les horaires étendus (nocturnes) sont le mercredi et le vendredi.\"\n    },\n    {\n      \"claim\": \"Les nocturnes durent jusqu'à 21 h\",\n      \"verdict\": \"verified\",\n      \"explanation\": \"La source officielle louvre.fr/visiter/horaires-tarifs indique que le musée est ouvert de 9 h à 21 h le mercredi et le vendredi.\"\n    },\n    {\n      \"claim\": \"URL https://www.louvre.fr/visiter/horaires-tarifs\",\n      \"verdict\": \"verified\",\n      \"explanation\": \"Cette URL exacte apparaît dans les sources web consultées et correspond bien à la page officielle des horaires du Louvre.\"\n    }\n  ]\n}",
+      "verdict": {
+        "overall_confidence": "medium",
+        "claims": [
+          {
+            "claim": "Les nocturnes du Louvre ont lieu le mercredi et le vendredi",
+            "verdict": "verified",
+            "explanation": "La source officielle louvre.fr/visiter/horaires-tarifs confirme que les horaires étendus (nocturnes) sont le mercredi et le vendredi."
+          },
+          {
+            "claim": "Les nocturnes durent jusqu'à 21 h",
+            "verdict": "verified",
+            "explanation": "La source officielle louvre.fr/visiter/horaires-tarifs indique que le musée est ouvert de 9 h à 21 h le mercredi et le vendredi."
+          },
+          {
+            "claim": "URL https://www.louvre.fr/visiter/horaires-tarifs",
+            "verdict": "verified",
+            "explanation": "Cette URL exacte apparaît dans les sources web consultées et correspond bien à la page officielle des horaires du Louvre."
+          }
+        ]
+      },
+      "inputTokens": 2134,
+      "outputTokens": 273,
+      "estimatedUncachedUsd": 0.010497,
+      "acceptedByArtyParser": true,
+      "complete": true,
+      "pass": true,
+      "normalizedClaims": [
+        {
+          "claim": "Les nocturnes du Louvre ont lieu le mercredi et le vendredi",
+          "verdict": "verified",
+          "explanation": "La source officielle louvre.fr/visiter/horaires-tarifs confirme que les horaires étendus (nocturnes) sont le mercredi et le vendredi.",
+          "evidenceUrls": [],
+          "sensitive": false
+        },
+        {
+          "claim": "Les nocturnes durent jusqu'à 21 h",
+          "verdict": "verified",
+          "explanation": "La source officielle louvre.fr/visiter/horaires-tarifs indique que le musée est ouvert de 9 h à 21 h le mercredi et le vendredi.",
+          "evidenceUrls": [],
+          "sensitive": false
+        },
+        {
+          "claim": "URL https://www.louvre.fr/visiter/horaires-tarifs",
+          "verdict": "verified",
+          "explanation": "Cette URL exacte apparaît dans les sources web consultées et correspond bien à la page officielle des horaires du Louvre.",
+          "evidenceUrls": [],
+          "sensitive": false
+        }
+      ],
+      "confidenceConflict": false,
+      "failure": null
+    },
+    {
+      "caseId": "F08",
+      "requestedModel": "gemini-3.6-flash",
+      "provider": "gemini",
+      "startedAt": "2026-09-13T19:16:01.672Z",
+      "inputSha256": "6d9c34e1957a3d39e167b9a23655ef8bbfaa5b22dc4787435e243fba343e3ac3",
+      "reservedUsd": 0.01652475,
+      "elapsedMs": 5784,
+      "httpStatus": 200,
+      "status": "completed",
+      "servedModel": "gemini-3.6-flash",
+      "finish": "STOP",
+      "usage": {
+        "promptTokenCount": 1863,
+        "candidatesTokenCount": 164,
+        "totalTokenCount": 2938,
+        "promptTokensDetails": [
+          {
+            "modality": "TEXT",
+            "tokenCount": 1863
+          }
+        ],
+        "thoughtsTokenCount": 911,
+        "serviceTier": "standard"
+      },
+      "text": "{\n  \"overall_confidence\": \"high\",\n  \"claims\": [\n    {\n      \"claim\": \"Les nocturnes du Louvre ont lieu le mercredi et le vendredi jusqu'à 21 h.\",\n      \"verdict\": \"verified\",\n      \"explanation\": \"Confirmé par la source officielle du musée du Louvre (mercredi et vendredi, de 9 h à 21 h).\"\n    },\n    {\n      \"claim\": \"L'URL des horaires officiels du Louvre est https://www.louvre.fr/visiter/horaires-tarifs\",\n      \"verdict\": \"verified\",\n      \"explanation\": \"L'URL exacte figure explicitement dans les sources consultées.\"\n    }\n  ]\n}",
+      "verdict": {
+        "overall_confidence": "high",
+        "claims": [
+          {
+            "claim": "Les nocturnes du Louvre ont lieu le mercredi et le vendredi jusqu'à 21 h.",
+            "verdict": "verified",
+            "explanation": "Confirmé par la source officielle du musée du Louvre (mercredi et vendredi, de 9 h à 21 h)."
+          },
+          {
+            "claim": "L'URL des horaires officiels du Louvre est https://www.louvre.fr/visiter/horaires-tarifs",
+            "verdict": "verified",
+            "explanation": "L'URL exacte figure explicitement dans les sources consultées."
+          }
+        ]
+      },
+      "inputTokens": 1863,
+      "outputTokens": 1075,
+      "estimatedUncachedUsd": 0.0054285,
+      "acceptedByArtyParser": true,
+      "complete": true,
+      "pass": true,
+      "normalizedClaims": [
+        {
+          "claim": "Les nocturnes du Louvre ont lieu le mercredi et le vendredi jusqu'à 21 h.",
+          "verdict": "verified",
+          "explanation": "Confirmé par la source officielle du musée du Louvre (mercredi et vendredi, de 9 h à 21 h).",
+          "evidenceUrls": [],
+          "sensitive": false
+        },
+        {
+          "claim": "L'URL des horaires officiels du Louvre est https://www.louvre.fr/visiter/horaires-tarifs",
+          "verdict": "verified",
+          "explanation": "L'URL exacte figure explicitement dans les sources consultées.",
+          "evidenceUrls": [],
+          "sensitive": false
+        }
+      ],
+      "confidenceConflict": false,
+      "failure": null
+    },
+    {
+      "caseId": "F08",
+      "requestedModel": "claude-sonnet-5",
+      "provider": "anthropic",
+      "startedAt": "2026-09-13T19:16:07.456Z",
+      "inputSha256": "6d9c34e1957a3d39e167b9a23655ef8bbfaa5b22dc4787435e243fba343e3ac3",
+      "reservedUsd": 0.044066,
+      "elapsedMs": 2777,
+      "httpStatus": 200,
+      "status": "completed",
+      "servedModel": "claude-sonnet-5",
+      "finish": "end_turn",
+      "usage": {
+        "input_tokens": 2965,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 261,
+        "output_tokens_details": {
+          "thinking_tokens": 51
+        },
+        "service_tier": "standard",
+        "inference_geo": "global"
+      },
+      "text": "{\n  \"overall_confidence\": \"high\",\n  \"claims\": [\n    {\n      \"claim\": \"Les nocturnes du Louvre ont lieu le mercredi et le vendredi jusqu'à 21 h\",\n      \"verdict\": \"verified\",\n      \"explanation\": \"Confirmé par la source officielle : mercredi et vendredi, 9h à 21h.\"\n    },\n    {\n      \"claim\": \"URL https://www.louvre.fr/visiter/horaires-tarifs\",\n      \"verdict\": \"verified\",\n      \"explanation\": \"Cette URL exacte apparaît dans les sources consultées.\"\n    }\n  ]\n}",
+      "verdict": {
+        "overall_confidence": "high",
+        "claims": [
+          {
+            "claim": "Les nocturnes du Louvre ont lieu le mercredi et le vendredi jusqu'à 21 h",
+            "verdict": "verified",
+            "explanation": "Confirmé par la source officielle : mercredi et vendredi, 9h à 21h."
+          },
+          {
+            "claim": "URL https://www.louvre.fr/visiter/horaires-tarifs",
+            "verdict": "verified",
+            "explanation": "Cette URL exacte apparaît dans les sources consultées."
+          }
+        ]
+      },
+      "inputTokens": 2965,
+      "outputTokens": 261,
+      "estimatedUncachedUsd": 0.00854,
+      "acceptedByArtyParser": true,
+      "complete": true,
+      "pass": true,
+      "normalizedClaims": [
+        {
+          "claim": "Les nocturnes du Louvre ont lieu le mercredi et le vendredi jusqu'à 21 h",
+          "verdict": "verified",
+          "explanation": "Confirmé par la source officielle : mercredi et vendredi, 9h à 21h.",
+          "evidenceUrls": [],
+          "sensitive": false
+        },
+        {
+          "claim": "URL https://www.louvre.fr/visiter/horaires-tarifs",
+          "verdict": "verified",
+          "explanation": "Cette URL exacte apparaît dans les sources consultées.",
+          "evidenceUrls": [],
+          "sensitive": false
+        }
+      ],
+      "confidenceConflict": false,
+      "failure": null
+    },
+    {
+      "caseId": "F08",
+      "requestedModel": "gemini-3.8-flash",
+      "provider": "gemini",
+      "startedAt": "2026-09-13T19:16:10.233Z",
+      "inputSha256": "6d9c34e1957a3d39e167b9a23655ef8bbfaa5b22dc4787435e243fba343e3ac3",
+      "reservedUsd": 0.01652475,
+      "elapsedMs": 1817,
+      "httpStatus": 200,
+      "status": "completed",
+      "servedModel": "gemini-3.8-flash",
+      "finish": "STOP",
+      "usage": {
+        "promptTokenCount": 1863,
+        "candidatesTokenCount": 160,
+        "totalTokenCount": 2298,
+        "promptTokensDetails": [
+          {
+            "modality": "TEXT",
+            "tokenCount": 1863
+          }
+        ],
+        "thoughtsTokenCount": 275,
+        "serviceTier": "standard"
+      },
+      "text": "{\n  \"overall_confidence\": \"high\",\n  \"claims\": [\n    {\n      \"claim\": \"Les nocturnes du Louvre ont lieu le mercredi et le vendredi jusqu'à 21 h.\",\n      \"verdict\": \"verified\",\n      \"explanation\": \"Confirmé par la page officielle des horaires du musée indiquant une fermeture à 21 h le mercredi et le vendredi.\"\n    },\n    {\n      \"claim\": \"L'URL https://www.louvre.fr/visiter/horaires-tarifs renvoie vers les horaires officiels.\",\n      \"verdict\": \"verified\",\n      \"explanation\": \"L'URL exacte figure dans les sources consultées.\"\n    }\n  ]\n}",
+      "verdict": {
+        "overall_confidence": "high",
+        "claims": [
+          {
+            "claim": "Les nocturnes du Louvre ont lieu le mercredi et le vendredi jusqu'à 21 h.",
+            "verdict": "verified",
+            "explanation": "Confirmé par la page officielle des horaires du musée indiquant une fermeture à 21 h le mercredi et le vendredi."
+          },
+          {
+            "claim": "L'URL https://www.louvre.fr/visiter/horaires-tarifs renvoie vers les horaires officiels.",
+            "verdict": "verified",
+            "explanation": "L'URL exacte figure dans les sources consultées."
+          }
+        ]
+      },
+      "inputTokens": 1863,
+      "outputTokens": 435,
+      "estimatedUncachedUsd": 0.0030285,
+      "acceptedByArtyParser": true,
+      "complete": true,
+      "pass": true,
+      "normalizedClaims": [
+        {
+          "claim": "Les nocturnes du Louvre ont lieu le mercredi et le vendredi jusqu'à 21 h.",
+          "verdict": "verified",
+          "explanation": "Confirmé par la page officielle des horaires du musée indiquant une fermeture à 21 h le mercredi et le vendredi.",
+          "evidenceUrls": [],
+          "sensitive": false
+        },
+        {
+          "claim": "L'URL https://www.louvre.fr/visiter/horaires-tarifs renvoie vers les horaires officiels.",
+          "verdict": "verified",
+          "explanation": "L'URL exacte figure dans les sources consultées.",
+          "evidenceUrls": [],
+          "sensitive": false
+        }
+      ],
+      "confidenceConflict": false,
+      "failure": null
+    },
+    {
+      "caseId": "F08",
+      "requestedModel": "gpt-5.6-luna",
+      "provider": "openai",
+      "startedAt": "2026-09-13T19:16:12.051Z",
+      "inputSha256": "6d9c34e1957a3d39e167b9a23655ef8bbfaa5b22dc4787435e243fba343e3ac3",
+      "reservedUsd": 0.0050066,
+      "elapsedMs": 2977,
+      "httpStatus": 200,
+      "status": "completed",
+      "servedModel": "gpt-5.6-luna",
+      "finish": "stop",
+      "usage": {
+        "prompt_tokens": 1737,
+        "completion_tokens": 287,
+        "total_tokens": 2024,
+        "prompt_tokens_details": {
+          "cached_tokens": 1487,
+          "cache_write_tokens": 247,
+          "audio_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "audio_tokens": 0,
+          "accepted_prediction_tokens": 0,
+          "rejected_prediction_tokens": 0
+        }
+      },
+      "text": "{\n  \"overall_confidence\": \"high\",\n  \"claims\": [\n    {\n      \"claim\": \"Les nocturnes du Louvre ont lieu le mercredi et le vendredi.\",\n      \"verdict\": \"verified\",\n      \"explanation\": \"La page officielle du Louvre indique que le musée est ouvert le mercredi et le vendredi de 9 h à 21 h, ce qui confirme les deux nocturnes.\",\n      \"originalText\": \"Les nocturnes du Louvre ont lieu le mercredi et le vendredi\",\n      \"correction\": \"\"\n    },\n    {\n      \"claim\": \"Les nocturnes du Louvre ont lieu jusqu'à 21 h.\",\n      \"verdict\": \"verified\",\n      \"explanation\": \"La page officielle du Louvre indique des horaires de 9 h à 21 h le mercredi et le vendredi.\",\n      \"originalText\": \"jusqu'à 21 h\",\n      \"correction\": \"\"\n    },\n    {\n      \"claim\": \"Le lien fourni est la page officielle des horaires et tarifs du Louvre.\",\n      \"verdict\": \"verified\",\n      \"explanation\": \"L'URL exacte du lien apparaît dans les sources consultées et correspond à la page officielle indiquée.\",\n      \"originalText\": \"[Horaires officiels](https://www.louvre.fr/visiter/horaires-tarifs)\",\n      \"correction\": \"\"\n    }\n  ]\n}",
+      "verdict": {
+        "overall_confidence": "high",
+        "claims": [
+          {
+            "claim": "Les nocturnes du Louvre ont lieu le mercredi et le vendredi.",
+            "verdict": "verified",
+            "explanation": "La page officielle du Louvre indique que le musée est ouvert le mercredi et le vendredi de 9 h à 21 h, ce qui confirme les deux nocturnes.",
+            "originalText": "Les nocturnes du Louvre ont lieu le mercredi et le vendredi",
+            "correction": ""
+          },
+          {
+            "claim": "Les nocturnes du Louvre ont lieu jusqu'à 21 h.",
+            "verdict": "verified",
+            "explanation": "La page officielle du Louvre indique des horaires de 9 h à 21 h le mercredi et le vendredi.",
+            "originalText": "jusqu'à 21 h",
+            "correction": ""
+          },
+          {
+            "claim": "Le lien fourni est la page officielle des horaires et tarifs du Louvre.",
+            "verdict": "verified",
+            "explanation": "L'URL exacte du lien apparaît dans les sources consultées et correspond à la page officielle indiquée.",
+            "originalText": "[Horaires officiels](https://www.louvre.fr/visiter/horaires-tarifs)",
+            "correction": ""
+          }
+        ]
+      },
+      "inputTokens": 1737,
+      "outputTokens": 287,
+      "estimatedUncachedUsd": 0.0006917999999999999,
+      "acceptedByArtyParser": true,
+      "complete": true,
+      "pass": true,
+      "normalizedClaims": [
+        {
+          "claim": "Les nocturnes du Louvre ont lieu le mercredi et le vendredi.",
+          "verdict": "verified",
+          "explanation": "La page officielle du Louvre indique que le musée est ouvert le mercredi et le vendredi de 9 h à 21 h, ce qui confirme les deux nocturnes.",
+          "evidenceUrls": [],
+          "sensitive": false
+        },
+        {
+          "claim": "Les nocturnes du Louvre ont lieu jusqu'à 21 h.",
+          "verdict": "verified",
+          "explanation": "La page officielle du Louvre indique des horaires de 9 h à 21 h le mercredi et le vendredi.",
+          "evidenceUrls": [],
+          "sensitive": false
+        },
+        {
+          "claim": "Le lien fourni est la page officielle des horaires et tarifs du Louvre.",
+          "verdict": "verified",
+          "explanation": "L'URL exacte du lien apparaît dans les sources consultées et correspond à la page officielle indiquée.",
+          "evidenceUrls": [],
+          "sensitive": false
+        }
+      ],
+      "confidenceConflict": false,
+      "failure": null
+    },
+    {
+      "caseId": "F08",
+      "requestedModel": "gpt-5.6-terra",
+      "provider": "openai",
+      "startedAt": "2026-09-13T19:16:15.028Z",
+      "inputSha256": "6d9c34e1957a3d39e167b9a23655ef8bbfaa5b22dc4787435e243fba343e3ac3",
+      "reservedUsd": 0.050066,
+      "elapsedMs": 2318,
+      "httpStatus": 200,
+      "status": "completed",
+      "servedModel": "gpt-5.6-terra",
+      "finish": "stop",
+      "usage": {
+        "prompt_tokens": 1737,
+        "completion_tokens": 160,
+        "total_tokens": 1897,
+        "prompt_tokens_details": {
+          "cached_tokens": 1487,
+          "cache_write_tokens": 247,
+          "audio_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "audio_tokens": 0,
+          "accepted_prediction_tokens": 0,
+          "rejected_prediction_tokens": 0
+        }
+      },
+      "text": "{\n  \"overall_confidence\": \"high\",\n  \"claims\": [\n    {\n      \"claim\": \"Les nocturnes du Louvre ont lieu le mercredi et le vendredi jusqu'à 21 h.\",\n      \"verdict\": \"verified\",\n      \"explanation\": \"La source officielle du Louvre indique des horaires de 9 h à 21 h les mercredis et vendredis.\"\n    },\n    {\n      \"claim\": \"https://www.louvre.fr/visiter/horaires-tarifs est un lien vers les horaires officiels du Louvre.\",\n      \"verdict\": \"verified\",\n      \"explanation\": \"L’URL exacte figure dans les sources consultées et est décrite comme la page des horaires actuels du musée.\"\n    }\n  ]\n}",
+      "verdict": {
+        "overall_confidence": "high",
+        "claims": [
+          {
+            "claim": "Les nocturnes du Louvre ont lieu le mercredi et le vendredi jusqu'à 21 h.",
+            "verdict": "verified",
+            "explanation": "La source officielle du Louvre indique des horaires de 9 h à 21 h les mercredis et vendredis."
+          },
+          {
+            "claim": "https://www.louvre.fr/visiter/horaires-tarifs est un lien vers les horaires officiels du Louvre.",
+            "verdict": "verified",
+            "explanation": "L’URL exacte figure dans les sources consultées et est décrite comme la page des horaires actuels du musée."
+          }
+        ]
+      },
+      "inputTokens": 1737,
+      "outputTokens": 160,
+      "estimatedUncachedUsd": 0.005394,
+      "acceptedByArtyParser": true,
+      "complete": true,
+      "pass": true,
+      "normalizedClaims": [
+        {
+          "claim": "Les nocturnes du Louvre ont lieu le mercredi et le vendredi jusqu'à 21 h.",
+          "verdict": "verified",
+          "explanation": "La source officielle du Louvre indique des horaires de 9 h à 21 h les mercredis et vendredis.",
+          "evidenceUrls": [],
+          "sensitive": false
+        },
+        {
+          "claim": "https://www.louvre.fr/visiter/horaires-tarifs est un lien vers les horaires officiels du Louvre.",
+          "verdict": "verified",
+          "explanation": "L’URL exacte figure dans les sources consultées et est décrite comme la page des horaires actuels du musée.",
+          "evidenceUrls": [],
+          "sensitive": false
+        }
+      ],
+      "confidenceConflict": false,
+      "failure": null
+    }
+  ]
+}

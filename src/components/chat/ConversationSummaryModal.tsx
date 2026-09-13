@@ -1,3 +1,4 @@
+import { storedLocalReportPath } from '../../services/localReportLink'
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { Conversation } from '../../types'
@@ -231,7 +232,7 @@ export function ConversationSummaryModal({ conversation, onClose }: Props) {
           {error ? (
             <p className="text-sm text-red-500">{error}</p>
           ) : summary ? (
-            <MarkdownRenderer content={summary} />
+            <MarkdownRenderer resolveLocalReportPath={storedLocalReportPath} content={summary} />
           ) : (
             <p className="text-sm text-theme-muted italic">{t('summary.generating')}</p>
           )}
