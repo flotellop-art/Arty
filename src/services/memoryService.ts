@@ -1,6 +1,7 @@
 import { getActiveUserId } from './userSession'
+import { captureInvocationAuthority, type InvocationAuthority } from './invocationAuthority'
 import { apiUrl } from './apiBase'
-import { getValidAccessToken } from './googleAuth'
+import { captureGoogleGrant } from './googleAuth'
 
 const MEMORY_CATEGORIES = ['profil', 'clients', 'projets', 'notes'] as const
 type MemoryCategory = typeof MEMORY_CATEGORIES[number]
@@ -30,89 +31,89 @@ function getDefaultData(category: MemoryCategory): unknown {
 }
 
 // ─── D1 memory storage ───
+function captureMemoryAccess(parent?: InvocationAuthority) {
+  const authority = captureInvocationAuthority(parent)
+  const grant = captureGoogleGrant()
+  return { signal: authority.signal, async getAccessToken() {
+    if (!grant) throw new Error('Authentification mémoire indisponible')
+    return grant.getAccessToken()
+  }, assertCurrent() {
+    authority.assertCurrent()
+    if (grant && !grant.isCurrent()) throw new DOMException('Google account changed', 'AbortError')
+  } }
+}
 
-async function readMemoryD1(category: MemoryCategory): Promise<unknown> {
+async function readMemoryD1(category: MemoryCategory, parent?: InvocationAuthority, strict = false, access?: ReturnType<typeof captureMemoryAccess>): Promise<unknown> {
+  const authority = access ?? captureMemoryAccess(parent)
+  authority.assertCurrent()
   const userId = getActiveUserId()
-  if (!userId) return getDefaultData(category)
-
+  if (!userId) {
+    if (strict) throw new Error('Non connecté')
+    return getDefaultData(category)
+  }
   try {
-    // BUG critical (mai 2026) — l'endpoint /api/memory/action exige
-    // x-google-token depuis l'audit étape 2 (PR #165 verifyGoogleUser).
-    // Sans ce header → 401 → toutes les lectures retournaient null → Arty
-    // pensait que la mémoire était vide à chaque conversation.
-    // getValidAccessToken() rafraîchit auto si expiré (cf. BUG 23).
-    const googleToken = await getValidAccessToken()
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-    if (googleToken) headers['x-google-token'] = googleToken
+    const googleToken = await authority.getAccessToken()
+    authority.assertCurrent()
+    if (!googleToken) throw new Error('Authentification mémoire indisponible')
     const res = await fetch(apiUrl('/api/memory/action'), {
-      method: 'POST',
-      headers,
+      method: 'POST', signal: authority.signal,
+      headers: { 'Content-Type': 'application/json', 'x-google-token': googleToken },
       body: JSON.stringify({ type: 'read', userId, category }),
     })
-    // BUG 4 — res.ok AVANT res.json() : sinon une erreur serveur (401/500)
-    // est indiscernable d'une mémoire vide et la panne reste invisible.
-    if (!res.ok) {
-      console.warn('[memory] read failed', res.status, category)
-      return getDefaultData(category)
-    }
+    authority.assertCurrent()
+    if (!res.ok) throw new Error('Lecture mémoire échouée (' + res.status + ')')
     const result = await res.json() as { data: unknown }
+    authority.assertCurrent()
     return result.data ?? getDefaultData(category)
-  } catch {
+  } catch (error) {
+    authority.assertCurrent()
+    if (strict || (error instanceof Error && error.name === 'AbortError')) throw error
     return getDefaultData(category)
   }
 }
 
-async function updateMemoryD1(category: MemoryCategory, data: unknown): Promise<{ success: boolean; message: string }> {
+async function updateMemoryD1(category: MemoryCategory, data: unknown, parent?: InvocationAuthority): Promise<{ success: boolean; message: string }> {
+  const authority = captureMemoryAccess(parent)
+  authority.assertCurrent()
   const userId = getActiveUserId()
   if (!userId) return { success: false, message: 'Non connecté' }
-
-  // Snapshot previous value for undo (Feature 11)
-  let previousValue: unknown
   try {
-    previousValue = await readMemoryD1(category)
-  } catch {
-    previousValue = undefined
-  }
-
-  try {
-    // BUG critical — header x-google-token obligatoire depuis PR #165.
-    // Sans ça toutes les écritures retournaient 401 silencieusement → Arty
-    // ne mémorisait JAMAIS rien. getValidAccessToken() rafraîchit auto.
-    const googleToken = await getValidAccessToken()
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-    if (googleToken) headers['x-google-token'] = googleToken
+    // Never overwrite memory after a failed read or with a token from a new account.
+    const previousValue = await readMemoryD1(category, authority, true, authority)
+    authority.assertCurrent()
+    const googleToken = await authority.getAccessToken()
+    authority.assertCurrent()
+    if (!googleToken) throw new Error('Authentification mémoire indisponible')
     const res = await fetch(apiUrl('/api/memory/action'), {
-      method: 'POST',
-      headers,
+      method: 'POST', signal: authority.signal,
+      headers: { 'Content-Type': 'application/json', 'x-google-token': googleToken },
       body: JSON.stringify({ type: 'write', userId, category, data }),
     })
-    if (!res.ok) {
-      const errText = await res.text().catch(() => '')
-      return { success: false, message: `Erreur D1 (${res.status}) ${errText}`.trim() }
-    }
-    // Log the change to the history
+    authority.assertCurrent()
+    if (!res.ok) return { success: false, message: 'Écriture mémoire échouée (' + res.status + ')' }
     try {
       const { logChange } = await import('./memoryHistory')
-      const summary = typeof data === 'string'
-        ? data.slice(0, 120)
-        : Array.isArray(data)
-          ? `${data.length} entrée(s)`
-          : JSON.stringify(data).slice(0, 120)
+      authority.assertCurrent()
+      const summary = typeof data === 'string' ? data.slice(0, 120)
+        : Array.isArray(data) ? data.length + ' entrée(s)' : JSON.stringify(data).slice(0, 120)
       logChange(category, 'Mise à jour', summary, previousValue)
-    } catch {
-      // ignore logging failures
+    } catch (error) {
+      authority.assertCurrent()
+      if (error instanceof Error && error.name === 'AbortError') throw error
     }
-    return { success: true, message: `Mémoire "${category}" mise à jour.` }
-  } catch (err) {
-    return { success: false, message: err instanceof Error ? err.message : 'Erreur' }
+    return { success: true, message: 'Mémoire "' + category + '" mise à jour.' }
+  } catch (error) {
+    authority.assertCurrent()
+    if (error instanceof Error && error.name === 'AbortError') throw error
+    return { success: false, message: error instanceof Error ? error.message : 'Erreur mémoire' }
   }
 }
 
 // ─── Public API (auto-selects Drive or D1) ───
 
-export async function readMemory(category: MemoryCategory): Promise<unknown> {
+export async function readMemory(category: MemoryCategory, authority?: InvocationAuthority): Promise<unknown> {
   // Always use D1 for all users
-  return readMemoryD1(category)
+  return readMemoryD1(category, authority, !!authority)
 }
 
 export async function readAllMemory(): Promise<MemoryData> {
@@ -133,9 +134,10 @@ export async function readAllMemory(): Promise<MemoryData> {
 
 export async function updateMemory(
   category: MemoryCategory,
-  data: unknown
+  data: unknown,
+  authority?: InvocationAuthority
 ): Promise<{ success: boolean; message: string }> {
-  return updateMemoryD1(category, data)
+  return updateMemoryD1(category, data, authority)
 }
 
 /**

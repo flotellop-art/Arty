@@ -54,6 +54,8 @@ export const ModelFooter = memo(function ModelFooter({ model, requestedModel, mo
           ? `${formatModelName(model)} · ${t(region.key)}`
           : isOpenAIVision
             ? `${formatModelName(model)} · ${t('chat.modelFooter.vision4k')}`
+            : reasonCode === 'manual_selection'
+              ? `${formatModelName(model)} · ${region.flag}`
             : `${t(getModelCapacityKey(model))} · ${region.flag}`}
       </button>
       {expanded && (

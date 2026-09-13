@@ -53,6 +53,8 @@ export function mentionsMailbox(text: string): boolean {
 }
 
 export const PRIVATE_DATA_TRIGGERS = [
+  /\b(?:read_memory|update_memory|list_calendar|create_calendar_event|update_calendar_event|delete_calendar_event|list_mail_accounts|get_recent_mail|search_mail|read_mail|list_local_files|read_local_file|save_local_file|delete_local_file)\b/i,
+  /(?:m[ée]morise|retiens|souviens[- ]toi|ma\s+m[ée]moire|organise\s+ma\s+semaine|enregistre\s+(?:un|ce|le)\s+fichier|fichiers?\s+(?:locaux|local|sur\s+mon\s+t[ée]l[ée]phone))/i,
   // FR — mail / drive / clients / factures
   // `(?:\S+\s+){0,2}` tolère les adjectifs intercalés — « mes DERNIERS mails »,
   // « mes 3 nouveaux messages » (cas terrain du 9 août 2026).

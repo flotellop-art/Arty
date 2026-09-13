@@ -558,6 +558,11 @@
     }
   },
   "chat": {
+    "modelVariant": {
+      "label": "Modèle de conversation",
+      "default": "Modèle par défaut",
+      "hint": "Ce choix s’applique au chat et aux outils personnels disponibles. Les documents et le mode Europe suivent leurs règles dédiées."
+    },
     "upgradeModal": {
       "title": "{{model}} non inclus dans ton accès actuel",
       "body": "L'essai offre <0>30 messages avec Claude Haiku</0>. Pour les autres modèles, utilise des clés API compatibles (BYOK), des crédits ou un abonnement. La licence Pro seule n'inclut pas les appels IA.",

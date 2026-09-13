@@ -1,31 +1,11 @@
-// Périmètre d'outils exposé au provider OpenAI (10 août 2026).
-//
-// POURQUOI UNE ALLOWLIST EXPLICITE, et pas `TOOLS` en bloc comme Mistral.
-// Avant l'ajout du function calling, la route OpenAI n'avait AUCUN outil :
-// c'était, de fait, le filet structurel qui garantissait qu'aucune donnée
-// privée Google/appareil n'atteignait un provider US même si le routage se
-// trompait (la garde BUG 12 est purement textuelle et s'évalue AVANT de
-// savoir quel outil le modèle appellera). Donner `TOOLS` en bloc supprimait
-// ce filet : « organise ma semaine » ne matche aucune regex de données
-// privées, part sur ChatGPT en sélection manuelle, et le modèle pouvait
-// appeler `list_calendar`.
-//
-// La comparaison avec Mistral ne tient pas : Mistral, c'est le mode Europe,
-// où l'utilisateur a explicitement accepté un provider souverain. OpenAI,
-// c'est les États-Unis — un autre arbitrage produit, qui doit être écrit.
-//
-// Règle : tout outil doit être classé ci-dessous, exposé OU bloqué avec sa
-// raison. Le test de parité (openaiToolPolicy.test.ts) fait échouer la CI sur
-// un outil non classé — pattern F-16/F-1 du 3 juillet 2026. Le filtrage est
-// FAIL-CLOSED : un outil inconnu de l'allowlist n'est jamais envoyé.
-//
-// Élargir cette liste est une décision produit + sécurité, jamais un effet de
-// bord d'un refactor.
+// Public tools are the default. Personal tools are available only for an explicit
+// provider selection on a private turn, with shared execution and confirmations.
+// Every catalog entry remains classified; unknown tools are never exposed.
 
-import { TOOLS } from '../toolDefinitions'
 import { convertToolsToOpenAI } from './openaiFormat'
 import { FETCH_URL_TOOL_DEF } from './fetchUrlTool'
 import { WEB_SEARCH_TOOL_DEF } from './clientWebSearch'
+import { buildPortableTools, type PersonalToolOptions } from './personalToolPolicy'
 
 /** Outils custom d'Arty exposés à OpenAI, avec la raison de leur innocuité. */
 export const OPENAI_ALLOWED_TOOLS: Readonly<Record<string, string>> = {
@@ -35,11 +15,12 @@ export const OPENAI_ALLOWED_TOOLS: Readonly<Record<string, string>> = {
 
 /** Outils volontairement NON exposés à OpenAI, avec le motif du refus. */
 export const OPENAI_BLOCKED_TOOLS: Readonly<Record<string, string>> = {
+  read_memory: 'mémoire privée — sélection manuelle et contexte privé requis',
   // Données Google privées — réservées à Claude (BUG 12).
-  list_calendar: 'agenda Google (donnée privée) — chemin Claude uniquement',
-  create_calendar_event: 'écriture agenda Google — chemin Claude uniquement',
-  update_calendar_event: 'écriture agenda Google — chemin Claude uniquement',
-  delete_calendar_event: 'suppression agenda Google — chemin Claude uniquement',
+  list_calendar: 'agenda Google (donnée privée) — sélection manuelle privée requise',
+  create_calendar_event: 'écriture agenda Google — sélection manuelle privée requise',
+  update_calendar_event: 'écriture agenda Google — sélection manuelle privée requise',
+  delete_calendar_event: 'suppression agenda Google — sélection manuelle privée requise',
   // Position précise de l'utilisateur : ces deux outils réinjectent les
   // coordonnées GPS (ou la ville résolue) dans le résultat renvoyé au modèle.
   // Les transmettre à un provider US sans consentement explicite serait une
@@ -58,10 +39,10 @@ export const OPENAI_BLOCKED_TOOLS: Readonly<Record<string, string>> = {
   screenshot_pc: "capture d'écran de la machine",
   create_app: 'écriture de code exécutable',
   // Publication sur le site de l'utilisateur.
-  wp_create_post: 'publication WordPress — chemin Claude uniquement',
-  wp_list_posts: 'contenu du site de l\'utilisateur — chemin Claude uniquement',
-  wp_update_post: 'publication WordPress — chemin Claude uniquement',
-  wp_delete_post: 'suppression WordPress — chemin Claude uniquement',
+  wp_create_post: 'publication WordPress — sélection manuelle privée requise',
+  wp_list_posts: 'contenu du site de l\'utilisateur — sélection manuelle privée requise',
+  wp_update_post: 'publication WordPress — sélection manuelle privée requise',
+  wp_delete_post: 'suppression WordPress — sélection manuelle privée requise',
   // Mémoire persistante = données personnelles accumulées.
   update_memory: 'écrit dans la mémoire persistante (données personnelles)',
   // Sentiers : position GPS + snapshots locaux, fonctionnalité pensée pour
@@ -92,13 +73,12 @@ export function isToolAllowedForOpenAI(name: string): boolean {
  * retire la recherche publique. `fetch_url` reste — il est borné aux URLs déjà
  * présentes dans la conversation, cf. fetchUrlTool.
  */
-export function buildOpenAIToolList(options: { webSearch: boolean }) {
-  const custom = convertToolsToOpenAI(TOOLS).filter(
-    (tool) => Object.prototype.hasOwnProperty.call(OPENAI_ALLOWED_TOOLS, tool.function.name),
-  )
+export function buildOpenAIToolList(options: { webSearch: boolean } & PersonalToolOptions) {
+  const custom = convertToolsToOpenAI(buildPortableTools(options))
+  const privateContext = options.personalTools || options.privateContext
   return [
     ...custom,
-    FETCH_URL_TOOL_DEF,
-    ...(options.webSearch ? [WEB_SEARCH_TOOL_DEF] : []),
+    ...(!privateContext ? [FETCH_URL_TOOL_DEF] : []),
+    ...(options.webSearch && !privateContext ? [WEB_SEARCH_TOOL_DEF] : []),
   ]
 }

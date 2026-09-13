@@ -26,6 +26,7 @@ afterEach(() => {
 })
 
 function sseResponse(...events: object[]): Response {
+  if (JSON.stringify(events).includes('tool_calls')) events.push({ choices: [{ delta: {}, finish_reason: 'tool_calls' }] })
   const text = events.map((e) => `data: ${JSON.stringify(e)}\n`).join('\n') + '\ndata: [DONE]\n\n'
   return new Response(text, {
     status: 200,
@@ -267,7 +268,7 @@ describe('openaiClient — boucle de tools', () => {
       { onToolCall: vi.fn(async () => ({ result: 'encore' })), webSearch: false },
     )
 
-    expect(error).toBeNull()
+    expect(error?.message).toContain('Limite des outils')
     expect(fetchMock).toHaveBeenCalledTimes(8)
   })
 })
@@ -333,5 +334,64 @@ describe('openaiClient — compatibilité outils / raisonnement', () => {
     // Le rejeu ne doit porter NI les outils NI le paramètre qui les accompagne.
     expect(second.tools).toBeUndefined()
     expect(second.reasoning_effort).toBeUndefined()
+  })
+})
+
+
+describe('OpenAI personal tool authority', () => {
+  it.each(['gpt-5.6-luna', 'gpt-5.6-terra'])('runs calendar with %s, preserves the model, and exposes no public reader', async model => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(sseResponse(toolCallChunk('list_calendar', '{}')))
+      .mockResolvedValueOnce(sseResponse(textChunk('Agenda lu')))
+    global.fetch = fetchMock as typeof fetch
+    const onToolCall = vi.fn(async () => ({ result: 'Rendez-vous privé' }))
+    const result = await run([{ role: 'user', content: 'Mon agenda' }], { model, personalTools: true, webSearch: true, onToolCall })
+    expect(result.error).toBeNull()
+    expect(onToolCall).toHaveBeenCalledOnce()
+    for (let i = 0; i < 2; i++) {
+      const request = requestBody(fetchMock, i)
+      expect(request.model).toBe(model)
+      const names = request.tools?.map(tool => tool.function.name)
+      expect(names).toContain('list_calendar')
+      expect(names).not.toContain('web_search')
+      expect(names).not.toContain('fetch_url')
+    }
+  })
+  it.each(['web_search', 'fetch_url'])('rejects invented %s after a private read', async name => {
+    const first = toolCallChunk('list_calendar', '{}')
+    const next = toolCallChunk(name, '{"query":"private","url":"https://example.com"}')
+    next.choices[0].delta.tool_calls[0].id = 'call_2'
+    const fetchMock = vi.fn().mockResolvedValueOnce(sseResponse(first))
+      .mockResolvedValueOnce(sseResponse(next)).mockResolvedValueOnce(sseResponse(textChunk('Aucune recherche')))
+    global.fetch = fetchMock as typeof fetch
+    const onToolCall = vi.fn(async () => ({ result: 'private' }))
+    const result = await run([{ role: 'user', content: 'Mon agenda https://example.com' }], { personalTools: true, onToolCall })
+    expect(result.error).toBeNull()
+    expect(onToolCall).toHaveBeenCalledOnce()
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+    expect(fetchUrlMarkdowns).not.toHaveBeenCalled()
+  })
+  it.each(['no terminal', 'bad JSON'])('does not execute a complete-looking write after %s', async mode => {
+    const chunk = 'data: ' + JSON.stringify(toolCallChunk('update_memory', '{"category":"notes","data":["new"]}')) + '\n\n'
+    const suffix = mode === 'bad JSON' ? 'data: {"choices":[{"delta":{},"finish_reason":"tool_calls"}]}\n\ndata: {broken\n\ndata: [DONE]\n\n' : ''
+    const fetchMock = vi.fn().mockResolvedValueOnce(new Response(chunk + suffix))
+    global.fetch = fetchMock as typeof fetch
+    const onToolCall = vi.fn()
+    const result = await run([{ role: 'user', content: 'Ma mémoire' }], { personalTools: true, onToolCall })
+    expect(result.error?.message).toContain('incomplets')
+    expect(onToolCall).not.toHaveBeenCalled()
+    expect(fetchMock).toHaveBeenCalledOnce()
+  })
+  it('stops before a second private action', async () => {
+    const calls = toolCallChunk('list_calendar', '{}')
+    calls.choices[0].delta.tool_calls.push({ index: 1, id: 'call_2', function: { name: 'read_memory', arguments: '{"category":"notes"}' } })
+    global.fetch = vi.fn().mockResolvedValueOnce(sseResponse(calls)) as typeof fetch
+    let controller: AbortController
+    const onToolCall = vi.fn(async () => { controller.abort(); return { result: 'cancelled' } })
+    await new Promise<void>((resolve, reject) => {
+      controller = sendMessageStream([{ role: 'user', content: 'Mon agenda' }], 'sk-user', () => {}, resolve, reject, { personalTools: true, onToolCall })
+    })
+    expect(onToolCall).toHaveBeenCalledOnce()
+    expect(global.fetch).toHaveBeenCalledOnce()
   })
 })

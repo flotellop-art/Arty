@@ -4,7 +4,7 @@ import { act, renderHook, waitFor } from '@testing-library/react'
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
 import type { Conversation } from '../../types'
 const mocks = vi.hoisted(() => ({ token: vi.fn(), fetch: vi.fn() }))
-vi.mock('../../services/googleAuth', () => ({ getValidAccessToken: mocks.token, isTokenValid: () => false, getGoogleEmail: () => null }))
+vi.mock('../../services/googleAuth', () => ({ getValidAccessToken: mocks.token, captureGoogleGrant: () => null, isTokenValid: () => false, getGoogleEmail: () => null }))
 vi.mock('../../services/activeApiKey', () => ({ getOpenAIKey: () => 'synthetic-key', getActiveApiKey: () => 'synthetic-key' }))
 vi.mock('../../services/imageCompression', () => ({ compressImageIfNeeded: async (data: string, mimeType: string) => ({ data, mimeType, size: 68 }) }))
 vi.mock('../../services/storage', async original => ({ ...await original<typeof import('../../services/storage')>(), getConversations: vi.fn(), getConversation: vi.fn(), saveConversation: vi.fn(), isCacheReady: () => true }))

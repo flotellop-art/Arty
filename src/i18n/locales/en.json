@@ -558,6 +558,11 @@
     }
   },
   "chat": {
+    "modelVariant": {
+      "label": "Conversation model",
+      "default": "Default model",
+      "hint": "Applies to chat and available personal tools. Documents and Europe mode follow their dedicated rules."
+    },
     "upgradeModal": {
       "title": "{{model}} is not included in your current access",
       "body": "The trial includes <0>30 messages with Claude Haiku</0>. For other models, use compatible API keys (BYOK), credits or a subscription. A Pro licence alone does not include AI calls.",

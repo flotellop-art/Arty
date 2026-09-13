@@ -89,6 +89,7 @@ export function useAppSetup(conversation: ConversationHook) {
   useEffect(() => {
     toolExecutorRef.current = createToolExecutor(computerActions, drive)
     setToolHandler((name, input, context) => {
+      context?.invocation?.assertCurrent()
       context?.imageGeneration?.assertCurrent()
       if (name === 'ask_user') {
         const questions = (input.questions as Question[]) || []
@@ -150,7 +151,12 @@ export function useAppSetup(conversation: ConversationHook) {
     // l'event 'arty-rebuild-prompt' juste avant un appel LLM, on reconstruit
     // avec le user message → mémoire filtrée (économie ~95% des tokens sur
     // requêtes type "salut", "merci", "comment ça va").
-    const buildPrompt = (userMessage?: string) => {
+    const buildPrompt = (userMessage?: string, publicOnly = false) => {
+      if (publicOnly) {
+        // Public research must not receive cached personal memory or account addresses.
+        setSystemPrompt(buildContextualPrompt({ customInstructions: getCustomInstructions() }) + getStylePrompt(responseStyle))
+        return
+      }
       const memorySummary = googleAuth.isConnected ? memoryHook.getPromptContext(userMessage) : undefined
       // Drive may be cached for the UI, but its metadata is never silently
       // copied into every model request.
@@ -175,8 +181,8 @@ export function useAppSetup(conversation: ConversationHook) {
     // de retourner. Donc systemPromptRef est à jour quand useConversation
     // poursuit après dispatch().
     const onRebuild = (e: Event) => {
-      const detail = (e as CustomEvent<{ userMessage?: string }>).detail
-      buildPrompt(detail?.userMessage)
+      const detail = (e as CustomEvent<{ userMessage?: string; publicOnly?: boolean }>).detail
+      buildPrompt(detail?.userMessage, detail?.publicOnly)
     }
     window.addEventListener('arty-rebuild-prompt', onRebuild)
     return () => { stopMemory(); stopInstructions(); window.removeEventListener('arty-rebuild-prompt', onRebuild) }

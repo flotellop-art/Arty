@@ -1,3 +1,4 @@
+import { captureGoogleGrant } from '../services/googleAuth'
 import { useState, useCallback, useEffect, useRef } from 'react'
 import type { ChatSendOptions, Conversation, Message, FileAttachment } from '../types'
 import { generateId } from '../utils/generateId'
@@ -9,6 +10,7 @@ import { getOpenAIKey } from '../services/activeApiKey'
 import { extractPdfUrls, extractWebUrls } from '../services/aiRouter'
 import { canExecuteRoute, resolveRoute } from '../services/router/resolveRoute'
 import { classifyRouteAttachments, gatherRouteInput } from '../services/router/gatherRouteInput'
+import { resolveChatModelPreference } from '../services/chatModelPreference'
 import { notifyRouteOverrides } from '../services/router/notifyRouteOverrides'
 import { fetchPdfMarkdowns, fetchUrlMarkdowns } from '../services/pdfUrlFetch'
 import { extractTikTokUrls, validTikTokAnalysis } from '../services/tiktokVideoTypes'
@@ -29,6 +31,7 @@ import { beginConversationWork, hasConversationWork } from '../services/conversa
 import { captureCalendarContext } from '../services/calendarClient'
 import { detectSuggestedTasks, addTask } from '../services/taskService'
 import { TOOLS } from '../services/toolDefinitions'
+import { PERSONAL_TOOL_NAMES } from '../services/tools/personalToolPolicy'
 import { wantsImageGeneration, generateImageToolDefinition } from '../services/tools/imageTools'
 import { mailToolDefinitions, mailToolsAvailable } from '../services/tools/mailTools'
 import { detectReminderIntent, createReminder } from '../services/reminderService'
@@ -70,6 +73,7 @@ import { copyMessageSyncProvenance } from '../services/workspaceSync/localProven
 // Gemini au tour suivant — exactement le bug corrigé côté triggers — et le
 // contenu d'un mail pouvait être partagé sans l'avertissement renforcé.
 export const PRIVATE_DATA_TOOL_NAMES = new Set([
+  ...PERSONAL_TOOL_NAMES,
   'list_drive', 'search_drive', 'read_drive_file',
   'list_calendar', 'search_contacts',
   'list_mail_accounts', 'get_recent_mail', 'search_mail', 'read_mail',
@@ -849,6 +853,7 @@ export function useConversation(options?: { onNavigate?: (id: string) => void })
       if (synthesis?.observation && invocationId && observeStreamCompletion(targetId, invocationId, synthesis.observation)) {
         synthesis.markObservationBound()
       }
+      const memoryGrant = captureGoogleGrant()
       const toolController = new AbortController()
       // Stop must cancel optional preparation before a provider controller
       // exists. Office retains its original stream/controller identity.
@@ -863,7 +868,7 @@ export function useConversation(options?: { onNavigate?: (id: string) => void })
       const invocationStillCurrent = () => !!invocationId && getInvocationId(targetId) === invocationId
         && invocationOwner === getActiveUserId() && invocationEpoch === getActiveSessionEpoch() && officeStillCurrent()
       const assertInvocationCurrent = () => {
-        if (!invocationStillCurrent()) throw new DOMException('Request cancelled', 'AbortError')
+        if (toolController.signal.aborted || !invocationStillCurrent()) throw new DOMException('Request cancelled', 'AbortError')
         documentContext?.assertCurrent()
         preparedProject?.assertCurrent()
         if (calendarUsed) calendarScope!.assertCurrent()
@@ -971,6 +976,20 @@ export function useConversation(options?: { onNavigate?: (id: string) => void })
       }
       const routeDecision = lockedVisionRouteDecision ?? resolveRoute(routeInput)
       const provider = routeDecision.provider
+      const requestedChatModel = resolveChatModelPreference(routeInput, routeDecision)
+      const portablePersonalTools = routeDecision.isPrivateData && routeDecision.reason.code === 'manual_selection'
+        && (provider === 'gemini' || provider === 'openai')
+      // Documentary preparation has already captured its persisted metadata.
+      // It carries its own privacy policy; do not invalidate that receipt here.
+      if (routeDecision.isPrivateData && !officeRequest && !conv.hasGoogleData) {
+        conv.hasGoogleData = true
+        storage.saveConversation(conv)
+      }
+      const portableToolOptions = {
+        personalTools: portablePersonalTools,
+        privateContext: routeDecision.isPrivateData,
+        extraTools: portablePersonalTools && mailToolsAvailable() ? mailToolDefinitions : [],
+      }
 
       // Contexte sentiers : dès qu'un message route vers les outils trails, le
       // flag colle à la conversation — les suivis courts (« Viriville » seul)
@@ -1014,6 +1033,7 @@ export function useConversation(options?: { onNavigate?: (id: string) => void })
       // Wrappe le handler global pour capter le targetId (que le handler n'a
       // pas) au moment exact de l'appel.
       const imageAllowed = provider === 'claude' && !conv.euOnly && !officeRequest && !quickAction && wantsImageGeneration(text)
+      const memoryToolSession = { readReceipts: new Map<string, string>() }
       let imageAttempts = 0, imageInFlight = false
       const imagePermission = { signal: toolController.signal, assertCurrent() {
         assertInvocationCurrent()
@@ -1052,7 +1072,12 @@ export function useConversation(options?: { onNavigate?: (id: string) => void })
           if (name === 'generate_image') imagePermission.assertCurrent()
           const result = handler ? await handler(name, input, name === 'generate_image' ? {
             imageGeneration: imagePermission,
-          } : { calendar: { scope: calendarScope, signal: toolController.signal } }) : { result: '' }
+          } : { memory: memoryToolSession, invocation: { signal: toolController.signal, assertCurrent() {
+            assertInvocationCurrent()
+            if ((name === 'read_memory' || name === 'update_memory') && !memoryGrant?.isCurrent()) {
+              throw new DOMException('Memory account changed or unavailable', 'AbortError')
+            }
+          } }, calendar: { scope: calendarScope, signal: toolController.signal } }) : { result: '' }
           if (name === 'generate_image') imagePermission.assertCurrent()
           assertInvocationCurrent()
           if (name === 'generate_image' && result.localImageId) {
@@ -1098,7 +1123,7 @@ export function useConversation(options?: { onNavigate?: (id: string) => void })
       if (!projectRequest) {
         await Promise.allSettled([bootstrapLocalMemory(toolController.signal), bootstrapCustomInstructions(toolController.signal)])
         assertInvocationCurrent()
-        window.dispatchEvent(new CustomEvent('arty-rebuild-prompt', { detail: { userMessage: modelText } }))
+        window.dispatchEvent(new CustomEvent('arty-rebuild-prompt', { detail: { userMessage: modelText, publicOnly: (provider === 'gemini' || provider === 'openai') && !routeDecision.isPrivateData } }))
       }
       // Freeze the rebuilt turn prompt before any PDF/history/research await.
       // Later memory refreshes must not erase its language/instructions/mail
@@ -1113,7 +1138,7 @@ export function useConversation(options?: { onNavigate?: (id: string) => void })
       // le chemin de données euOnly (recherche web Mistral via /api/search/web)
       // et hébergé en EU → compatible avec la promesse "données EU".
       let outgoingText = modelText
-      if (extractTikTokUrls(text).length > 0) {
+      if (!routeDecision.isPrivateData && extractTikTokUrls(text).length > 0) {
         // Stop must cancel preparation, not merely hide a later response.
         setAbortController(targetId, toolController)
         setProgressContent(i18n.t('video.reading'), targetId)
@@ -1139,7 +1164,7 @@ export function useConversation(options?: { onNavigate?: (id: string) => void })
       }
       // Reuse saved observations on follow-ups; never re-download old links.
       const chatMessages = withTikTokAnalyses(conv.messages)
-      if (provider !== 'hybrid' && !officeRequest) {
+      if (provider !== 'hybrid' && !officeRequest && !routeDecision.isPrivateData) {
         const pdfUrls = extractPdfUrls(text)
         if (pdfUrls.length > 0) {
           setProgressContent('📄 Lecture du PDF...', targetId)
@@ -1228,7 +1253,11 @@ export function useConversation(options?: { onNavigate?: (id: string) => void })
           apiMessages[apiMessages.length - 1] = { role: 'user', content: outgoingText }
         }
         controller = streamGeminiMessage(apiMessages, onToken, onDone, onErr, {
-          videoSourceText: modelText,
+          ...(requestedChatModel ? { model: requestedChatModel } : {}),
+          ...portableToolOptions,
+          onToolCall: trackedToolHandler,
+          webSearch: routeDecision.webSearch,
+          videoSourceText: routeDecision.isPrivateData ? '' : modelText,
           assertRequestCurrent: assertInvocationCurrent,
           systemPrompt: invocationSystemPrompt,
           reflectionLevel: getReflectionLevel(),
@@ -1297,6 +1326,8 @@ export function useConversation(options?: { onNavigate?: (id: string) => void })
         }
         if (openaiRoute.consumedCurrentFiles) setPendingFiles(null)
         controller = streamOpenAIMessage(openaiRoute.messages, openaiKey, onToken, onDone, onErr, {
+          ...portableToolOptions,
+          ...(requestedChatModel ? { model: requestedChatModel } : {}),
           assertRequestCurrent: assertInvocationCurrent,
           expectedUserId: invocationOwner,
           expectedSessionEpoch: invocationEpoch,

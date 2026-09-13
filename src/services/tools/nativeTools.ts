@@ -58,7 +58,7 @@ export function createNativeHandlers(): Record<string, ToolHandler> {
       if (uri) {
         return { result: `Fichier sauvegardé : ${uri}` }
       }
-      return { result: `Fichier téléchargé : ${safePath}` }
+      return { result: isNative ? `Échec de sauvegarde du fichier : ${safePath}` : `Téléchargement proposé : ${safePath}` }
     },
 
     delete_local_file: async (input) => {

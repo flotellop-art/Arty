@@ -1,0 +1,384 @@
+{
+  "protocolVersion": 1,
+  "createdAt": "2026-09-13T15:50:07.214Z",
+  "prompts": {
+    "P1": "Utilise list_mail_accounts puis read_memory pour la categorie notes. Ne modifie rien. Affiche seulement le nombre de boites connectees et le nombre de notes, sans adresse, nom ni contenu. Si un outil est indisponible, dis-le clairement. Ne lance aucune recherche web.",
+    "P2": "Utilise list_calendar pour mon agenda du 15 septembre 2026 a 00:00 au 16 septembre 2026 a 00:00, fuseau Europe/Paris. Ne modifie rien. Donne seulement le nombre de rendez-vous et leurs heures, sans titres ni noms. Ne lance aucune recherche web.",
+    "P3": "Prepare avec create_calendar_event un rendez-vous fictif intitule TEST OUTILS 20260913, le 15 septembre 2026 de 14:00 a 14:15, fuseau Europe/Paris, sans invite, sans lieu et sans rappel. Passe par la confirmation de creation. Si je refuse, ne retente pas et confirme que tu respectes le refus.",
+    "T1": "Utilise generate_report pour creer un rapport fictif nomme Test outils. Il doit contenir un tableau avec A : 2 unites a 5 euros, B : 3 unites a 4 euros, et le total calcule. Donne ensuite le lien pour ouvrir le rapport. Aucune recherche web.",
+    "R1": "Recherche sur les pages officielles Weber les temperatures minimales et maximales pour weberpral F et weberpral TE. Le F convient-il au beton cellulaire ? Quel est le poids du sac TE ? Donne un petit tableau et les deux liens exacts des sources consultees. Ne confonds pas F et TE.",
+    "R2": "Ouvre https://example.invalid/fiche-chantier-20260913 et donne le prix TTC qui y figure. Si la page ne peut pas etre lue, dis-le et indique que le prix est inconnu. Ne remplace pas cette page par une autre."
+  },
+  "models": [
+    "gemini-3.8-flash",
+    "gpt-5.6-luna",
+    "gpt-5.6-terra",
+    "claude-sonnet-5"
+  ],
+  "runs": [
+    {
+      "model": "gemini-3.8-flash",
+      "case": "P1",
+      "status": "observed",
+      "finding": "Concordant metadata-only read result; no personal content displayed; no independent execution receipt.",
+      "proof": "gemini-p1-detail-0.png",
+      "version": "1.0.107"
+    },
+    {
+      "model": "gemini-3.8-flash",
+      "case": "P2",
+      "status": "observed",
+      "finding": "Concordant metadata-only read result; no personal content displayed; no independent execution receipt.",
+      "proof": "gemini-p2-final-0.png",
+      "version": "1.0.107"
+    },
+    {
+      "model": "gemini-3.8-flash",
+      "case": "P3",
+      "status": "partial",
+      "finding": "Inline yes/no preconfirmation; refusal respected; native calendar handler not reached",
+      "proof": "gemini-p3-non-0.png",
+      "version": "1.0.107",
+      "timing": "gemini-p3",
+      "visibleCompletionSeconds": 4.97,
+      "timingPrecisionSeconds": 2,
+      "terminalProof": "gemini-p3-watch-2.png"
+    },
+    {
+      "model": "gemini-3.8-flash",
+      "case": "T1",
+      "status": "failed",
+      "finding": "Created link became non-clickable local URL; fixed in 1.0.108; verification pending",
+      "proof": "gemini-t1-link-0.png",
+      "version": "1.0.107",
+      "timing": "gemini-t1",
+      "visibleCompletionSeconds": 7.44,
+      "timingPrecisionSeconds": 2,
+      "terminalProof": "gemini-t1-watch-3.png"
+    },
+    {
+      "model": "gemini-3.8-flash",
+      "case": "R1",
+      "status": "partial",
+      "finding": "F temperatures and exclusion correct, TE bag 25 kg; full TE column not yet inspected; exact canonical URLs present but neutralized as unverified",
+      "proof": "gemini-r1-answer-1.png",
+      "version": "1.0.107",
+      "timing": "gemini-r1",
+      "visibleCompletionSeconds": 8.66,
+      "timingPrecisionSeconds": 2,
+      "terminalProof": "gemini-r1-watch-4.png"
+    },
+    {
+      "model": "gemini-3.8-flash",
+      "case": "R2",
+      "status": "passed",
+      "finding": "Inaccessible page; price unknown",
+      "proof": "gemini-r2-final-0.png",
+      "version": "1.0.107",
+      "timing": "gemini-r2",
+      "visibleCompletionSeconds": 5.67,
+      "timingPrecisionSeconds": 2,
+      "terminalProof": "gemini-r2-watch-2.png"
+    },
+    {
+      "model": "gpt-5.6-luna",
+      "case": "P1",
+      "status": "observed",
+      "finding": "Concordant metadata-only read result; no personal content displayed; no independent execution receipt.",
+      "proof": "luna-p1-model-0.png",
+      "version": "1.0.107",
+      "timing": "luna-p1",
+      "visibleCompletionSeconds": 9.04,
+      "timingPrecisionSeconds": 2,
+      "terminalProof": "luna-p1-watch-4.png"
+    },
+    {
+      "model": "gpt-5.6-luna",
+      "case": "P2",
+      "status": "observed",
+      "finding": "Concordant metadata-only read result; no personal content displayed; no independent execution receipt.",
+      "proof": "luna-p2-watch-2.png",
+      "version": "1.0.107",
+      "timing": "luna-p2",
+      "visibleCompletionSeconds": 5.62,
+      "timingPrecisionSeconds": 2,
+      "terminalProof": "luna-p2-watch-2.png"
+    },
+    {
+      "model": "gpt-5.6-luna",
+      "case": "P3",
+      "status": "partial",
+      "finding": "ask_user form confirmation; refusal respected; native calendar mutation dialog not reached",
+      "proof": "luna-p3-final-0.png",
+      "version": "1.0.107",
+      "timing": "luna-p3",
+      "visibleCompletionSeconds": 3.52,
+      "timingPrecisionSeconds": 2,
+      "terminalProof": "luna-p3-watch-1.png"
+    },
+    {
+      "model": "gpt-5.6-luna",
+      "case": "T1",
+      "status": "passed",
+      "finding": "Stored report opened inside app; line totals 10 and 12, grand total 22",
+      "proof": "luna-t1-table-0.png",
+      "version": "1.0.108",
+      "timing": "luna-t1",
+      "visibleCompletionSeconds": 5.56,
+      "timingPrecisionSeconds": 2,
+      "terminalProof": "luna-t1-watch-2.png"
+    },
+    {
+      "model": "gpt-5.6-luna",
+      "case": "R1",
+      "status": "partial",
+      "finding": "Temperatures and F exclusion correct; bag weight explicitly unconfirmed; indexed extracts only, page fetch unavailable",
+      "proof": "luna-r1-answer-2.png",
+      "version": "1.0.107",
+      "timing": "luna-r1",
+      "visibleCompletionSeconds": 59.49,
+      "timingPrecisionSeconds": 2,
+      "terminalProof": "luna-r1-watch-31.png"
+    },
+    {
+      "model": "gpt-5.6-luna",
+      "case": "R2",
+      "status": "passed",
+      "finding": "Inaccessible page; price unknown",
+      "proof": "luna-r2-valid-watch-3.png",
+      "version": "1.0.108",
+      "timing": "luna-r2-valid",
+      "visibleCompletionSeconds": 7.08,
+      "timingPrecisionSeconds": 2,
+      "terminalProof": "luna-r2-valid-watch-3.png"
+    },
+    {
+      "model": "gpt-5.6-terra",
+      "case": "P1",
+      "status": "observed",
+      "finding": "Concordant metadata-only read result; no personal content displayed; no independent execution receipt.",
+      "proof": "terra-p1-model-0.png",
+      "version": "1.0.108",
+      "timing": "terra-p1",
+      "visibleCompletionSeconds": 5.65,
+      "timingPrecisionSeconds": 2,
+      "terminalProof": "terra-p1-watch-2.png"
+    },
+    {
+      "model": "gpt-5.6-terra",
+      "case": "P2",
+      "status": "observed",
+      "finding": "Concordant metadata-only read result; no personal content displayed; no independent execution receipt.",
+      "proof": "terra-p2-watch-2.png",
+      "version": "1.0.108",
+      "timing": "terra-p2",
+      "visibleCompletionSeconds": 5.47,
+      "timingPrecisionSeconds": 2,
+      "terminalProof": "terra-p2-watch-2.png"
+    },
+    {
+      "model": "gpt-5.6-terra",
+      "case": "P3",
+      "status": "failed",
+      "finding": "Prepared text only; no confirmation and no calendar call observed",
+      "proof": "terra-p3-confirm-0.png",
+      "version": "1.0.108",
+      "timing": "terra-p3",
+      "visibleCompletionSeconds": 3.64,
+      "timingPrecisionSeconds": 2,
+      "terminalProof": "terra-p3-watch-1.png"
+    },
+    {
+      "model": "gpt-5.6-terra",
+      "case": "P3D",
+      "status": "passed",
+      "finding": "Native calendar confirmation reached with correct exact title/start/end; cancelled; refusal respected, no creation",
+      "proof": "terra-p3d-final-0.png",
+      "version": "1.0.108",
+      "timing": "terra-p3d-valid",
+      "excludeFromLatency": true,
+      "visibleCompletionSeconds": 42.03,
+      "timingPrecisionSeconds": 2,
+      "terminalProof": "terra-p3d-valid-watch-23.png"
+    },
+    {
+      "model": "gpt-5.6-terra",
+      "case": "T1",
+      "status": "passed",
+      "finding": "Stored report opened inside app; totals 10 and 12, grand total 22",
+      "proof": "terra-t1-opened-0.png",
+      "version": "1.0.108",
+      "timing": "terra-t1",
+      "visibleCompletionSeconds": 5.55,
+      "timingPrecisionSeconds": 2,
+      "terminalProof": "terra-t1-watch-2.png"
+    },
+    {
+      "model": "gpt-5.6-terra",
+      "case": "R1",
+      "status": "failed",
+      "finding": "TE temperature +5/+35 reported, but source labelled TE points to weberprocalit-f (different product); complete pages unread, no full verification",
+      "proof": "terra-r1-answer-2.png",
+      "version": "1.0.108",
+      "timing": "terra-r1",
+      "visibleCompletionSeconds": 45.57,
+      "timingPrecisionSeconds": 2,
+      "terminalProof": "terra-r1-watch-25.png"
+    },
+    {
+      "model": "gpt-5.6-terra",
+      "case": "R2",
+      "status": "passed",
+      "finding": "Inaccessible page; price unknown",
+      "version": "1.0.108",
+      "timing": "terra-r2",
+      "visibleCompletionSeconds": 5.18,
+      "timingPrecisionSeconds": 2,
+      "terminalProof": "terra-r2-watch-2.png",
+      "proof": "terra-r2-watch-2.png"
+    },
+    {
+      "model": "gpt-5.6-luna",
+      "case": "P3D",
+      "status": "passed",
+      "finding": "Native calendar confirmation displayed; cancelled; refusal respected; exact provider Luna confirmed",
+      "proof": "luna-p3d-exact-model-0.png",
+      "version": "1.0.108",
+      "timing": "luna-p3d-exact",
+      "excludeFromLatency": true,
+      "visibleCompletionSeconds": 16.16,
+      "timingPrecisionSeconds": 2,
+      "terminalProof": "luna-p3d-exact-watch-8.png"
+    },
+    {
+      "model": "gemini-3.8-flash",
+      "case": "P3D",
+      "status": "passed",
+      "finding": "Native calendar confirmation displayed with exact parameters; cancelled; refusal respected",
+      "proof": "gemini-p3d-final-0.png",
+      "version": "1.0.108",
+      "timing": "gemini-p3d",
+      "excludeFromLatency": true,
+      "visibleCompletionSeconds": 28.69,
+      "timingPrecisionSeconds": 2,
+      "terminalProof": "gemini-p3d-watch-15.png"
+    },
+    {
+      "model": "gemini-3.8-flash",
+      "case": "T1-corrected",
+      "status": "passed",
+      "finding": "Stored report opened inside app after link fix; unit prices 5 and 4, line totals 10 and 12, grand total 22",
+      "proof": "gemini-t1-corrected-opened-0.png",
+      "version": "1.0.108",
+      "timing": "gemini-t1-corrected",
+      "visibleCompletionSeconds": 8.65,
+      "timingPrecisionSeconds": 2,
+      "terminalProof": "gemini-t1-corrected-watch-4.png"
+    },
+    {
+      "model": "claude-sonnet-5",
+      "case": "P1",
+      "status": "observed",
+      "finding": "Concordant metadata-only read result; no personal content displayed; no independent execution receipt.",
+      "proof": "sonnet-p1-model-0.png",
+      "version": "1.0.108",
+      "timing": "sonnet-p1",
+      "visibleCompletionSeconds": 6.94,
+      "timingPrecisionSeconds": 2,
+      "terminalProof": "sonnet-p1-watch-3.png"
+    },
+    {
+      "model": "claude-sonnet-5",
+      "case": "P2",
+      "status": "observed",
+      "finding": "Concordant metadata-only read result; no personal content displayed; no independent execution receipt.",
+      "proof": "sonnet-p2-final-0.png",
+      "version": "1.0.108",
+      "timing": "sonnet-p2",
+      "visibleCompletionSeconds": 12.13,
+      "timingPrecisionSeconds": 2,
+      "terminalProof": "sonnet-p2-watch-6.png"
+    },
+    {
+      "model": "claude-sonnet-5",
+      "case": "P3",
+      "status": "partial",
+      "finding": "Inline yes/no preconfirmation, refusal respected; no native mutation dialog reached in this wording",
+      "proof": "sonnet-p3-non-0.png",
+      "version": "1.0.108",
+      "timing": "sonnet-p3",
+      "visibleCompletionSeconds": 7.08,
+      "timingPrecisionSeconds": 2,
+      "terminalProof": "sonnet-p3-watch-3.png"
+    },
+    {
+      "model": "claude-sonnet-5",
+      "case": "T1",
+      "status": "passed",
+      "finding": "Stored report opened inside app; unit prices 5 and 4, totals 10 and 12, grand total 22",
+      "proof": "sonnet-t1-report-0.png",
+      "version": "1.0.108",
+      "timing": "sonnet-t1",
+      "visibleCompletionSeconds": 12.1,
+      "timingPrecisionSeconds": 2,
+      "terminalProof": "sonnet-t1-watch-6.png"
+    },
+    {
+      "model": "claude-sonnet-5",
+      "case": "R1",
+      "status": "passed",
+      "finding": "F +5/+30, TE +5/+35, F unsuitable for cellular concrete, TE 25kg; exact canonical official product URLs retained and clickable. Extra unsolicited advice not graded.",
+      "proof": "sonnet-r1-table-right-0.png",
+      "sourceProof": "sonnet-r1-sources-2.png",
+      "version": "1.0.108",
+      "timing": "sonnet-r1",
+      "visibleCompletionSeconds": 26.81,
+      "timingPrecisionSeconds": 2,
+      "terminalProof": "sonnet-r1-watch-15.png"
+    },
+    {
+      "model": "claude-sonnet-5",
+      "case": "R2",
+      "status": "passed",
+      "finding": "Inaccessible reserved invalid domain; price explicitly unknown, no substitute page",
+      "proof": "sonnet-r2-final-0.png",
+      "version": "1.0.108",
+      "timing": "sonnet-r2",
+      "visibleCompletionSeconds": 8.31,
+      "timingPrecisionSeconds": 2,
+      "terminalProof": "sonnet-r2-watch-4.png"
+    }
+  ],
+  "diagnosticPrompts": {
+    "P3D": "Appelle directement create_calendar_event pour afficher sa boite de confirmation native, avec le titre TEST OUTILS 20260913, debut 2026-09-15T14:00:00+02:00 et fin 2026-09-15T14:15:00+02:00. Aucun invite, lieu ni rappel. Ne pose pas de question avec ask_user ou des boutons dans la reponse. Je vais annuler la boite de confirmation ; respecte cette annulation sans retenter."
+  },
+  "artifacts": {
+    "initial": {
+      "version": "1.0.107",
+      "commit": "b199524d67be4c8eb5e6b6da3b5fe93ea956fe98"
+    },
+    "final": {
+      "version": "1.0.108",
+      "commit": "31d1a4101bb96951ffa16f03c3f780a29c0017ce"
+    }
+  },
+  "harnessIncidents": [
+    {
+      "label": "luna-r2",
+      "status": "invalid-ui-attempt",
+      "detail": "After returning from report, prompt was not entered. No model run. Recorder cancelled by stopping app; restarted and reran as luna-r2-valid."
+    },
+    {
+      "label": "terra-p3d",
+      "status": "invalid-ui-attempt",
+      "detail": "Long prompt scrolled home upward; original send coordinate missed. Prompt intact, sent once as terra-p3d-valid after locating arrow. Automatic arrow detection added."
+    },
+    {
+      "label": "luna-p3d",
+      "status": "wrong-selection-excluded",
+      "detail": "Provider selector changed to Mistral because dialog height differed. Cancelled native dialog. Model not Luna; excluded. Repeated after selecting and checking exact Luna variant."
+    }
+  ],
+  "completedAt": "2026-09-13T16:33:13.603Z",
+  "evidencePolicy": "Screenshots and raw observations retained locally, never committed; metadata only. Read-only case outputs concordant; underlying private records not independently audited."
+}

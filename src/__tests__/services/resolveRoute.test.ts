@@ -299,13 +299,16 @@ describe('resolveRoute — choix manuel et garde données privées', () => {
     expect(d.overrides).toEqual([])
   })
 
-  it('privé + Gemini manuel → Claude avec override private_data', () => {
-    const d = resolveRoute(input({ selectedModel: 'gemini', originalText: 'Montre mes emails' }))
-    expect(d.provider).toBe('claude')
-    expect(d.reason.code).toBe('private_data')
-    expect(d.overrides).toEqual([
-      { requested: 'gemini', applied: 'claude', reason: { code: 'private_data' } },
-    ])
+  it.each(['gemini', 'openai'] as const)('privé + %s manuel conserve le fournisseur et interdit la recherche', selectedModel => {
+    const d = resolveRoute(input({ selectedModel, originalText: 'Montre mes emails' }))
+    expect(d.provider).toBe(selectedModel)
+    expect(d.reason.code).toBe('manual_selection')
+    expect(d.overrides).toEqual([])
+    expect(d.isPrivateData).toBe(true)
+    expect(d.webSearch).toBe(false)
+    for (const guard of [{ hasOfficeHistory: true }, { hasProjectContext: true }, { hasFiles: true }, { availability: NONE }]) {
+      expect(resolveRoute(input({ selectedModel, originalText: 'Mes mails', ...guard })).provider).toBe('claude')
+    }
   })
 
   it('privé + Mistral manuel → Claude : private_data précède le carve-out photo', () => {
@@ -339,7 +342,7 @@ describe('resolveRoute — raisons de la cascade auto', () => {
     expect(d.reason.code).toBe('fallback_no_provider')
   })
 
-  it('historique Google privé + « résume ça » → jamais Gemini/OpenAI', () => {
+  it('historique privé : Auto reste Claude, le choix manuel reste disponible sans web', () => {
     const auto = resolveRoute(input({ originalText: 'résume ça', hasPrivateHistory: true }))
     expect(auto.provider).toBe('claude')
     expect(auto.reason.code).toBe('private_data')
@@ -351,8 +354,8 @@ describe('resolveRoute — raisons de la cascade auto', () => {
       hasPrivateHistory: true,
       selectedModel: 'openai',
     }))
-    expect(manualOpenAI.provider).toBe('claude')
-    expect(manualOpenAI.overrides[0]?.reason.code).toBe('private_data')
+    expect(manualOpenAI.provider).toBe('openai')
+    expect(manualOpenAI.overrides).toEqual([])
     expect(manualOpenAI.webSearch).toBe(false)
   })
 

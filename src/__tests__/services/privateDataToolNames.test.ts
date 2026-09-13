@@ -27,9 +27,14 @@ describe('PRIVATE_DATA_TOOL_NAMES — parité avec les outils mail', () => {
     }
   })
 
-  it('ne marque pas les outils publics (web, sentiers, mémoire)', () => {
-    for (const name of ['web_search', 'find_trails', 'update_memory', 'get_weather']) {
+  it('ne marque pas les outils publics (web, sentiers)', () => {
+    for (const name of ['web_search', 'find_trails', 'get_weather']) {
       expect(PRIVATE_DATA_TOOL_NAMES.has(name)).toBe(false)
     }
+  })
+
+  it('marque les lectures et mises a jour de memoire comme privees', () => {
+    expect(PRIVATE_DATA_TOOL_NAMES.has('read_memory')).toBe(true)
+    expect(PRIVATE_DATA_TOOL_NAMES.has('update_memory')).toBe(true)
   })
 })
