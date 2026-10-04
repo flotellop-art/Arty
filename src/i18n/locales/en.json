@@ -978,6 +978,7 @@
     "streamStalled": "Server connection stalled (unstable network). The answer received so far was kept.",
     "networkRequestFailed": "Arty did not receive the server response. Check your connection before trying again. The outcome of this request remains unknown.",
     "responseIncomplete": "Incomplete response, please retry.",
+    "urlContentUnavailable": "I could not retrieve the content needed to analyse these links:\n{{urls}}\n\nI cannot infer the cause or replace their content with another source. Paste the text to analyse here, or try again later.",
     "promptEnhancementFailed": "Couldn't enhance the prompt — try again.",
     "tooManyConcurrentStreams": "Too many conversations streaming at once. Wait for one to finish.",
     "micDeniedNative": "Mic denied — Settings → Apps → Arty → Permissions → Microphone",

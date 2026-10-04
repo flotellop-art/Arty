@@ -17,6 +17,7 @@ import { captureAiEntitlementReceipt, trialExpiredError } from './aiEntitlementR
 import { setSearchContext, type SearchContext } from './factChecker'
 import i18n from '../i18n'
 import { DOCUMENT_READ_ONLY_RULES } from './documents/documentPolicy'
+import { inspectRequestedUrlReads, recoverRequestedUrls, requestedWebUrls, URL_READING_RULES } from './anthropicUrlRecovery'
 
 const ANTI_HALLU_PROMPT = `
 
@@ -135,6 +136,8 @@ export type ToolHandler = (
 ) => Promise<{ result: string; screenshot?: string; fileData?: { name: string; mimeType: string; base64: string } }>
 
 interface StreamOptions extends ModelInvocationOptions {
+  /** Human message before PDF, memory or research content is appended. */
+  urlSourceText?: string
   assertRequestCurrent?: () => void
   documentReadOnly?: boolean
   /** Bounded documentary comparison output, never an entitlement override. */
@@ -979,11 +982,13 @@ async function runWithTools(
     const dateLine = `\n\nDate du jour : ${new Date().toLocaleDateString('fr-FR', {
       weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
     })}.`
-    const systemText = options?.comparisonTextOnly ? baseSystemText : withThinking + dateLine + locationContext + webSearchHint + (options?.documentReadOnly ? DOCUMENT_READ_ONLY_RULES : '')
-    const systemBlocks = [{ type: 'text', text: systemText, cache_control: { type: 'ephemeral' } }]
     // Add prompt-caching hint to last tool definition. L'ensemble d'outils
     // peut être restreint via options.tools (brief proactif = lecture seule).
     const toolSet = (options?.documentReadOnly || options?.comparisonTextOnly) ? [] : filterAnthropicToolsForRoute(options?.tools ?? TOOLS, rd)
+    const requestedUrls = !isPrivateData && !options?.background && toolSet.some(t => t.name === 'web_fetch')
+      ? requestedWebUrls(options?.urlSourceText ?? lastUserText) : []
+    const systemText = options?.comparisonTextOnly ? baseSystemText : withThinking + dateLine + locationContext + webSearchHint + (options?.documentReadOnly ? DOCUMENT_READ_ONLY_RULES : '') + (requestedUrls.length ? URL_READING_RULES : '')
+    const systemBlocks = [{ type: 'text', text: systemText, cache_control: { type: 'ephemeral' } }]
     const cachedTools = toolSet.map((t, i) =>
       i === toolSet.length - 1 ? { ...t, cache_control: { type: 'ephemeral' } } : t
     )
@@ -995,9 +1000,14 @@ async function runWithTools(
     let maxIterations = 30
     // P0.9 — cumul des chars de tool_results de CE message (texte + base64).
     let toolContextChars = 0
+    let recoveryAttempted = false
+    let pendingText = ''
+    const nativeReadBlocks: ContentBlock[] = []
     while (maxIterations-- > 0) {
+      controller.signal.throwIfAborted()
+      options?.assertRequestCurrent?.()
       // Haiku max output = 64000 tokens (API limit). Cap unconditionally.
-      const maxTokens = options?.documentReadOnly && Number.isInteger(options.maxOutputTokens) && options.maxOutputTokens! >= 1 && options.maxOutputTokens! <= 8192
+      const maxTokens = recoveryAttempted ? 8192 : options?.documentReadOnly && Number.isInteger(options.maxOutputTokens) && options.maxOutputTokens! >= 1 && options.maxOutputTokens! <= 8192
         ? options.maxOutputTokens! : isHaiku ? 64000 : 65536
       // Cache de l'historique : (re)pose le marqueur sur le dernier bloc à
       // CHAQUE itération (cf. lookback 20 blocs dans markLastBlockForCaching).
@@ -1019,6 +1029,7 @@ async function runWithTools(
         // dit d'appeler web_search/drive qu'on ne lui fournit pas).
         // Cas d'usage légitime de tools=[] : le comparateur de modèles.
         ...(cachedTools.length > 0 && { tools: cachedTools }),
+        ...(recoveryAttempted && { tool_choice: { type: 'none' } }),
         messages: apiMessages,
         // Réflexion moderne : thinking adaptatif + niveau d'effort. Remplace
         // l'ancien thinking:{type:'enabled', budget_tokens} (déprécié → 400 sur
@@ -1029,10 +1040,15 @@ async function runWithTools(
       })
 
       const response = await fetchWithRetry(requestBody, apiKey, controller, options?.assertRequestCurrent, options?.beforeDocumentRequest)
-      const { contentBlocks, inputTokens, outputTokens, cacheReadTokens, cacheCreationTokens, servedModel } = await parseSSEStream(response, onToken)
+      // Hold URL answers until their source has actually been read. A fetch
+      // error may arrive AFTER provisional text; it must not reach the UI.
+      const { contentBlocks, inputTokens, outputTokens, cacheReadTokens, cacheCreationTokens, servedModel } = await parseSSEStream(response, requestedUrls.length
+        ? text => { pendingText += text } : onToken)
+      controller.signal.throwIfAborted()
       options?.assertRequestCurrent?.()
+      nativeReadBlocks.push(...contentBlocks)
       const searchContext = extractAnthropicSearchContext(contentBlocks, lastUserText)
-      if (searchContext) setSearchContext(searchContext, options?.conversationId)
+      if (searchContext && !requestedUrls.length) setSearchContext(searchContext, options?.conversationId)
 
       // Boucle « demandé → servi » (audit visibilité modèle, F-1/F-2) : si
       // l'API confirme un AUTRE id que celui affiché, on corrige le badge.
@@ -1090,7 +1106,43 @@ async function runWithTools(
       }
 
       const hasToolUse = contentBlocks.some((b) => b.type === 'tool_use')
+      if (recoveryAttempted && hasToolUse) throw new Error(i18n.t('errors.responseIncomplete'))
+      if (requestedUrls.length && !hasToolUse && !recoveryAttempted) {
+        const { unread, denied } = inspectRequestedUrlReads(requestedUrls, nativeReadBlocks as Array<ContentBlock & { [key: string]: unknown }>)
+        if (unread.length) {
+          // One bounded recovery at the end of the native tool loop. Pending
+          // custom tools have already received their results exactly once.
+          recoveryAttempted = true
+          pendingText = ''
+          const recovery = await recoverRequestedUrls(unread, denied, controller.signal, options?.assertRequestCurrent)
+          controller.signal.throwIfAborted()
+          options?.assertRequestCurrent?.()
+          if (recovery.unread.length || toolContextChars + recovery.context.length > TOOL_CONTEXT_BUDGET_CHARS || maxIterations <= 0) {
+            onToken(i18n.t('errors.urlContentUnavailable', { urls: (recovery.unread.length ? recovery.unread : unread).join('\n') }))
+            onDone()
+            return
+          }
+          assertContentBlocksValid(contentBlocks)
+          toolContextChars += recovery.context.length
+          setSearchContext({ provider: 'Linkup URL recovery', query: lastUserText, results: recovery.sources }, options?.conversationId)
+          apiMessages.push({ role: 'assistant', content: contentBlocks })
+          apiMessages.push({ role: 'user', content: recovery.context })
+          continue
+        }
+      }
       if (!hasToolUse || !options?.onToolCall || options.documentReadOnly || options.comparisonTextOnly) {
+        if (requestedUrls.length) {
+          if (hasToolUse) {
+            onToken(i18n.t('errors.urlContentUnavailable', { urls: requestedUrls.join('\n') }))
+            onDone()
+            return
+          }
+          const acceptedContext = extractAnthropicSearchContext(recoveryAttempted
+            ? [...nativeReadBlocks.filter(b => b.type !== 'text'), ...contentBlocks.filter(b => b.type === 'text')]
+            : nativeReadBlocks, lastUserText)
+          if (acceptedContext) setSearchContext(acceptedContext, options?.conversationId)
+        }
+        if (pendingText) onToken(pendingText)
         onDone()
         return
       }
@@ -1123,6 +1175,9 @@ async function runWithTools(
       apiMessages.push({ role: 'user', content: toolResults })
     }
 
+    controller.signal.throwIfAborted()
+    options?.assertRequestCurrent?.()
+    if (requestedUrls.length) onToken(i18n.t('errors.urlContentUnavailable', { urls: requestedUrls.join('\n') }))
     onDone()
   } catch (err) {
     // AbortError = Stop utilisateur : stopStreaming a déjà finalisé et démonté

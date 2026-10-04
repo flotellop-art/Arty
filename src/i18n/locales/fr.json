@@ -978,6 +978,7 @@
     "streamStalled": "Connexion au serveur interrompue (réseau instable). La réponse déjà reçue est conservée.",
     "networkRequestFailed": "Arty n’a pas reçu la réponse du serveur. Vérifie ta connexion avant de réessayer. Le résultat de cette demande reste inconnu.",
     "responseIncomplete": "Réponse incomplète, réessaie ta question.",
+    "urlContentUnavailable": "Je n’ai pas pu récupérer le contenu nécessaire pour analyser ces liens :\n{{urls}}\n\nJe ne peux pas en déduire la cause ni remplacer leur contenu par une autre source. Colle ici le texte à analyser, ou réessaie plus tard.",
     "promptEnhancementFailed": "Impossible d'améliorer le prompt — réessaie.",
     "tooManyConcurrentStreams": "Trop de conversations en cours en parallèle. Attends qu'une réponse se termine.",
     "micDeniedNative": "Micro refusé — Paramètres Android → Apps → Arty → Autorisations → Micro",
