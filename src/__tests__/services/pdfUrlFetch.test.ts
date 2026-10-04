@@ -53,4 +53,13 @@ describe('fetchUrlMarkdowns', () => {
     expect(block).toContain('ok')
     expect(unreadable).toEqual(['https://b.fr/2'])
   })
+  it('passes EU-only policy and reports actual browser provenance and omissions', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ markdown: 'Read post',
+      receipt: { provider: 'arty-browser', access: 'anonymous', commentsIncluded: false, truncated: true } }) })
+    vi.stubGlobal('fetch', fetchMock)
+    const { block } = await fetchUrlMarkdowns(['https://example.com/'], undefined, 'eu-only')
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ url: 'https://example.com/', readerPolicy: 'eu-only' })
+    expect(block).toContain('navigateur Arty'); expect(block).toContain('commentaires non lus'); expect(block).toContain('contenu tronqué')
+    expect(block).not.toContain('(EU)')
+  })
 })

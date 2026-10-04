@@ -1124,7 +1124,7 @@ async function runWithTools(
           }
           assertContentBlocksValid(contentBlocks)
           toolContextChars += recovery.context.length
-          setSearchContext({ provider: 'Linkup URL recovery', query: lastUserText, results: recovery.sources }, options?.conversationId)
+          setSearchContext({ provider: 'Arty URL reader', query: lastUserText, results: recovery.sources }, options?.conversationId)
           apiMessages.push({ role: 'assistant', content: contentBlocks })
           apiMessages.push({ role: 'user', content: recovery.context })
           continue

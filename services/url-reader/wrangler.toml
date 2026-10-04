@@ -1,0 +1,23 @@
+name = "arty-url-reader"
+main = "src/index.ts"
+compatibility_date = "2026-10-04"
+compatibility_flags = ["nodejs_compat"]
+# Private: only Arty's authenticated Pages gateway can call the service binding.
+workers_dev = false
+preview_urls = false
+
+[browser]
+binding = "BROWSER"
+
+[[durable_objects.bindings]]
+name = "ADMISSION"
+class_name = "ReaderAdmission"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["ReaderAdmission"]
+
+[vars]
+# Fixed server policy, never supplied by a page, user or model.
+# Add reviewed exact hosts and dependencies here; no wildcard or arbitrary URL.
+READER_PROFILES = '[{"hosts":["example.com"],"resources":["example.com"]},{"hosts":["quotes.toscrape.com"],"resources":["quotes.toscrape.com"]},{"hosts":["en.wikipedia.org","fr.wikipedia.org"],"resources":["en.wikipedia.org","fr.wikipedia.org","upload.wikimedia.org","meta.wikimedia.org"]},{"hosts":["www.reddit.com","reddit.com"],"resources":["www.reddit.com","reddit.com","www.redditstatic.com","redditstatic.com","styles.redditmedia.com"]}]'

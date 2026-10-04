@@ -38,7 +38,7 @@ export const FETCH_URL_TOOL_DEF = {
   type: 'function' as const,
   function: {
     name: 'fetch_url',
-    description: `Lit le contenu COMPLET d'une page web (converti en Markdown) à partir de son URL. À utiliser dès que l'utilisateur demande d'ouvrir, lire, résumer ou analyser un lien — que l'URL soit dans son message OU citée plus tôt dans la conversation (recopie-la EXACTEMENT depuis l'historique, sans la modifier, sans y ajouter de paramètre). Seules les URLs déjà présentes dans la conversation ou renvoyées par web_search sont autorisées : une URL construite ou complétée par tes soins sera refusée. Complémentaire de web_search, qui ne renvoie que des extraits d'index.`,
+    description: `Lit le texte accessible d'une page web à partir de son URL. Une extraction peut être partielle ; indique les limites signalées par le lecteur. À utiliser dès que l'utilisateur demande d'ouvrir, lire, résumer ou analyser un lien — que l'URL soit dans son message OU citée plus tôt dans la conversation (recopie-la EXACTEMENT depuis l'historique, sans la modifier, sans y ajouter de paramètre). Seules les URLs déjà présentes dans la conversation ou renvoyées par web_search sont autorisées : une URL construite ou complétée par tes soins sera refusée. Complémentaire de web_search, qui ne renvoie que des extraits d'index.`,
     parameters: {
       type: 'object',
       properties: {
@@ -130,7 +130,7 @@ export async function executeFetchUrlTool(
   if (unreadable.length > 0) {
     return {
       result:
-        `La page ${url} n'a pas pu être lue : contenu protégé (abonnement/paywall) ou non extractible. ` +
+        `La page ${url} n'a pas pu être lue : le lecteur n'a pas obtenu le texte demandé. La cause exacte n'est pas confirmée. ` +
         `Dis-le clairement à l'utilisateur et propose-lui de coller le texte de la page ici. N'invente PAS le contenu.`,
     }
   }

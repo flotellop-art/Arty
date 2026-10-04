@@ -85,7 +85,7 @@ describe('Actual Claude SSE loop — requested URL recovery', () => {
     expect(second.messages.at(-1).content[0].text).toContain('post précis')
     expect(second.tool_choice).toEqual({ type: 'none' })
     expect(second.max_tokens).toBe(8192)
-    expect(setSearchContext).toHaveBeenCalledWith(expect.objectContaining({ provider: 'Linkup URL recovery', results: [expect.objectContaining({ url: URL })] }), undefined)
+    expect(setSearchContext).toHaveBeenCalledWith(expect.objectContaining({ provider: 'Arty URL reader', results: [expect.objectContaining({ url: URL })] }), undefined)
     expect(JSON.stringify(vi.mocked(setSearchContext).mock.calls)).not.toContain('"cited":true')
   })
 
