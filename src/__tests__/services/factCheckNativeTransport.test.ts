@@ -66,9 +66,14 @@ describe('fact-check, transport Android natif', () => {
         'x-google-token': 'google-token',
       }),
       connectTimeout: 15_000,
-      readTimeout: 90_000,
+      readTimeout: expect.any(Number),
       responseType: 'json',
     }))
+    // The request receives the remaining global deadline after auth setup,
+    // rather than a fresh 90-second allowance. A millisecond may have elapsed.
+    const readTimeout = nativeRequest.mock.calls[0]![0].readTimeout
+    expect(readTimeout).toBeGreaterThan(0)
+    expect(readTimeout).toBeLessThanOrEqual(90_000)
 
     fetchSpy.mockRestore()
   })
