@@ -1201,6 +1201,7 @@ export function useConversation(options?: { onNavigate?: (id: string) => void })
           resetAccumulated(targetId)
           setProgressContent('', targetId)
           controller = streamMessage(enrichedMessages, onToken, onDone, onErr, {
+            urlSourceText: text,
             assertRequestCurrent: assertInvocationCurrent,
             beforeDocumentRequest: beforeOwnedRequest,
             systemPrompt: invocationSystemPrompt,
@@ -1341,6 +1342,7 @@ export function useConversation(options?: { onNavigate?: (id: string) => void })
         ]
         const toolsOverride = extraTools.length > 0 ? [...TOOLS, ...extraTools] : undefined
         controller = streamMessage(apiMessages, onToken, onDone, onErr, {
+          urlSourceText: text,
           assertRequestCurrent: assertInvocationCurrent,
           documentReadOnly: officeRequest,
           systemPrompt: preparedProject?.systemPrompt ?? invocationSystemPrompt,
