@@ -66,9 +66,25 @@ signatures et blocs vides est vérifiée par les tests de transport simulés.
 Les essais directs ne prouvent ni le parcours authentifié Arty en production,
 ni l'intégration Android, ni l'absence générale d'hallucinations.
 
-Les tests ciblés initiaux ont réussi (276 tests). La campagne complète et
-les tests ajoutés après contre-revue sont consignés dans la PR finale.
-Typecheck, build, contrôles des scopes Google et worker d'export réussis.
+Les tests ciblés initiaux ont réussi (276 tests), puis 134 tests ciblés après
+contre-revue et correction des attentes périmées. La CI complète du candidat
+`ca0d6ea01524e23df10a19d45449077903ebea95` réussit : 409 fichiers, 5 986 tests
+réussis et un ignoré, types, couverture, build, scopes Google, worker Office
+et contrôles Android.
+
+La publication a été explicitement demandée le 5 octobre. Firebase confirme
+en lecture authentifiée que la dernière version distribuée est 1.0.105/code
+106 (`5i1dajfnpgj6g`, 13 septembre). Le candidat de livraison est donc
+versionné 1.0.106/code 107 dans package, lock et Gradle, avant fusion. La
+fusion sur main déclenche le workflow Firebase existant ; ne pas démarrer
+une seconde distribution concurrente. Les reçus de déploiement web et APK
+restent distincts d'une installation physique sur les téléphones.
+
+Après diffusion de l'APK, un retour arrière doit préserver les tarifs 5.5
+et le quota partagé. Un rollback complet vers l'ancien backend ne couvre
+pas les nouveaux clients : il peut traiter leur ID 5.5 comme inconnu et
+appliquer un tarif de repli inadapté. Préférer un revert ciblé du routage ou
+du transport en conservant la compatibilité et la facturation du nouvel ID.
 
 ## Sources officielles
 
