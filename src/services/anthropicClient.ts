@@ -19,6 +19,9 @@ import i18n from '../i18n'
 import { DOCUMENT_READ_ONLY_RULES } from './documents/documentPolicy'
 import { inspectRequestedUrlReads, recoverRequestedUrls, requestedWebUrls, URL_READING_RULES } from './anthropicUrlRecovery'
 import { formatUrlReaderFailures } from './urlReaderFailure'
+import { autonomousWebClient, ownedAnthropicTools, ownedUrlContext, OWNED_WEB_RULES } from './autonomousWeb'
+import { executeClientWebSearch } from './tools/clientWebSearch'
+import { collectUrlAllowlist, executeFetchUrlTool } from './tools/fetchUrlTool'
 
 const ANTI_HALLU_PROMPT = `
 
@@ -985,11 +988,30 @@ async function runWithTools(
     })}.`
     // Add prompt-caching hint to last tool definition. L'ensemble d'outils
     // peut être restreint via options.tools (brief proactif = lecture seule).
-    const toolSet = (options?.documentReadOnly || options?.comparisonTextOnly) ? [] : filterAnthropicToolsForRoute(options?.tools ?? TOOLS, rd)
-    const requestedUrls = !isPrivateData && !options?.background && toolSet.some(t => t.name === 'web_fetch')
+    const autonomous = autonomousWebClient()
+    const legacyTools = (options?.documentReadOnly || options?.comparisonTextOnly) ? [] : filterAnthropicToolsForRoute(options?.tools ?? TOOLS, rd)
+    const toolSet = autonomous ? ownedAnthropicTools(legacyTools, !isPrivateData && (rd?.webSearch ?? true)) : legacyTools
+    const ownedContent = autonomous && !isPrivateData && !options?.background && !options?.comparisonTextOnly && !options?.documentReadOnly
+      ? await ownedUrlContext(options?.urlSourceText ?? lastUserText, controller.signal, rd?.reason.code === 'eu_only') : ''
+    const requestedUrls = !autonomous && !isPrivateData && !options?.background && toolSet.some(t => t.name === 'web_fetch')
       ? requestedWebUrls(options?.urlSourceText ?? lastUserText) : []
     const systemText = options?.comparisonTextOnly ? baseSystemText : withThinking + dateLine + locationContext + webSearchHint + (options?.documentReadOnly ? DOCUMENT_READ_ONLY_RULES : '') + (requestedUrls.length ? URL_READING_RULES : '')
-    const systemBlocks = [{ type: 'text', text: systemText, cache_control: { type: 'ephemeral' } }]
+    const systemBlocks = [{ type: 'text', text: systemText + (autonomous ? OWNED_WEB_RULES : ''), cache_control: { type: 'ephemeral' } }]
+    if (ownedContent) apiMessages.push({ role: 'user', content: ownedContent })
+    const ownedUrlKeys = collectUrlAllowlist(originalMessages.map(m => typeof m.content === 'string' ? m.content :
+      m.content.filter(b => b.type === 'text' && typeof b.text === 'string').map(b => String(b.text)).join('\n')))
+    const ownedFetchCount = { value: ownedContent ? requestedWebUrls(options?.urlSourceText ?? lastUserText).length : 0 }
+    const toolHandler: ToolHandler | undefined = autonomous ? async (name, input) => {
+      if ((name === 'web_search' || name === 'fetch_url') && !toolSet.some(t => t.name === name)) return { result: 'Outil indisponible pour cette requête.' }
+      if (name === 'web_search') {
+        const result = await executeClientWebSearch(input, options?.conversationId, controller.signal)
+        for (const key of collectUrlAllowlist([result.result])) ownedUrlKeys.add(key)
+        return result
+      }
+      if (name === 'fetch_url') return executeFetchUrlTool(input, { allowedUrlKeys: ownedUrlKeys, callCount: ownedFetchCount, signal: controller.signal })
+      if (options?.onToolCall) return options.onToolCall(name, input)
+      return { result: 'Outil indisponible.' }
+    } : options?.onToolCall
     const cachedTools = toolSet.map((t, i) =>
       i === toolSet.length - 1 ? { ...t, cache_control: { type: 'ephemeral' } } : t
     )
@@ -1134,7 +1156,7 @@ async function runWithTools(
           continue
         }
       }
-      if (!hasToolUse || !options?.onToolCall || options.documentReadOnly || options.comparisonTextOnly) {
+      if (!hasToolUse || !toolHandler || options?.documentReadOnly || options?.comparisonTextOnly) {
         if (requestedUrls.length) {
           if (hasToolUse) {
             onToken(i18n.t('errors.urlContentUnavailable', { urls: requestedUrls.join('\n') }))
@@ -1172,7 +1194,7 @@ async function runWithTools(
               'Budget de contexte de ce message atteint — n\'appelle plus d\'outils. Synthétise ta réponse avec les données déjà lues, et propose à l\'utilisateur de continuer dans un message suivant si besoin.',
           }))
       } else {
-        toolResults = await executeToolCalls(contentBlocks, options.onToolCall)
+        toolResults = await executeToolCalls(contentBlocks, toolHandler)
         toolContextChars += toolResultSize(toolResults)
       }
       apiMessages.push({ role: 'assistant', content: contentBlocks })

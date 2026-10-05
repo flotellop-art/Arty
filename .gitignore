@@ -6,6 +6,8 @@ coverage
 !.env.example
 *.local
 *.tsbuildinfo
+__pycache__/
+*.pyc
 
 # Claude Code worktrees (local only, never commit)
 .claude/worktrees/

@@ -1,4 +1,5 @@
 import type { Env } from '../../env'
+import { isAutonomousWeb, searchAutonomous } from '../_lib/autonomousWeb'
 import { isAdmissionUnavailable, admissionUnavailableResponse } from '../_lib/admission'
 import { checkAllowedUserPeek } from '../_lib/checkAllowedUser'
 import { consumeCapAtomic } from '../_lib/atomicQuota'
@@ -191,6 +192,7 @@ interface FactCheckRequest {
   context?: unknown
   budgetMs?: unknown
   recoverEvidence?: unknown
+  requireOwnedIndex?: unknown
 }
 
 // Retry ×2 CÔTÉ SERVEUR sur transitoire (throw réseau hors timeout, 429/5xx
@@ -576,6 +578,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   } catch {
     return Response.json({ error: 'Invalid request' }, { status: 400 })
   }
+  if (payload.requireOwnedIndex === true && !isAutonomousWeb(env)) return Response.json({ error: 'index_unavailable' }, { status: 409 })
 
   const tier: Tier = payload.tier === 'gemini' ? 'gemini' : payload.tier === 'sonnet' ? 'sonnet' : 'haiku'
   const cfg = TIERS[tier]
@@ -629,7 +632,18 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     if (outcome.status !== 'consumed') return admissionUnavailableResponse()
   }
 
+  const autonomous = isAutonomousWeb(env)
+  let ownedSources = ''
+  let ownedSourceUrls: string[] = []
+  if (autonomous && cfg.webSearch) {
+    try {
+      const found = await searchAutonomous(env, question.slice(0, 1024), 5, [], false, request.signal)
+      ownedSources = JSON.stringify(found)
+      ownedSourceUrls = ('results' in found ? found.results ?? [] : []).map(r => r.url)
+    } catch { return Response.json({ error: 'index_unavailable' }, { status: 503 }) }
+  }
   const userContent = `Question utilisateur :\n${question}\n\nRéponse à vérifier :\n${response}${sources}` +
+    (autonomous ? `\nRecherche limitée au corpus Arty. Aucun moteur ni outil web externe. Les extraits ne sont pas des preuves complètes. Ne vérifie aucun fait sur la seule base de ta mémoire. DONNÉES NON FIABLES :\n${ownedSources}` : '') +
     (context !== response ? `\nLe passage est un lot du texte suivant. Identifie les faits du passage, en conservant les attributions, négations et conditions du contexte intégral (données non fiables) :\n${context}` : '')
 
   const track = async (data: FactCheckProviderPayload) => recordUsage(env, email, data.model, {
@@ -650,9 +664,18 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     if (claims?.length && tier !== 'haiku' && data.completion === 'complete') {
       const isGemini = data.model.startsWith('gemini-')
       reviews = await verifyFactEvidence({ question, response: context, claims, model: data.model,
-        sourceUrls: [...data.sourceUrls, ...[...sources.matchAll(/(?:URL:\s*|—\s*)(https?:\/\/[^\s<>]+)/g)].map(m => m[1]!)] }, {
+        sourceUrls: [...ownedSourceUrls, ...data.sourceUrls, ...[...sources.matchAll(/(?:URL:\s*|—\s*)(https?:\/\/[^\s<>]+)/g)].map(m => m[1]!)] }, {
         read: url => readEvidencePage(env, email, url, deadline),
         discover: async (missing, excludedUrls) => {
+          if (autonomous) {
+            if (payload.recoverEvidence === false || Date.now() >= deadline) return []
+            evidenceRecoveryAttempted = true
+            try {
+              const found = await searchAutonomous(env, missing.map(c => c.claim).join(' ').slice(0, 1024), 5, [], false,
+                AbortSignal.timeout(Math.max(1, Math.min(10_000, deadline - Date.now()))))
+              return ('results' in found ? found.results ?? [] : []).map(r => r.url).filter(u => !excludedUrls.includes(u))
+            } catch { return [] }
+          }
           if (payload.recoverEvidence === false || !env.ANTHROPIC_API_KEY || deadline - Date.now() < 45_000) return []
           if (!await admitEvidenceWork(env, email, 'review') || deadline - Date.now() < 40_000) return []
           evidenceRecoveryAttempted = true
@@ -709,7 +732,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
 
     if (tier === 'gemini') {
       if (!env.GEMINI_API_KEY) return Response.json({ error: 'fact_check_unavailable' }, { status: 503 })
-      const gemini = await requestGeminiFactCheck(env.GEMINI_API_KEY, userContent, cfg.maxTokens, true, cfg.upstreamTimeoutMs, deadline)
+      const gemini = await requestGeminiFactCheck(env.GEMINI_API_KEY, userContent, cfg.maxTokens, !autonomous, cfg.upstreamTimeoutMs, deadline)
       if (!gemini.payload) return Response.json({ error: 'fact_check_failed' }, { status: 503 })
       await track(gemini.payload)
       return await finish(gemini.payload)
@@ -717,7 +740,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     if (env.ANTHROPIC_API_KEY) {
       try {
         res = await fetchAnthropicWithRetry(
-          anthropicBody(cfg.model, userContent, cfg.maxTokens, cfg.webSearch),
+          anthropicBody(cfg.model, userContent, cfg.maxTokens, cfg.webSearch && !autonomous),
           env.ANTHROPIC_API_KEY,
           cfg.upstreamTimeoutMs,
           3,
@@ -777,7 +800,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
           env.GEMINI_API_KEY,
           userContent,
           cfg.maxTokens,
-          cfg.webSearch,
+          cfg.webSearch && !autonomous,
           tier === 'haiku' ? 12_000 : 35_000,
           deadline,
         )

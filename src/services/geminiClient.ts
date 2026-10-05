@@ -13,6 +13,7 @@ import type { RouteReason } from './router/types'
 import { setSearchContext, type SearchContext } from './factChecker'
 import type { ReflectionLevel } from './reflectionLevel'
 import i18n from '../i18n'
+import { autonomousWebClient, ownedResearch, OWNED_WEB_RULES } from './autonomousWeb'
 
 // Modèle Flash par défaut du CHAT (gros volume). C1 (CDC veille 2026-07,
 // décision Florent 18/07) : gemini-2.5-flash est DÉPRÉCIÉ par Google — arrêt
@@ -338,6 +339,7 @@ async function runGeminiStream(
     // user uniquement — la vidéo n'est facturée qu'au tour où elle est collée.
     const youtubeUrls = options?.comparisonTextOnly ? [] : extractYouTubeUrls(options?.videoSourceText ?? lastMessage)
     const hasVideo = youtubeUrls.length > 0
+    if (autonomousWebClient() && hasVideo) throw new Error('Les vidéos externes ne sont pas prises en charge par notre index autonome.')
     if (hasVideo) {
       const last = contents[contents.length - 1]
       if (last) {
@@ -361,11 +363,15 @@ async function runGeminiStream(
       ? [{ google_maps: {} }]
       : [{ google_search: {} }, { url_context: {} }]
     const selectedTools = options?.comparisonTextOnly ? [] : options?.tools ?? defaultTools
-    const tools = hasVideo || selectedTools.length === 0 ? undefined : selectedTools
+    const autonomous = autonomousWebClient()
+    const ownedContext = autonomous && !hasVideo && !options?.comparisonTextOnly && selectedTools.length > 0
+      ? await ownedResearch(options?.videoSourceText ?? lastMessage, options?.conversationId, controller.signal) : ''
+    const tools = hasVideo || autonomous || selectedTools.length === 0 ? undefined : selectedTools
+    if (ownedContext) contents[contents.length - 1]?.parts.push({ text: ownedContext })
 
     const locationContext = options?.comparisonTextOnly ? '' : await buildLocationContext(lastMessage)
     options?.assertRequestCurrent?.()
-    const systemText = (options?.systemPrompt || GEMINI_SYSTEM) + locationContext
+    const systemText = (options?.systemPrompt || GEMINI_SYSTEM) + locationContext + (autonomous ? OWNED_WEB_RULES : '')
 
     const reflectionLevel = options?.reflectionLevel ?? 'auto'
     const thinkingBudget = resolveGeminiThinkingBudget(lastMessage, isMapQuery, reflectionLevel)
@@ -577,20 +583,25 @@ export async function geminiResearch(
   reflectionLevel?: ReflectionLevel,
   conversationId?: string,
   assertRequestCurrent?: () => void,
+  signal?: AbortSignal,
 ): Promise<string> {
   const apiKey = apiKeyOverride || getGeminiKey()
-  const receipt = captureAiEntitlementReceipt(!apiKey || apiKey === 'server-provided', undefined, assertRequestCurrent)
+  const receipt = captureAiEntitlementReceipt(!apiKey || apiKey === 'server-provided', signal, assertRequestCurrent)
 
   const model = geminiResearchModel()
   const thinkingLevel = resolveGeminiResearchThinkingLevel(reflectionLevel ?? 'auto')
   const thinkingBudget = thinkingLevel === 'low' ? 512 : thinkingLevel === 'medium' ? 1024 : 2048
+
+  const autonomous = autonomousWebClient()
+  const ownedContext = autonomous ? await ownedResearch(query, conversationId, signal) : ''
+  signal?.throwIfAborted()
 
   const requestBody = {
     model,
     stream: false,
     contents: [{
       role: 'user',
-      parts: [{ text: query }],
+      parts: [{ text: query + (ownedContext ? '\n' + ownedContext : '') }],
     }],
     systemInstruction: {
       parts: [{
@@ -603,19 +614,21 @@ export async function geminiResearch(
       thinkingBudget,
       thinkingLevel,
     }),
-    tools: [
+    tools: autonomous ? [] : [
       { google_search: {} },
       { url_context: {} },
     ],
   }
 
   const headers = await buildAiHeaders({ byokKey: apiKey, auth: 'bearer', assertRequestCurrent })
+  signal?.throwIfAborted()
 
   try {
     const res = await fetchWithTimeout(
       apiUrl('/api/ai/gemini-proxy'),
-      { method: 'POST', headers, body: JSON.stringify(requestBody) },
+      { method: 'POST', headers, body: JSON.stringify(requestBody), signal },
       GEMINI_TIMEOUT_MS,
+      signal,
     )
     receipt.updateTrial(res)
 

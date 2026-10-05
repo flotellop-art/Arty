@@ -363,7 +363,7 @@ async function runMistralStream(
           // global — c'est spécifique au flow Mistral.
           let result: { result: string }
           if (tc.function.name === 'web_search') {
-            result = await executeClientWebSearch(args, options?.conversationId)
+            result = await executeClientWebSearch(args, options?.conversationId, controller.signal, options?.euOnly)
           } else {
             result = await options.onToolCall(tc.function.name, args)
           }

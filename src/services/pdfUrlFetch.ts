@@ -21,6 +21,7 @@ const MAX_PDFS_PER_MESSAGE = 3
 // pas lire » sans dire pourquoi).
 interface PageReceipt {
   provider: string
+  captureMode?: 'html-static' | 'pdf-text'
   finalUrl?: string
   retrievedAt?: string
   access?: string
@@ -62,7 +63,7 @@ async function fetchOne(
     const res = await fetch(apiUrl('/api/fetch/url'), {
       method: 'POST',
       headers,
-      body: JSON.stringify({ url, readerPolicy }),
+      body: JSON.stringify({ url, readerPolicy, ...(import.meta.env.VITE_AUTONOMOUS_WEB === 'true' ? { requireOwnedIndex: true } : {}) }),
       signal: ctrl.signal,
     })
     if (!res.ok) {
@@ -110,6 +111,8 @@ export interface UrlFetchResult {
   block: string | null
   /** URLs qui ont échoué pour cause de paywall / contenu illisible. */
   unreadable: string[]
+  /** Transport failures and URLs beyond this batch's cap, not site diagnoses. */
+  unavailable?: string[]
   failures?: UrlReaderFailure[]
 }
 export interface UrlReaderFailure extends BrowserReadFailure { url: string }
@@ -134,6 +137,7 @@ export async function fetchUrlMarkdowns(
   )
   const ok = results.filter((r): r is Extract<FetchOutcome, { ok: true }> => r.ok)
   const unreadable = results.filter((r) => !r.ok && r.reason === 'unreadable').map((r) => r.url)
+  const unavailable = [...results.filter((r) => !r.ok && r.reason === 'error').map((r) => r.url), ...urls.slice(MAX_PDFS_PER_MESSAGE)]
   const failures = results.flatMap(r => !r.ok && r.failure ? [{ url: r.url, ...r.failure }] : [])
   const block = ok.length
     ? ok
@@ -142,10 +146,11 @@ export async function fetchUrlMarkdowns(
             ? r.markdown.slice(0, MAX_PAGE_CHARS) + '\n[… contenu tronqué]'
             : r.markdown
           const source = r.receipt?.provider === 'arty-browser' ? 'navigateur Arty' : r.provider === 'linkup' ? 'Linkup' : 'lecteur web'
-          const limits = r.receipt ? `\nLecture : ${r.receipt.access ?? 'inconnue'} ; texte visible ; images non analysées ; commentaires ${r.receipt.commentsIncluded === false ? 'non lus' : 'non garantis'} ; URL finale : ${r.receipt.finalUrl ?? 'inconnue'} ; date : ${r.receipt.retrievedAt ?? 'inconnue'}${r.receipt.truncated ? ' ; contenu tronqué' : ''}.` : ''
+          const capture = r.receipt?.captureMode === 'html-static' ? 'texte HTML statique, sans exécution JavaScript' : r.receipt?.captureMode === 'pdf-text' ? 'texte extrait du PDF' : 'texte visible'
+          const limits = r.receipt ? `\nLecture : ${r.receipt.access ?? 'inconnue'} ; ${capture} ; images non analysées ; commentaires ${r.receipt.commentsIncluded === false ? 'non lus' : 'non garantis'} ; URL finale : ${r.receipt.finalUrl ?? 'inconnue'} ; date de collecte (pas de publication) : ${r.receipt.retrievedAt ?? 'inconnue'}${r.receipt.truncated || md !== r.markdown ? ' ; contenu tronqué' : ''}.` : ''
           return `--- CONTENU DE LA PAGE (${r.url}) — récupéré via ${source} ---${limits}\n${md}\n--- FIN DE LA PAGE ---`
         })
         .join('\n\n')
     : null
-  return { block, unreadable, ...(failures.length ? { failures } : {}) }
+  return { block, unreadable, ...(unavailable.length ? { unavailable } : {}), ...(failures.length ? { failures } : {}) }
 }

@@ -1,4 +1,5 @@
 import type { Env } from '../../env'
+import { isAutonomousWeb, nativeWebForbidden, autonomousNativeToolResponse } from '../_lib/autonomousWeb'
 import { createStreamBudget } from '../_lib/streamBudget'
 import { isAdmissionUnavailable, admissionUnavailableResponse } from '../_lib/admission'
 import { normalizeTikTokUrl, TIKTOK_ANALYSIS_MODEL, TIKTOK_SERVER_TIMEOUT_MS, TIKTOK_PREPARATION_TIMEOUT_MS, TIKTOK_GENERATION_TIMEOUT_MS } from '../../../src/services/tiktokVideoTypes'
@@ -71,6 +72,14 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
   }
   const identity = identityResolution.identity
   const email = identity.kind === 'email-trial' ? emailTrialKey(identity.email) : identity.email
+
+  // Read once, and reject hosted search before any trial/wallet debit.
+  let requestBody: Record<string, unknown> | undefined
+  if (isAutonomousWeb(env)) {
+    try { requestBody = await request.json() } catch { return Response.json({ error: 'Invalid request' }, { status: 400 }) }
+    if (!requestBody || typeof requestBody !== 'object' || Array.isArray(requestBody)) return Response.json({ error: 'Invalid request' }, { status: 400 })
+    if (nativeWebForbidden(env, requestBody, 'gemini')) return autonomousNativeToolResponse()
+  }
 
   let walletResId: string | undefined
   let dailyConsumed: { model: string; debited: QuotaDebit } | undefined
@@ -159,7 +168,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
   }
 
   try {
-    const { model: requestedModel, stream, tiktokVideoUrl, ...inputBody } = await request.json() as { model: string; stream: boolean; [key: string]: unknown }
+    const { model: requestedModel, stream, tiktokVideoUrl, ...inputBody } = (requestBody ?? await request.json()) as { model: string; stream: boolean; [key: string]: unknown }
     tikTokMode = tiktokVideoUrl !== undefined
     // Only the new client can display the larger report and wait 195 seconds.
     // Older APKs retain their original output and timing contract.
