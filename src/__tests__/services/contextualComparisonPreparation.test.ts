@@ -27,7 +27,7 @@ import { mapCapturedConversation } from '../../services/workspaceBackup/captureM
 
 const panels = (eu = false): PanelConfig[] => eu
   ? [{ id: '1', provider: 'mistral', modelId: 'mistral-medium-latest' }, { id: '2', provider: 'mistral', modelId: 'mistral-small-2603' }]
-  : [{ id: '1', provider: 'anthropic', modelId: 'claude-haiku-4-5' }, { id: '2', provider: 'anthropic', modelId: 'claude-sonnet-5' }]
+  : [{ id: '1', provider: 'anthropic', modelId: 'claude-haiku-4-5' }, { id: '2', provider: 'anthropic', modelId: 'claude-sonnet-5-5' }]
 let source: Conversation, project: Project
 const review = vi.fn<ReviewProjectRequest>(async r => r.kind === 'select' ? { mode: 'overview', documentIds: r.project.documents.map(d => d.id) } : true)
 const access = vi.fn<(_: PanelConfig) => string | null>(() => null)

@@ -19,7 +19,7 @@ import { getActiveSessionEpoch } from '../../services/userSession'
 import type { ModelInvocationOptions, ModelUsedEvent } from '../../services/modelLabels'
 const providers = ['claude', 'mistral', 'gemini', 'openai'] as const
 type Provider = typeof providers[number]
-const models = { claude: 'claude-sonnet-5', mistral: 'mistral-medium-latest', gemini: 'gemini-3.6-flash', openai: 'gpt-5.6-terra' }
+const models = { claude: 'claude-sonnet-5-5', mistral: 'mistral-medium-latest', gemini: 'gemini-3.6-flash', openai: 'gpt-5.6-terra' }
 function sse(provider: Provider, model?: unknown) {
   const body = provider === 'claude'
     ? [{ type: 'message_start', message: { model, usage: {} } }, { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } }, { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'Hello' } }, { type: 'content_block_stop', index: 0 }, { type: 'message_stop' }]
@@ -50,7 +50,7 @@ describe('Real clients, simulated HTTP: text-only and attribution', () => {
     vi.stubGlobal('fetch', fetch)
     const gate = vi.fn(async () => {})
     await new Promise<void>((resolve, reject) => streamMessage([{ role: 'user', content: '中文 Document' }], () => {}, resolve, reject,
-      { documentReadOnly: true, comparisonTextOnly: true, maxOutputTokens: 8192, systemPrompt: 'APPROVED', model: 'claude-sonnet-5', beforeDocumentRequest: gate }))
+      { documentReadOnly: true, comparisonTextOnly: true, maxOutputTokens: 8192, systemPrompt: 'APPROVED', model: 'claude-sonnet-5-5', beforeDocumentRequest: gate }))
     const body = JSON.parse((fetch.mock.calls[0] as unknown as [string, RequestInit])[1].body as string)
     expect(body.max_tokens).toBe(8192); expect(body.system[0].text).toBe('APPROVED'); expect(body.tools).toBeUndefined()
     expect(gate).toHaveBeenCalledTimes(1); expect(getValidAccessToken).toHaveBeenCalled()

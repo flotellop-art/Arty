@@ -70,6 +70,10 @@ describe('Eligibility is not a server entitlement grant', () => {
   })
 })
 describe('Local model reporter', () => {
+  it('preserves the old Sonnet label while showing the new live version', () => {
+    expect(formatModelName('claude-sonnet-5')).toBe('Claude Sonnet 5')
+    expect(formatModelName(TEXT_DEFAULTS.sonnet)).toBe('Claude Sonnet 5.5')
+  })
   it('reports equal IDs as provider-confirmed, proxy as proxy, and no metadata as requested', () => {
     const callback = vi.fn(), reporter = createModelReporter({ onModelUsed: callback }, 'gpt-5')
     reporter({ model: 'gpt-5', provider: 'openai' })

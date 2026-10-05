@@ -977,6 +977,7 @@
     "backgroundGenerationUnavailable": "Arty ne peut pas démarrer la réponse en arrière-plan. Revenez dans Arty et réessayez.",
     "streamStalled": "Connexion au serveur interrompue (réseau instable). La réponse déjà reçue est conservée.",
     "networkRequestFailed": "Arty n’a pas reçu la réponse du serveur. Vérifie ta connexion avant de réessayer. Le résultat de cette demande reste inconnu.",
+    "modelRefused": "Le modèle a refusé cette demande. Reformule ta question.",
     "responseIncomplete": "Réponse incomplète, réessaie ta question.",
     "promptEnhancementFailed": "Impossible d'améliorer le prompt — réessaie.",
     "tooManyConcurrentStreams": "Trop de conversations en cours en parallèle. Attends qu'une réponse se termine.",
@@ -1314,7 +1315,7 @@
       "off": "Désactivé",
       "auto": "Auto (recommandé)",
       "haiku": "Toujours rapide (Haiku 4.5)",
-      "sonnet": "Toujours strict (Sonnet 5)",
+      "sonnet": "Toujours strict (Sonnet 5.5)",
       "costAuto": "Premier contrôle rapide, puis lecture des preuves si nécessaire. Les corrections sensibles exigent un autre modèle. Coût et durée variables.",
       "costHaiku": "Premier contrôle seulement : les corrections sans preuve contrôlée restent des propositions.",
       "costSonnet": "Recherche et lecture de trois pages au maximum. Un autre modèle conteste les corrections sensibles. Chaque contrôle consomme le plafond de vérification ; coût et durée variables."

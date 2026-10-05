@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { ModelRefusalError } from '../modelResponseError'
 import { findModel, type PanelConfig } from './providerCatalog'
 import { estimateTokens, estimateCostEur } from './tokenEstimator'
 import { validModelId, type ModelUsedEvent } from '../modelLabels'
@@ -111,6 +112,7 @@ export function useMultiProviderChat(opts: UseMultiProviderChatOptions) {
           costEur: costKey ? estimateCostEur(costKey, inputTokens, estimateTokens(accumulated)) : null }
       }
       const finish = (error?: Error) => {
+        if (error instanceof ModelRefusalError) { accumulated = ''; update({ text: '' }) }
         update({ status: error ? 'error' : 'done', error: error?.message,
           metrics: { ...metrics(), totalMs: Math.round(performance.now() - start) } })
         task.settle()

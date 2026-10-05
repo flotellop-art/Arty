@@ -1,6 +1,7 @@
 import type { useStreaming, ExternalStreamLease } from '../../hooks/useStreaming'
 import type { captureContextualComparison, ContextualComparison } from './contextualPreparation'
 import { streamMessage } from '../anthropicClient'
+import { ModelRefusalError } from '../modelResponseError'
 import { streamMistralMessage } from '../mistralClient'
 import * as storage from '../storage'
 import { projectPayloadBudget } from '../projects/chatPreparation'
@@ -115,7 +116,10 @@ export function startContextualComparison(prepared: Prepared, registry: Registry
       if (p.view!.text.length > 200_000) { p.view!.text = p.view!.text.slice(0, 200_000); finish(index, 'aborted', 'compare.context.outputLimit'); return }
       p.view!.metrics = metrics(index); p.view!.saved = false; notify()
     }
-    const onError = (error: Error) => finish(index, 'error', error.message)
+    const onError = (error: Error) => {
+      if (error instanceof ModelRefusalError && !p.settled && p.view) p.view.text = ''
+      finish(index, 'error', error.message)
+    }
     const options = { documentReadOnly: true, comparisonTextOnly: true, maxOutputTokens: 8192, background: true, systemPrompt: request.systemPrompt,
       model: request.config.modelId, tools: [], euOnly: request.provider === 'mistral', webSearch: false,
       assertRequestCurrent: () => current(index),

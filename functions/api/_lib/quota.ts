@@ -3,6 +3,8 @@ import type { UsageTokens } from './pricing'
 import { computeCostMicroUsd } from './pricing'
 
 const DEFAULT_DAILY_LIMIT = 50
+const SONNET_MIGRATION_MODELS = ['claude-sonnet-5', 'claude-sonnet-5-5'] as const
+const sharesSonnetQuota = (model: string) => SONNET_MIGRATION_MODELS.some(id => id === model)
 let quotaModelColumnsEnsured = false
 
 export interface QuotaDebit {
@@ -28,6 +30,8 @@ export interface QuotaResult {
 export interface ModelUsage {
   model: string
   count: number
+  /** Shared admission count across the Sonnet 5 -> 5.5 migration. */
+  quotaCount?: number
   /** Limit configured for this model (either per-model override or global default). */
   limit: number
   /** Input tokens consumed today (summed across all calls). 0 if tracking unavailable. */
@@ -112,10 +116,8 @@ function currentMonthKey(): string {
  *     "default": 500
  *   }
  *
- * ⚠️ Match EXACT de clé (pas de préfixe/famille, contrairement à
- * checkPremiumCap/freeQuota) : à chaque migration de modèle (ex. sonnet-4-6
- * → sonnet-5), renommer la clé dans la variable Cloudflare si elle existe,
- * sinon le quota per-model cesse de s'appliquer SILENCIEUSEMENT.
+ * Exact keys, except Sonnet 5/5.5: shared admission, new explicit limit
+ * takes precedence over the old one. Accounting keeps each real model ID.
  */
 function parsePerModelLimits(raw: string | undefined): Record<string, number> {
   if (!raw) return {}
@@ -135,6 +137,10 @@ function parsePerModelLimits(raw: string | undefined): Record<string, number> {
 
 function getLimitForModel(env: Env, model: string): number {
   const perModel = parsePerModelLimits(env.DAILY_QUOTA_PER_MODEL)
+  if (sharesSonnetQuota(model)) {
+    const shared = perModel['claude-sonnet-5-5'] ?? perModel['claude-sonnet-5']
+    if (shared != null) return shared
+  }
   if (perModel[model] != null) return perModel[model]
   if (perModel['default'] != null) return perModel['default']
   return parseInt(env.DAILY_QUOTA_PER_USER || '', 10) || DEFAULT_DAILY_LIMIT
@@ -253,7 +259,17 @@ export async function consumeDailyQuota(
       .first<{ count: number }>()
     modelDebited = Boolean(modelRow)
 
-    const modelCount = modelRow?.count ?? 0
+    let modelCount = modelRow?.count ?? 0
+    if (hasPerModel && sharesSonnetQuota(model)) {
+      // Preserve old-client consumption on migration day. Concurrent calls
+      // may conservatively refuse at the boundary; they cannot gain a second cap.
+      const shared = await env.DB.prepare(
+        `SELECT COALESCE(SUM(count), 0) AS count FROM quota_model
+         WHERE email = ?1 AND day = ?2 AND model IN (?3, ?4)`
+      ).bind(email, day, ...SONNET_MIGRATION_MODELS).first<{ count: number }>()
+      if (!shared) throw new Error('Shared Sonnet quota count unavailable')
+      modelCount = shared.count
+    }
     const globalCount = globalRow?.count ?? 0
 
     // Si quota par modèle configuré → appliquer la limite du modèle.
@@ -376,6 +392,9 @@ export async function getDailyQuotaStatus(
       byModel = (res.results ?? []).map((r) => ({
         model: r.model,
         count: r.count,
+        ...(Object.keys(parsePerModelLimits(env.DAILY_QUOTA_PER_MODEL)).length > 0 && sharesSonnetQuota(r.model) ? {
+          quotaCount: (res.results ?? []).filter(row => sharesSonnetQuota(row.model)).reduce((sum, row) => sum + row.count, 0),
+        } : {}),
         limit: getLimitForModel(env, r.model),
         inputTokens: r.input_tokens,
         outputTokens: r.output_tokens,

@@ -20,10 +20,9 @@ export const MODEL_COSTS: Record<string, { input: number; output: number }> = {
   get 'gemini-flash-3.8'() { const { input, output } = gemini38Pricing(); return { input, output } },
   'claude-haiku-4-5':  { input: 1.00,  output: 5.00 },
   'claude-sonnet-4-6': { input: 3.00,  output: 15.00 }, // legacy — conservé pour les coûts historiques
-  // Sonnet 5 : tarif durable $3/$15 (l'intro $2/$10 court jusqu'au 31/08/2026 —
-  // on inscrit le tarif pérenne pour éviter une PR de re-pricing en septembre).
-  // ⚠️ Tokenizer Sonnet 5 ~30% plus gourmand : coût par MESSAGE ~+30% à tarif égal.
-  'claude-sonnet-5':   { input: 3.00,  output: 15.00 },
+  // Tarifs courants vérifiés le 05/10/2026 ; ne recalcule pas les coûts enregistrés.
+  'claude-sonnet-5':   { input: 2.00,  output: 10.00 },
+  'claude-sonnet-5-5': { input: 2.00,  output: 10.00 },
   'claude-opus-4-6':   { input: 5.00,  output: 25.00 }, // legacy — tarif unifié Opus actuel
   'claude-opus-4-7':   { input: 5.00,  output: 25.00 },
   'claude-opus-4-8':   { input: 5.00,  output: 25.00 },

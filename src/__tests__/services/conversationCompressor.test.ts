@@ -162,6 +162,8 @@ describe('compressIfNeeded — auth headers (BUG 25 + anti-relais)', () => {
     expect(headers['anthropic-version']).toBe('2023-06-01')
     // stream:true obligatoire — le tracking usage/wallet du proxy est SSE-only.
     expect(JSON.parse(String(init.body)).stream).toBe(true)
+    expect(JSON.parse(String(init.body))).toMatchObject({ model: 'claude-sonnet-5-5', max_tokens: 2048,
+      thinking: { type: 'between_tools' }, output_config: { effort: 'medium' } })
     // La compression a bien eu lieu (résumé + assistant + 20 récents),
     // texte SSE réassemblé depuis les deltas.
     expect(result.length).toBe(22)

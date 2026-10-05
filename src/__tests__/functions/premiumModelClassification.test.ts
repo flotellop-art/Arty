@@ -4,6 +4,7 @@ import { classifyPremiumModel } from '../../../functions/api/_lib/checkPremiumCa
 describe('premium model classification stays aligned with exposed models', () => {
   it.each([
     ['claude-sonnet-5', 'claude-sonnet'],
+    ['claude-sonnet-5-5', 'claude-sonnet'],
     ['claude-opus-4-8', 'claude-sonnet'],
     ['gpt-5', 'gpt-5'],
     ['gpt-5.5', 'gpt-5'],

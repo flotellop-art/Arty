@@ -40,7 +40,7 @@ describe('actual user prompt through hybrid routing, simulated providers', () =>
     const hook = setup()
     await act(async () => { await hook.result.current.sendMessage(question, conv.id) })
     await vi.waitFor(() => expect(streamMessage).toHaveBeenCalledOnce())
-    expect(geminiResearch).toHaveBeenCalledWith(question, undefined, expect.any(String), conv.id)
+    expect(geminiResearch).toHaveBeenCalledWith(question, undefined, expect.any(String), conv.id, expect.any(Function))
     const call = vi.mocked(streamMessage).mock.calls[0]!
     expect(call[0].at(-1)).toEqual({ role: 'user', content: question })
     expect(call[4]?.hybridResearch).toEqual(context)

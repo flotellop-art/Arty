@@ -54,7 +54,7 @@ const TIERS = {
     upstreamTimeoutMs: 15_000,
   },
   sonnet: {
-    model: 'claude-sonnet-5',
+    model: 'claude-sonnet-5-5',
     maxTokens: 4000,
     webSearch: true,
     dailyCap: 15,
@@ -74,7 +74,7 @@ type Tier = keyof typeof TIERS
 const MAX_QUESTION_CHARS = 2000
 const MAX_RESPONSE_CHARS = 6000
 const MAX_SOURCES_CHARS = 8000
-const FACT_CHECK_FALLBACK_MODEL = 'claude-sonnet-5'
+const FACT_CHECK_FALLBACK_MODEL = 'claude-sonnet-5-5'
 const GEMINI_FACT_CHECK_MODELS = ['gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-3.5-flash'] as const
 
 interface FactCheckUsagePayload {
@@ -272,7 +272,7 @@ function anthropicBody(
     // Sonnet 5 otherwise spends this bounded verdict budget at high effort.
     // Keep the independent sensitive challenge strong; ordinary checks use medium.
     ...(model === FACT_CHECK_FALLBACK_MODEL
-      ? { thinking: { type: 'adaptive' }, output_config: { effort } }
+      ? { thinking: { type: 'adaptive', display: 'omitted' }, output_config: { effort } }
       : {}),
     ...(webSearch
       ? {
@@ -684,9 +684,9 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
               reviewUsage.push({ model: result.model, usage: result.usage })
               return { text: result.content.map(c => c.text).join(''), model: result.model, complete: result.completion === 'complete' && result.modelAttested && result.model.startsWith('gemini-') }
             }
-            const res = await fetchAnthropicWithRetry(anthropicBody('claude-sonnet-5', prompt, 4000, false, reviewSystem, independent ? 'high' : 'medium'), env.ANTHROPIC_API_KEY!, 35_000, 1, deadline)
+            const res = await fetchAnthropicWithRetry(anthropicBody('claude-sonnet-5-5', prompt, 4000, false, reviewSystem, independent ? 'high' : 'medium'), env.ANTHROPIC_API_KEY!, 35_000, 1, deadline)
             if (!res.ok) { await res.body?.cancel(); return null }
-            const result = normalizeAnthropic(await readBoundedJSON(res, 160_000) as AnthropicResult, 'claude-sonnet-5')
+            const result = normalizeAnthropic(await readBoundedJSON(res, 160_000) as AnthropicResult, 'claude-sonnet-5-5')
             await track(result)
             reviewUsage.push({ model: result.model, usage: result.usage })
             return { text: result.content.map(c => c.text).join(''), model: result.model, complete: result.completion === 'complete' && result.modelAttested && result.model.startsWith('claude-') }

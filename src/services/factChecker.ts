@@ -1122,7 +1122,7 @@ const TIER_INFO = {
   // Sonnet + web_search en non-streamé : Anthropic accumule toute la réponse
   // avant de répondre. Le budget inclut aussi Gemini + google_search si
   // Anthropic reste indisponible.
-  sonnet: { model: 'claude-sonnet-5', label: 'Sonnet 5', timeoutMs: 150_000 },
+  sonnet: { model: 'claude-sonnet-5-5', label: 'Sonnet 5.5', timeoutMs: 150_000 },
   gemini: { model: 'gemini-3.8-flash', label: 'Gemini 3.8 Flash', timeoutMs: 150_000 },
 } as const
 
@@ -1399,9 +1399,9 @@ async function runCheckTier(
       overallConfidence,
       claims,
       modelLabel: fallback === 'model'
-        ? 'Sonnet 5 (secours)'
+        ? 'Sonnet 5.5 (secours)'
         : fallback === 'without_web_search'
-          ? 'Sonnet 5 (secours sans recherche)'
+          ? 'Sonnet 5.5 (secours sans recherche)'
           : fallback === 'provider'
             ? `${servedModel.startsWith('gemini-3.8') ? 'Gemini 3.8 Flash' : servedModel.startsWith('gemini-3.5') ? 'Gemini 3.5 Flash' : 'Gemini 3.6 Flash'} (secours)`
           : tier === 'gemini' && !servedModel.startsWith('gemini-3.8') ? `${servedModel} (secours)` : info.label,

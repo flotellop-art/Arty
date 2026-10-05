@@ -9,7 +9,7 @@ import { alignBodyWithServedModel } from '../../../functions/api/ai/proxy'
 // modèle final : c'est lui qui doit aligner le payload.
 
 const SONNET_BODY = JSON.stringify({
-  model: 'claude-sonnet-5',
+  model: 'claude-sonnet-5-5',
   max_tokens: 120000,
   thinking: { type: 'adaptive' },
   output_config: { effort: 'high' },
@@ -51,13 +51,19 @@ describe('alignBodyWithServedModel — payload compatible avec le modèle servi'
   })
 
   it('ne touche à RIEN quand le modèle servi n’est pas Haiku', () => {
-    for (const model of ['claude-sonnet-5', 'claude-opus-5', 'claude-opus-4-8']) {
+    for (const model of ['claude-sonnet-5', 'claude-sonnet-5-5', 'claude-opus-5', 'claude-opus-4-8']) {
       expect(alignBodyWithServedModel(SONNET_BODY, model)).toBe(SONNET_BODY)
     }
   })
 
   it('laisse le corps inchangé s’il est illisible (jamais de crash)', () => {
     expect(alignBodyWithServedModel('not json', 'claude-haiku-4-5-20251001')).toBe('not json')
+  })
+
+  it('also strips Sonnet 5.5 between_tools when trial serves Haiku', () => {
+    const body = JSON.stringify({ ...JSON.parse(SONNET_BODY), thinking: { type: 'between_tools' }, output_config: { effort: 'medium' } })
+    const out = JSON.parse(alignBodyWithServedModel(body, 'claude-haiku-4-5-20251001'))
+    expect(out.thinking).toBeUndefined(); expect(out.output_config).toBeUndefined()
   })
 
   it('est idempotent : un corps déjà aligné est renvoyé tel quel', () => {

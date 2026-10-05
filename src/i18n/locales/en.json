@@ -977,6 +977,7 @@
     "backgroundGenerationUnavailable": "Arty could not start the background response. Return to Arty and try again.",
     "streamStalled": "Server connection stalled (unstable network). The answer received so far was kept.",
     "networkRequestFailed": "Arty did not receive the server response. Check your connection before trying again. The outcome of this request remains unknown.",
+    "modelRefused": "The model refused this request. Try rephrasing your question.",
     "responseIncomplete": "Incomplete response, please retry.",
     "promptEnhancementFailed": "Couldn't enhance the prompt — try again.",
     "tooManyConcurrentStreams": "Too many conversations streaming at once. Wait for one to finish.",
@@ -1314,7 +1315,7 @@
       "off": "Disabled",
       "auto": "Auto (recommended)",
       "haiku": "Always fast (Haiku 4.5)",
-      "sonnet": "Always strict (Sonnet 5)",
+      "sonnet": "Always strict (Sonnet 5.5)",
       "costAuto": "Quick initial check, then evidence reading when needed. Sensitive corrections require another model. Cost and duration vary.",
       "costHaiku": "Initial check only: corrections without checked evidence remain proposals.",
       "costSonnet": "Search and reading of up to three pages. Another model challenges sensitive corrections. Each review uses the verification allowance; cost and duration vary."

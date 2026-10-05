@@ -28,6 +28,7 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
   const byModel = status.byModel.map((m) => ({
     model: m.model,
     count: m.count,
+    ...(m.quotaCount != null ? { quotaCount: m.quotaCount } : {}),
     limit: m.limit,
     inputTokens: m.inputTokens,
     outputTokens: m.outputTokens,

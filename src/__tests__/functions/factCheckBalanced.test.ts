@@ -107,7 +107,8 @@ describe('bounded balanced fact-check', () => {
     expect((await call(tier)).status).toBe(200)
     const body = JSON.parse(http.mock.calls[0]![1].body)
     if (tier === 'sonnet') {
-      expect(body.thinking).toEqual({ type: 'adaptive' })
+      expect(body.model).toBe('claude-sonnet-5-5')
+      expect(body.thinking).toEqual({ type: 'adaptive', display: 'omitted' })
       expect(body.output_config).toEqual({ effort: 'medium' })
       expect(body.tools).toEqual([expect.objectContaining({ type: 'web_search_20260318', max_uses: 3, allowed_callers: ['direct'] })])
     } else {

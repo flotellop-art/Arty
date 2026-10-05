@@ -42,10 +42,9 @@ const PRICING: Record<string, ModelPricing> = {
   get 'gemini-3.8-flash'() { return gemini38Pricing() },
   // Anthropic Claude
   'claude-sonnet-4-6': { input: 3, output: 15, cacheRead: 0.3, cacheCreation: 3.75 }, // legacy — conservé pour les coûts historiques
-  // Sonnet 5 : tarif durable $3/$15 (l'intro $2/$10 court jusqu'au 31/08/2026 —
-  // tarif pérenne inscrit d'emblée, conservateur pour le wallet). ⚠️ Tokenizer
-  // ~30% plus gourmand que 4.6 : coût par MESSAGE ~+30% à tarif égal.
-  'claude-sonnet-5': { input: 3, output: 15, cacheRead: 0.3, cacheCreation: 3.75 },
+  // Tarifs courants vérifiés le 05/10/2026. Les coûts déjà persistés restent inchangés.
+  'claude-sonnet-5': { input: 2, output: 10, cacheRead: 0.2, cacheCreation: 2.5 },
+  'claude-sonnet-5-5': { input: 2, output: 10, cacheRead: 0.2, cacheCreation: 2.5 },
   'claude-opus-4-6': { input: 5, output: 25, cacheRead: 0.5, cacheCreation: 6.25 },
   'claude-opus-4-7': { input: 5, output: 25, cacheRead: 0.5, cacheCreation: 6.25 },
   'claude-opus-4-8': { input: 5, output: 25, cacheRead: 0.5, cacheCreation: 6.25 },

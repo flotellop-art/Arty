@@ -63,7 +63,7 @@ describe('endpoint fact-check — hors quotas utilisateur (C-F/D5)', () => {
   })
 
   it('prévoit un secours Sonnet quand Haiku ou le tool web échoue', () => {
-    expect(src).toMatch(/FACT_CHECK_FALLBACK_MODEL = 'claude-sonnet-5'/)
+    expect(src).toMatch(/FACT_CHECK_FALLBACK_MODEL = 'claude-sonnet-5-5'/)
     expect(src).toMatch(/without_web_search/)
     expect(src).toMatch(/status: 503/)
   })

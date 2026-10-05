@@ -1,13 +1,18 @@
 import { describe, expect, it, vi } from 'vitest'
-import { getPricing } from '../../../functions/api/_lib/pricing'
+import { computeCostMicroUsd, getPricing } from '../../../functions/api/_lib/pricing'
 import { MODEL_COSTS, normaliseModel } from '../../services/costTracker'
 
 // Empêche le dashboard/comparateur local d'annoncer une économie fictive par
 // rapport au coût réellement utilisé pour le wallet et D1 côté serveur.
 describe('parité tarifs client ↔ serveur — modèles de chat exposés', () => {
+  it.each(['claude-sonnet-5', 'claude-sonnet-5-5'])('prices real cache tokens for %s', model => {
+    expect(computeCostMicroUsd(model, { inputTokens: 0, outputTokens: 0, cacheReadTokens: 1_000_000,
+      cacheCreationTokens: 1_000_000, audioSeconds: 0 })).toBe(2_700_000)
+  })
   const cases: Array<[string, number, number]> = [
     ['claude-haiku-4-5-20251001', 1, 5],
-    ['claude-sonnet-5', 3, 15],
+    ['claude-sonnet-5', 2, 10],
+    ['claude-sonnet-5-5', 2, 10],
     ['claude-opus-4-6', 5, 25],
     ['claude-opus-4-7', 5, 25],
     ['claude-opus-4-8', 5, 25],
