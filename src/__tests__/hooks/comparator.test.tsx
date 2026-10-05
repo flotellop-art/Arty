@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, render, renderHook, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useMultiProviderChat, type StreamFactory, type StreamFactories } from '../../services/comparator/useMultiProviderChat'
+import { ModelRefusalError } from '../../services/modelResponseError'
 import { SideBySideChat } from '../../components/comparator/SideBySideChat'
 import type { PanelConfig } from '../../services/comparator/providerCatalog'
 import type { ModelUsedEvent } from '../../services/modelLabels'
@@ -9,7 +10,7 @@ vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => k
 vi.mock('../../components/shared/MarkdownRenderer', () => ({ MarkdownRenderer: ({ content }: { content: string }) => <p>{content}</p> }))
 import { getActiveSessionEpoch } from '../../services/userSession'
 const initialPanels: PanelConfig[] = [
-  { id: 'one', provider: 'anthropic', modelId: 'claude-sonnet-5' },
+  { id: 'one', provider: 'anthropic', modelId: 'claude-sonnet-5-5' },
   { id: 'two', provider: 'anthropic', modelId: 'claude-haiku-4-5' },
 ]
 type Call = { token: (s: string) => void; done: () => void; error: (e: Error) => void; options: Record<string, unknown>; controller: AbortController }
@@ -27,6 +28,13 @@ afterEach(() => { cleanup(); vi.useRealTimers() })
 const report = (call: Call, model: string) => (call.options.onModelUsed as (e: ModelUsedEvent) => void)({ model, provider: 'claude', source: 'provider', confirmed: true })
 const mount = (getAccess: (c: PanelConfig) => string | null = () => null) => renderHook(() => useMultiProviderChat({ initialPanels, factories, getAccess }))
 describe('Comparator invocation lifecycle', () => {
+  it('clears refused partial text without retaining it in a panel', async () => {
+    const { result } = mount(); let done!: Promise<void>
+    act(() => { done = result.current.send('hello') })
+    act(() => { calls[0]!.token('REFUSED PARTIAL TEXT'); calls[0]!.error(new ModelRefusalError('Refused')); calls[1]!.done() })
+    await act(async () => { await done })
+    expect(result.current.panels[0]).toMatchObject({ text: '', status: 'error', error: 'Refused' })
+  })
   it('real selection changes the dispatched provider/model and clears the previous answer', async () => {
     render(<SideBySideChat initialPanels={initialPanels} factories={factories} getAccess={() => null} onBack={() => {}} />)
     fireEvent.change(screen.getByLabelText('compare.promptLabel'), { target: { value: 'hello' } })
@@ -104,6 +112,9 @@ describe('Comparator invocation lifecycle', () => {
     expect(screen.getAllByLabelText('compare.provider').map(e => (e as HTMLSelectElement).value)).toEqual(['openai', 'openai'])
     fireEvent.click(screen.getByLabelText('compare.addPanelAria'))
     expect(screen.getAllByLabelText('compare.provider').map(e => (e as HTMLSelectElement).value)).toEqual(['openai', 'openai', 'openai'])
+    expect(screen.getByLabelText('compare.addPanelAria')).toBeEnabled()
+    fireEvent.click(screen.getByLabelText('compare.addPanelAria'))
+    expect(screen.getAllByLabelText('compare.provider').map(e => (e as HTMLSelectElement).value)).toEqual(['openai', 'openai', 'openai', 'openai'])
     expect(screen.getByLabelText('compare.addPanelAria')).toBeDisabled()
   })
 })

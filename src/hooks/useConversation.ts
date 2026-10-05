@@ -1192,18 +1192,15 @@ export function useConversation(options?: { onNavigate?: (id: string) => void })
           // stopStreaming() a déjà nettoyé le stream. Sans ce garde, le .then
           // démarrerait quand même une génération Claude "zombie" après le Stop.
           if (!invocationStillCurrent()) return
-          if (research || outgoingText !== modelText) {
-            enrichedMessages[enrichedMessages.length - 1] = {
-              role: 'user',
-              content: research ? `${outgoingText}\n\n--- RECHERCHE WEB (données Gemini, à jour) ---\n${research}\n--- FIN RECHERCHE ---\n\nUtilise ces données pour ton rapport. Cite les sources trouvées.` : outgoingText,
-            }
-          }
           resetAccumulated(targetId)
           setProgressContent('', targetId)
           controller = streamMessage(enrichedMessages, onToken, onDone, onErr, {
             assertRequestCurrent: assertInvocationCurrent,
             beforeDocumentRequest: beforeOwnedRequest,
             systemPrompt: invocationSystemPrompt,
+            // Internal research has its own provenance; never overwrite the
+            // user's message with a Gemini summary they did not supply.
+            hybridResearch: research,
             onToolCall: trackedToolHandler,
             // Niveau de réflexion utilisateur (chat réel uniquement — jamais
             // sur les appels imposés type comparateur/brief). Cf. anthropicClient.

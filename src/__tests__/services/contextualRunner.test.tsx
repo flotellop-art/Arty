@@ -7,6 +7,7 @@ import type { PanelConfig } from '../../services/comparator/providerCatalog'
 import type { streamMessage } from '../../services/anthropicClient'
 import type { useContextualComparisons } from '../../hooks/useContextualComparisons'
 import { startContextualComparison, type ContextualFactories } from '../../services/comparator/contextualRunner'
+import { ModelRefusalError } from '../../services/modelResponseError'
 import { captureContextualComparison } from '../../services/comparator/contextualPreparation'
 import { ContextualCompareScreen, comparisonPanel } from '../../screens/contextualCompare'
 import { useStreaming } from '../../hooks/useStreaming'
@@ -40,7 +41,7 @@ vi.mock('../../hooks/usePlanStatus', () => ({ usePlanStatus: () => ({ plan: 'vip
 type Args = Parameters<typeof streamMessage>
 type Call = { args: Args; controller: AbortController }
 let source: Conversation, calls: Call[]
-const panels: PanelConfig[] = [{ id: 'a', provider: 'anthropic', modelId: 'claude-haiku-4-5' }, { id: 'b', provider: 'anthropic', modelId: 'claude-sonnet-5' }]
+const panels: PanelConfig[] = [{ id: 'a', provider: 'anthropic', modelId: 'claude-haiku-4-5' }, { id: 'b', provider: 'anthropic', modelId: 'claude-sonnet-5-5' }]
 const review = vi.fn(async (r: Parameters<import('../../services/projects/chatPreparation').ReviewProjectRequest>[0]) =>
   r.kind === 'select' ? { mode: 'overview' as const, documentIds: r.project.documents.map(d => d.id) } : true)
 const invoke = (...args: Args) => {
@@ -81,6 +82,17 @@ beforeEach(async () => {
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals() })
 
 describe('Contextual vertical — real encrypted stores and shared registry, fake provider only', () => {
+  it('removes a refused partial response from the branch and visible comparison', async () => {
+    const { run, hook } = await start()
+    await engage(1)
+    act(() => { calls[1]!.args[1]('REFUSED PARTIAL TEXT'); hook.result.current.savePartialAll() })
+    const id = run.branchIds[1]!
+    expect(JSON.stringify(storage.getConversation(id))).toContain('REFUSED PARTIAL TEXT')
+    act(() => calls[1]!.args[3](new ModelRefusalError('Refused')))
+    expect(run.read(id)).toMatchObject({ text: '', status: 'error', saved: true })
+    expect(JSON.stringify(storage.getConversation(id))).not.toContain('REFUSED PARTIAL TEXT')
+    act(() => hook.result.current.stopStreaming(run.branchIds[0]))
+  })
   it('real branch + pin + encrypted reload preserves independent historical gallery provenance', async () => {
     const image = '00000000-0000-4000-8000-000000000001', text = '00000000-0000-4000-8000-000000000002'
     const old = source.messages[1]!

@@ -5,6 +5,7 @@ import { TOOLS } from './toolDefinitions'
 import { compressIfNeeded } from './conversationCompressor'
 import { getAnthropicKey } from './activeApiKey'
 import { apiUrl } from './apiBase'
+import { ModelRefusalError } from './modelResponseError'
 import { buildAiHeaders } from './aiHttp'
 import { resolveClaudeThinking, selectClaudeSubModel, PRIVATE_DATA_TRIGGERS, shouldUseWebSearch, type ClaudeThinkingDirective, type ClaudeSubModel } from './aiRouter'
 import type { RouteDecision, RouteReason } from './router/types'
@@ -17,6 +18,7 @@ import { captureAiEntitlementReceipt, trialExpiredError } from './aiEntitlementR
 import { setSearchContext, type SearchContext } from './factChecker'
 import i18n from '../i18n'
 import { DOCUMENT_READ_ONLY_RULES } from './documents/documentPolicy'
+import { appendHybridResearchContext, HYBRID_RESEARCH_POLICY, type HybridResearchContext } from './hybridResearchContext'
 
 const ANTI_HALLU_PROMPT = `
 
@@ -94,6 +96,7 @@ type SSEParseResult = {
       du modèle demandé : le proxy substitue Haiku en trial (audit visibilité
       modèle, F-1). Vide si l'event message_start n'est pas arrivé. */
   servedModel?: string
+  stopReason?: string
 }
 
 function claudeModelFamily(model: string): 'haiku' | 'sonnet' | 'opus' | 'other' {
@@ -142,6 +145,8 @@ interface StreamOptions extends ModelInvocationOptions {
   /** Revalidate locally prepared project consent after async auth, before HTTP. */
   beforeDocumentRequest?: () => Promise<void>
   systemPrompt?: string
+  /** Per-invocation application research; null means no usable sources returned. */
+  hybridResearch?: HybridResearchContext | null
   onToolCall?: ToolHandler
   // Restreint l'ensemble d'outils exposé au modèle (ex: brief proactif =
   // lecture seule). Par défaut tous les TOOLS sont disponibles. Retirer un
@@ -444,6 +449,7 @@ export async function parseSSEStream(
   let cacheReadTokens = 0
   let cacheCreationTokens = 0
   let servedModel = ''
+  let stopReason: string | undefined
   let buffer = ''
   let eventType = ''
   // Fin logique du message Anthropic (`message_stop`). Sans cette sortie, la
@@ -622,6 +628,8 @@ export async function parseSSEStream(
             break
 
           case 'message_delta': {
+            const delta = data.delta as { stop_reason?: string } | undefined
+            if (delta?.stop_reason) stopReason = delta.stop_reason
             const usage = (data as { usage?: { output_tokens?: number } }).usage
             if (usage) outputTokens = usage.output_tokens || 0
             break
@@ -660,7 +668,7 @@ export async function parseSSEStream(
     try { await reader.cancel() } catch { /* stream déjà terminé ou aborté */ }
   }
 
-  return { contentBlocks, inputTokens, outputTokens, cacheReadTokens, cacheCreationTokens, ...(servedModel ? { servedModel } : {}) }
+  return { contentBlocks, inputTokens, outputTokens, cacheReadTokens, cacheCreationTokens, ...(servedModel ? { servedModel } : {}), ...(stopReason ? { stopReason } : {}) }
 }
 
 export function extractAnthropicSearchContext(
@@ -903,7 +911,10 @@ async function runWithTools(
     )
     options?.assertRequestCurrent?.()
 
-    const apiMessages: ApiMessage[] = compressed as ApiMessage[]
+    const hasHybridResearch = options?.hybridResearch !== undefined && !options?.documentReadOnly && !options?.comparisonTextOnly
+    const apiMessages: ApiMessage[] = (hasHybridResearch
+      ? appendHybridResearchContext(compressed, options!.hybridResearch!)
+      : compressed) as ApiMessage[]
 
     const lastUserText = findLastUserText(originalMessages)
     const rd = options?.routeDecision
@@ -933,6 +944,15 @@ async function runWithTools(
     const isHaiku = ANTHROPIC_MODEL.includes('haiku')
     const effortActive = thinking.enabled && !isHaiku
     const effort = effortActive ? thinking.effort : null
+    // Sonnet 5.5 enables adaptive thinking when omitted. Bounded/fast calls
+    // must explicitly avoid thinking before the first response. Keep this
+    // configuration stable through every tool iteration.
+    const isSonnet55 = ANTHROPIC_MODEL === 'claude-sonnet-5-5'
+    const thinkingConfig = effortActive
+      ? { thinking: { type: 'adaptive', ...(isSonnet55 && { display: 'omitted' }) }, ...(effort && { output_config: { effort } }) }
+      : isSonnet55
+        ? { thinking: { type: 'between_tools' }, output_config: { effort: 'medium' } }
+        : {}
     // Notifie l'UI du modèle exact appelé (ChatTopBar) + si la réflexion est
     // active (StreamingIndicator affiche « réflexion approfondie »).
     // Dispatch OPTIMISTE (pré-envoi) — corrigé plus bas si message_start
@@ -979,7 +999,7 @@ async function runWithTools(
     const dateLine = `\n\nDate du jour : ${new Date().toLocaleDateString('fr-FR', {
       weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
     })}.`
-    const systemText = options?.comparisonTextOnly ? baseSystemText : withThinking + dateLine + locationContext + webSearchHint + (options?.documentReadOnly ? DOCUMENT_READ_ONLY_RULES : '')
+    const systemText = options?.comparisonTextOnly ? baseSystemText : withThinking + dateLine + locationContext + webSearchHint + (options?.documentReadOnly ? DOCUMENT_READ_ONLY_RULES : '') + (hasHybridResearch ? HYBRID_RESEARCH_POLICY : '')
     const systemBlocks = [{ type: 'text', text: systemText, cache_control: { type: 'ephemeral' } }]
     // Add prompt-caching hint to last tool definition. L'ensemble d'outils
     // peut être restreint via options.tools (brief proactif = lecture seule).
@@ -1024,12 +1044,11 @@ async function runWithTools(
         // l'ancien thinking:{type:'enabled', budget_tokens} (déprécié → 400 sur
         // Opus 4.8/4.7). Jamais sur Haiku (effort non supporté → 400, garde
         // effortActive). budget_tokens n'est plus envoyé du tout.
-        ...(effortActive && { thinking: { type: 'adaptive' } }),
-        ...(effort && { output_config: { effort } }),
+        ...thinkingConfig,
       })
 
       const response = await fetchWithRetry(requestBody, apiKey, controller, options?.assertRequestCurrent, options?.beforeDocumentRequest)
-      const { contentBlocks, inputTokens, outputTokens, cacheReadTokens, cacheCreationTokens, servedModel } = await parseSSEStream(response, onToken)
+      const { contentBlocks, inputTokens, outputTokens, cacheReadTokens, cacheCreationTokens, servedModel, stopReason } = await parseSSEStream(response, onToken)
       options?.assertRequestCurrent?.()
       const searchContext = extractAnthropicSearchContext(contentBlocks, lastUserText)
       if (searchContext) setSearchContext(searchContext, options?.conversationId)
@@ -1089,6 +1108,12 @@ async function runWithTools(
         )
       }
 
+      // A 200 response can be a refusal or a truncated response. Record its
+      // usage above, but never execute tools or mark it as successfully done.
+      if (stopReason === 'refusal') throw new ModelRefusalError(i18n.t('errors.modelRefused'))
+      if (stopReason === 'max_tokens' || stopReason === 'model_context_window_exceeded') {
+        throw new Error(i18n.t('errors.responseIncomplete'))
+      }
       const hasToolUse = contentBlocks.some((b) => b.type === 'tool_use')
       if (!hasToolUse || !options?.onToolCall || options.documentReadOnly || options.comparisonTextOnly) {
         onDone()

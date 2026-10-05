@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { generateId } from '../utils/generateId'
+import { ModelRefusalError } from '../services/modelResponseError'
 import * as storage from '../services/storage'
 import type { ModelUsedEvent } from '../services/modelLabels'
 import type { ProjectTurn } from '../services/projects/chatPolicy'
@@ -495,7 +496,24 @@ export function useStreaming(deps: {
     if (!s || s.terminal) return err
     s.terminal = true; settleObservation(s, 'error')
     const content = s?.accumulated
-    try { if (content || s.generatedImages.length) finalize(s, content ?? '', true) }
+    try {
+      if (err instanceof ModelRefusalError) {
+        // Refused partial text must neither survive crash recovery nor be
+        // resent in the next model prompt. Keep committed image receipts.
+        s.accumulated = ''
+        if (s.generatedImages.length) finalize(s, i18n.t('errors.modelRefused'), true)
+        else {
+          try {
+            s.assertCurrent?.()
+            const stored = storage.getConversation(targetId)
+            if (stored && storage.isCacheReady() && stored.messages.some(m => m.id === 'streaming')) {
+              storage.saveConversation({ ...stored, messages: stored.messages.filter(m => m.id !== 'streaming'), updatedAt: Date.now() })
+              depsRef.current.refreshConversations()
+            }
+          } catch { /* stale session or unavailable storage: teardown still runs */ }
+        }
+      } else if (content || s.generatedImages.length) finalize(s, content ?? '', true)
+    }
     finally { teardownStream(targetId, s) }
     return err
   }, [finalize, teardownStream])

@@ -54,14 +54,16 @@ describe('geminiClient — modèles et killswitch (C1)', () => {
 
   it('le comparateur ne propose plus aucun modèle 2.5 (404 garantis après le 16/10/2026)', () => {
     expect(catalog).not.toMatch(/modelId: 'gemini-2\.5[^']*'/)
-    // Les quatre survivants GA restent proposés.
+    // Latest Flash and explicitly labelled Pro preview are available for tests.
     expect(PROVIDER_CATALOG.find(p => p.id === 'gemini')?.models.map(m => m.modelId)).toEqual([
+      'gemini-3.8-flash', 'gemini-3.1-pro-preview',
       'gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-3.5-flash-lite', 'gemini-3.1-flash-lite',
     ])
   })
 
-  it("aucun ID preview Gemini n'est exposé au comparateur (anti-objectif)", () => {
-    expect(catalog).not.toMatch(/modelId: 'gemini[^']*preview[^']*'/)
+  it('labels the current Pro preview explicitly', () => {
+    const previews = PROVIDER_CATALOG.find(p => p.id === 'gemini')?.models.filter(m => m.modelId.includes('preview'))
+    expect(previews?.map(m => m.label)).toEqual(['Gemini 3.1 Pro (Preview)'])
   })
 
   it('désactive explicitement les tools dans le comparateur one-shot', () => {
@@ -70,6 +72,11 @@ describe('geminiClient — modèles et killswitch (C1)', () => {
 })
 
 describe('Gemini 3 — configuration GenerateContent native', () => {
+  it.each(['gemini-3.8-flash', 'gemini-3.1-pro-preview'])('maps minimal to low and preserves medium for %s', model => {
+    const config = { temperature: 0.7, maxOutputTokens: 8192, thinkingBudget: 0 }
+    expect(buildGeminiGenerationConfig(model, config)).toMatchObject({ thinkingConfig: { thinkingLevel: 'low' } })
+    expect(buildGeminiGenerationConfig(model, { ...config, thinkingLevel: 'medium' })).toMatchObject({ thinkingConfig: { thinkingLevel: 'medium' } })
+  })
   it('retire temperature et envoie thinkingLevel pour 3.x', () => {
     expect(buildGeminiGenerationConfig('gemini-3.6-flash', {
       temperature: 0.7,

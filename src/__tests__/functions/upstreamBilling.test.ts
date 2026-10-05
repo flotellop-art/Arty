@@ -6,7 +6,7 @@
 // « Salut » a reproduit la même cécité un provider plus loin. Ces tests
 // verrouillent la règle : le DÉTAIL reste masqué, la CATÉGORIE remonte.
 import { describe, expect, it } from 'vitest'
-import { classifyUpstreamBilling, isBillingMessage } from '../../../functions/api/_lib/upstreamBilling'
+import { classifyUpstreamBilling, isBillingMessage, safeInvalidRequestMessage } from '../../../functions/api/_lib/upstreamBilling'
 
 describe('classifyUpstreamBilling — compte à sec', () => {
   it('reconnaît le code structuré OpenAI insufficient_quota (servi en 429)', () => {
@@ -38,6 +38,26 @@ describe('classifyUpstreamBilling — compte à sec', () => {
 })
 
 describe('classifyUpstreamBilling — ce qui ne doit PAS être classé', () => {
+  it.each([
+    { object: 'error', message: 'Rate limit exceeded', type: 'rate_limited', param: null, code: '1300', raw_status_code: 429 },
+    { error: { code: 'rate_limit_exceeded', message: 'Rate limit exceeded' } },
+    { error: { code: 'rate_limit_exceeded', message: 'Rate limit exceeded. Check your billing dashboard for limits.' } },
+    { error: { message: 'You exceeded your organization token limit per minute' } },
+    'Rate limit exceeded',
+  ])('conserve le backoff pour une limite de débit : %j', (body) => {
+    expect(classifyUpstreamBilling(typeof body === 'string' ? body : JSON.stringify(body))).toBeNull()
+  })
+
+  it('continue de masquer les détails de quota du compte', () => {
+    const message = 'Rate limit exceeded for organization private-owner: 20000 tokens per minute'
+    expect(isBillingMessage(message)).toBe(true)
+    expect(safeInvalidRequestMessage(JSON.stringify({ error: { type: 'invalid_request_error', message } }))).toBeNull()
+  })
+
+  it('reconnaît aussi un code de facturation à la racine Mistral', () => {
+    expect(classifyUpstreamBilling(JSON.stringify({ code: 'insufficient_quota', message: 'Unavailable' }))).toBe('upstream_billing')
+  })
+
   it('un rate limit transitoire n\'est pas un compte à sec', () => {
     // Le confondre remplacerait une erreur illisible par une erreur FAUSSE :
     // « préviens l'administrateur » sur un simple pic de trafic.

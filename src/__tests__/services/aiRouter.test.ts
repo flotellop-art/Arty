@@ -404,7 +404,7 @@ describe('selectClaudeSubModel', () => {
 
   it('debug + thinking → sonnet', () => {
     expect(selectClaudeSubModel('débogue ce code', { enabled: true, budget: 3000 }, false, false))
-      .toBe('claude-sonnet-5')
+      .toBe('claude-sonnet-5-5')
   })
 
   it('strategic report + Pro + max thinking → opus', () => {
@@ -442,13 +442,13 @@ describe('selectClaudeSubModel — verrou Haiku par plan (C-E)', () => {
 
   it('cache vide (jamais fetché) → sélection normale (sonnet)', () => {
     expect(selectClaudeSubModel(REQUEST_SONNET, THINKING, false, false))
-      .toBe('claude-sonnet-5')
+      .toBe('claude-sonnet-5-5')
   })
 
   it('plan payant → sélection normale (sonnet)', () => {
     localStorage.setItem('arty-plan-cache', 'subscription')
     expect(selectClaudeSubModel(REQUEST_SONNET, THINKING, false, false))
-      .toBe('claude-sonnet-5')
+      .toBe('claude-sonnet-5-5')
   })
 })
 

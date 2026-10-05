@@ -8,6 +8,8 @@ import { apiUrl } from './apiBase'
 export interface ModelUsage {
   model: string
   count: number
+  /** Shared Sonnet 5/5.5 daily admission count; count remains model attribution. */
+  quotaCount?: number
   /** Per-model limit (from DAILY_QUOTA_PER_MODEL env, or the global default). */
   limit: number
   inputTokens: number

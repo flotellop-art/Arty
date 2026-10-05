@@ -1,4 +1,5 @@
 import { apiUrl } from './apiBase'
+import { TEXT_DEFAULTS } from './modelCatalog'
 import { buildAiHeaders, fetchWithTimeout } from './aiHttp'
 
 // Nom de l'event émis quand on vient de compresser le contexte d'une conversation.
@@ -202,8 +203,10 @@ export async function compressIfNeeded(
         // Sonnet plutôt que Haiku : la compression ne se déclenche qu'au-delà
         // de 80k tokens, donc rare. À ce stade la conversation contient
         // souvent des chiffres/décisions critiques que Haiku perdait.
-        model: 'claude-sonnet-5',
+        model: TEXT_DEFAULTS.sonnet,
         max_tokens: 2048,
+        thinking: { type: 'between_tools' },
+        output_config: { effort: 'medium' },
         stream: true,
         messages: [{
           role: 'user',

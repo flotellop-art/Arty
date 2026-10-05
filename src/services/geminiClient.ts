@@ -11,6 +11,7 @@ import { extractYouTubeUrls } from './aiRouter'
 import { isMapToolQuery, isWeatherQuery } from './router/intentPatterns'
 import type { RouteReason } from './router/types'
 import { setSearchContext, type SearchContext } from './factChecker'
+import type { HybridResearchContext } from './hybridResearchContext'
 import type { ReflectionLevel } from './reflectionLevel'
 import i18n from '../i18n'
 
@@ -231,10 +232,13 @@ export function buildGeminiGenerationConfig(
   options: GeminiGenerationConfigOptions,
 ): Record<string, unknown> {
   if (isGemini3Model(model)) {
+    const requestedLevel = options.thinkingLevel ?? geminiThinkingLevelFromBudget(options.thinkingBudget)
+    // 3.8 Flash and 3.1 Pro require at least low; minimal returns HTTP 400.
+    const needsLow = /^(gemini-3\.8-flash(?:-001)?|gemini-3\.1-pro-preview)$/.test(model)
     return {
       maxOutputTokens: options.maxOutputTokens,
       thinkingConfig: {
-        thinkingLevel: options.thinkingLevel ?? geminiThinkingLevelFromBudget(options.thinkingBudget),
+        thinkingLevel: needsLow && requestedLevel === 'minimal' ? 'low' : requestedLevel,
       },
     }
   }
@@ -577,7 +581,7 @@ export async function geminiResearch(
   reflectionLevel?: ReflectionLevel,
   conversationId?: string,
   assertRequestCurrent?: () => void,
-): Promise<string> {
+): Promise<HybridResearchContext | null> {
   const apiKey = apiKeyOverride || getGeminiKey()
   const receipt = captureAiEntitlementReceipt(!apiKey || apiKey === 'server-provided', undefined, assertRequestCurrent)
 
@@ -622,17 +626,31 @@ export async function geminiResearch(
     if (!res.ok) {
       const error = receipt.error(res.status, await res.text().catch(() => ''))
       if (error) throw error
-      return ''
+      return null
     }
 
     const data = await res.json()
     assertRequestCurrent?.()
     const searchContext = extractGeminiSearchContext(data, query)
-    if (searchContext) setSearchContext(searchContext, conversationId)
-    const parts = data.candidates?.[0]?.content?.parts || []
-    return parts.map((p: { text?: string }) => p.text || '').join('\n')
+    const candidate = data.candidates?.[0]
+    if (!searchContext || candidate?.finishReason !== 'STOP') return null
+    const results = (searchContext.results ?? []).filter(result => {
+      try {
+        const url = new URL(result.url)
+        return (url.protocol === 'https:' || url.protocol === 'http:') && !url.username && !url.password
+      } catch { return false }
+    })
+    // Enabling Search is not evidence that it ran. Never promote an ungrounded
+    // model answer (or its invented URLs) into application research context.
+    if (!results.length) return null
+    const parts = candidate.content?.parts || []
+    const summary = parts.filter((p: { thought?: boolean }) => !p.thought)
+      .map((p: { text?: string }) => p.text || '').join('\n').trim()
+    if (!summary) return null
+    setSearchContext({ ...searchContext, results }, conversationId)
+    return { summary, sources: results.map(({ url, title }) => ({ url, title })) }
   } catch (error) {
     if (error instanceof Error && (error.name === 'TrialExpiredError' || error.name === 'WalletReconciliationError')) throw error
-    return ''
+    return null
   }
 }

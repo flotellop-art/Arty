@@ -27,7 +27,7 @@ import { mapCapturedConversation } from '../../services/workspaceBackup/captureM
 
 const panels = (eu = false): PanelConfig[] => eu
   ? [{ id: '1', provider: 'mistral', modelId: 'mistral-medium-latest' }, { id: '2', provider: 'mistral', modelId: 'mistral-small-2603' }]
-  : [{ id: '1', provider: 'anthropic', modelId: 'claude-haiku-4-5' }, { id: '2', provider: 'anthropic', modelId: 'claude-sonnet-5' }]
+  : [{ id: '1', provider: 'anthropic', modelId: 'claude-haiku-4-5' }, { id: '2', provider: 'anthropic', modelId: 'claude-sonnet-5-5' }]
 let source: Conversation, project: Project
 const review = vi.fn<ReviewProjectRequest>(async r => r.kind === 'select' ? { mode: 'overview', documentIds: r.project.documents.map(d => d.id) } : true)
 const access = vi.fn<(_: PanelConfig) => string | null>(() => null)
@@ -126,7 +126,7 @@ describe('Contextual comparison preparation and durable reservation, no streams 
     expect(state.getFile).toHaveBeenCalledExactlyOnceWith('office', 'a')
     expect(state.text).toHaveBeenCalledTimes(2)
     expect(review.mock.calls.filter(([r]) => r.kind === 'confirm')).toHaveLength(1)
-    expect(review.mock.calls.at(-1)![0]).toMatchObject({ comparisonModels: ['Claude Haiku 4.5', 'Claude Sonnet 5'], context: { projectRevision: 3 } })
+    expect(review.mock.calls.at(-1)![0]).toMatchObject({ comparisonModels: ['Claude Haiku 4.5', 'Claude Sonnet 5.5'], context: { projectRevision: 3 } })
     expect(a.claudeMessages).toEqual(b.claudeMessages); expect(a.systemPrompt).toBe(b.systemPrompt)
     const wire = JSON.stringify(a.claudeMessages)
     expect(wire).toContain('Facture synthétique : 1250 €'); expect(wire).toContain('Enduit document doc2')

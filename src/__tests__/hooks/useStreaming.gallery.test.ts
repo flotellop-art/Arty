@@ -1,6 +1,8 @@
 import { act, renderHook } from '@testing-library/react'
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
 import { useStreaming } from '../../hooks/useStreaming'
+import { ModelRefusalError } from '../../services/modelResponseError'
+import { buildApiMessages } from '../../hooks/useFileAttachments'
 import * as storage from '../../services/storage'
 import { setActiveSession, clearActiveSession } from '../../services/userSession'
 import { invalidateLocalDataViews } from '../../services/localDataInvalidation'
@@ -21,6 +23,23 @@ function setup() {
   return { ...hook, adopt, controller }
 }
 describe('gallery receipt commit with real localStorage', () => {
+  it.each([false, true])('removes refused partial text from storage and later prompts, preserving images=%s', async images => {
+    const { result, adopt, unmount } = setup()
+    act(() => { if (images) adopt(id1); result.current.onToken('REFUSED PARTIAL TEXT', 'c1'); result.current.savePartialAll() })
+    expect(JSON.stringify(storage.getConversation('c1'))).toContain('REFUSED PARTIAL TEXT')
+    act(() => { result.current.onError(new ModelRefusalError('Refused'), 'c1') })
+    const conversation = storage.getConversation('c1')!
+    expect(conversation.messages.some(m => m.id === 'streaming')).toBe(false)
+    expect(JSON.stringify(conversation)).not.toContain('REFUSED PARTIAL TEXT')
+    expect(localStorage.getItem('arty-gallery-conversations')).not.toContain('REFUSED PARTIAL TEXT')
+    const apiMessages = await buildApiMessages(conversation.messages)
+    expect(JSON.stringify(apiMessages)).not.toContain('REFUSED PARTIAL TEXT')
+    expect(apiMessages.every(m => typeof m.content !== 'string' || m.content.trim().length > 0)).toBe(true)
+    if (images) expect(conversation.messages[0]?.generatedImages).toEqual([id1])
+    else expect(conversation.messages).toHaveLength(0)
+    expect(result.current.isStreaming).toBe(false)
+    unmount()
+  })
   it('commits two receipts immediately without text and keeps them across accumulation reset', () => {
     const { result, adopt, unmount } = setup()
     act(() => { adopt(id1); adopt(id2); result.current.resetAccumulated('c1') })

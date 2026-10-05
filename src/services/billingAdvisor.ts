@@ -81,7 +81,7 @@ const round2 = (n: number): number => Math.round(n * 100) / 100
 // infer support from a broad provider prefix (FLUX, voice, images, new models).
 export const COMPARABLE_TEXT_MODELS: ReadonlySet<string> = new Set([
   'claude-haiku-4-5', 'claude-haiku-4-5-20251001', 'claude-sonnet-4-6',
-  'claude-sonnet-5', 'claude-opus-4-6', 'claude-opus-4-7', 'claude-opus-4-8',
+  'claude-sonnet-5', 'claude-sonnet-5-5', 'claude-opus-4-6', 'claude-opus-4-7', 'claude-opus-4-8',
   'gpt-5', 'gpt-5-mini', 'gpt-5-nano', 'gpt-5.5', 'gpt-5.5-mini', 'gpt-5.6-terra',
   'gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite',
   'gemini-3.1-flash-lite', 'gemini-3.5-flash', 'gemini-3.5-flash-lite', 'gemini-3.6-flash',

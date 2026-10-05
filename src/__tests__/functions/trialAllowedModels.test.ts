@@ -28,6 +28,7 @@ describe('parité TRIAL_ALLOWED_MODELS ↔ isModelAllowedInTrial', () => {
 
   it.each([
     'claude-sonnet-5',
+    'claude-sonnet-5-5',
     'claude-opus-4-8',
     'gpt-5.5',
     // Décision vision A5 : un essai sur clé serveur reste chez Claude pour
