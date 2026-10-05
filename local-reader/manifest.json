@@ -1,0 +1,14 @@
+{
+  "manifest_version": 3,
+  "name": "Lecteur local Arty",
+  "version": "0.1.0",
+  "description": "Lit le titre et le texte du post Reddit affiché, après votre clic, puis les exporte dans un fichier local pour Arty.",
+  "permissions": ["activeTab", "scripting"],
+  "action": {
+    "default_title": "Lire ce post avec Arty",
+    "default_popup": "popup.html"
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'none'; connect-src 'none'; base-uri 'none'"
+  }
+}

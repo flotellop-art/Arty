@@ -1,0 +1,20 @@
+:root { color-scheme: light; font-family: system-ui, sans-serif; color: #173047; background: #f4f7fa; }
+body { width: 410px; margin: 0; }
+header, main { padding: 18px 22px; }
+header { background: #e6eef6; }
+h1 { font-size: 23px; margin: 10px 0 8px; }
+h2 { font-size: 18px; line-height: 1.4; }
+p, li, footer { font-size: 13px; line-height: 1.55; }
+header p { margin-bottom: 0; }
+.badge { font-size: 11px; color: #365674; letter-spacing: .06em; text-transform: uppercase; }
+button { background: #1463ad; color: white; padding: 12px 14px; border: 0; border-radius: 8px; width: 100%; font: inherit; font-weight: 600; cursor: pointer; }
+button:disabled { opacity: .6; cursor: wait; }
+button:focus-visible, a:focus-visible, textarea:focus-visible { outline: 3px solid #ce8400; outline-offset: 3px; }
+pre { white-space: pre-wrap; overflow-wrap: anywhere; font: 14px/1.6 system-ui, sans-serif; max-height: 240px; overflow-y: auto; background: white; padding: 14px; border: 1px solid #cedbe6; border-radius: 8px; }
+.source { overflow-wrap: anywhere; font-size: 11px; }
+.notice, footer { color: #536779; font-size: 12px; }
+textarea { width: 100%; box-sizing: border-box; resize: vertical; font: 13px/1.5 system-ui, sans-serif; padding: 9px; border: 1px solid #b7c9d8; border-radius: 5px; }
+ol { padding-left: 21px; }
+a { color: #145b9b; }
+footer { padding: 0 22px 18px; }
+[hidden] { display: none !important; }
