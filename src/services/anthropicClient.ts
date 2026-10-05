@@ -17,6 +17,7 @@ import { captureAiEntitlementReceipt, trialExpiredError } from './aiEntitlementR
 import { setSearchContext, type SearchContext } from './factChecker'
 import i18n from '../i18n'
 import { DOCUMENT_READ_ONLY_RULES } from './documents/documentPolicy'
+import { appendHybridResearchContext, HYBRID_RESEARCH_POLICY, type HybridResearchContext } from './hybridResearchContext'
 
 const ANTI_HALLU_PROMPT = `
 
@@ -142,6 +143,8 @@ interface StreamOptions extends ModelInvocationOptions {
   /** Revalidate locally prepared project consent after async auth, before HTTP. */
   beforeDocumentRequest?: () => Promise<void>
   systemPrompt?: string
+  /** Per-invocation application research; null means no usable sources returned. */
+  hybridResearch?: HybridResearchContext | null
   onToolCall?: ToolHandler
   // Restreint l'ensemble d'outils exposé au modèle (ex: brief proactif =
   // lecture seule). Par défaut tous les TOOLS sont disponibles. Retirer un
@@ -903,7 +906,10 @@ async function runWithTools(
     )
     options?.assertRequestCurrent?.()
 
-    const apiMessages: ApiMessage[] = compressed as ApiMessage[]
+    const hasHybridResearch = options?.hybridResearch !== undefined && !options?.documentReadOnly && !options?.comparisonTextOnly
+    const apiMessages: ApiMessage[] = (hasHybridResearch
+      ? appendHybridResearchContext(compressed, options!.hybridResearch!)
+      : compressed) as ApiMessage[]
 
     const lastUserText = findLastUserText(originalMessages)
     const rd = options?.routeDecision
@@ -979,7 +985,7 @@ async function runWithTools(
     const dateLine = `\n\nDate du jour : ${new Date().toLocaleDateString('fr-FR', {
       weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
     })}.`
-    const systemText = options?.comparisonTextOnly ? baseSystemText : withThinking + dateLine + locationContext + webSearchHint + (options?.documentReadOnly ? DOCUMENT_READ_ONLY_RULES : '')
+    const systemText = options?.comparisonTextOnly ? baseSystemText : withThinking + dateLine + locationContext + webSearchHint + (options?.documentReadOnly ? DOCUMENT_READ_ONLY_RULES : '') + (hasHybridResearch ? HYBRID_RESEARCH_POLICY : '')
     const systemBlocks = [{ type: 'text', text: systemText, cache_control: { type: 'ephemeral' } }]
     // Add prompt-caching hint to last tool definition. L'ensemble d'outils
     // peut être restreint via options.tools (brief proactif = lecture seule).
