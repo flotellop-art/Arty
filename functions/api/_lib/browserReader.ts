@@ -1,5 +1,6 @@
 import type { Env } from '../../env'
 import { limitReadableStream } from './boundedRequestBody'
+import { parseBrowserReadFailure } from '../../../shared/browserReaderFailure'
 
 export async function fetchBrowserPage(env: Env, request: Request, url: string, email: string): Promise<Response | null> {
   if (env.URL_READER_ENABLED !== 'true') return null
@@ -18,14 +19,17 @@ export async function fetchBrowserPage(env: Env, request: Request, url: string, 
       body: JSON.stringify({ url, subject }), signal: controller.signal,
     })
     const data = JSON.parse(await new Response(response.body ? limitReadableStream(response.body, 100_000) : null).text()) as {
-      status?: string; markdown?: unknown; receipt?: { provider?: string; requestedUrl?: string }
+      status?: string; markdown?: unknown; reason?: unknown; stage?: unknown; httpStatus?: unknown
+      receipt?: { provider?: string; requestedUrl?: string; httpStatus?: unknown }
     }
     // Only a profile miss BEFORE acquisition permits the legacy reader.
     if (response.ok && data.status === 'unsupported') return null
     if (!response.ok) return Response.json({ error: 'Fetch unavailable' }, { status: response.status === 429 ? 429 : 503 })
     if (data.status !== 'read' || typeof data.markdown !== 'string' || !data.markdown.trim()
       || data.markdown.length > 12_000 || data.receipt?.provider !== 'arty-browser' || data.receipt.requestedUrl !== url) {
-      return Response.json({ error: 'Page unreadable', reason: 'not_read' }, { status: 502 })
+      const failure = data.status === 'unreadable' ? parseBrowserReadFailure({ provider: 'arty-browser',
+        reason: data.reason, stage: data.stage, upstreamHttpStatus: data.httpStatus ?? data.receipt?.httpStatus }) : null
+      return Response.json({ error: 'Page unreadable', provider: 'arty-browser', ...(failure ?? { reason: 'not_read' }) }, { status: 502 })
     }
     return Response.json({ markdown: data.markdown, receipt: data.receipt }, { headers: { 'Cache-Control': 'no-store' } })
   } catch {

@@ -8,6 +8,7 @@
 
 import { getValidAccessToken } from './googleAuth'
 import { apiUrl } from './apiBase'
+import { parseBrowserReadFailure, type BrowserReadFailure } from '../../shared/browserReaderFailure'
 
 // Cap dur : un message ne déclenche au plus que ce nombre de fetch PDF, pour
 // éviter d'épuiser le quota Linkup (clé serveur du owner) si quelqu'un colle
@@ -29,7 +30,7 @@ interface PageReceipt {
 }
 type FetchOutcome =
   | { ok: true; url: string; markdown: string; provider?: string; receipt?: PageReceipt }
-  | { ok: false; url: string; reason: 'unreadable' | 'error' }
+  | { ok: false; url: string; reason: 'unreadable' | 'error'; failure?: BrowserReadFailure }
 
 // Timeouts (10 août 2026) — ce fetch n'en avait AUCUN. Tolérable tant qu'il
 // n'était qu'une étape de pré-traitement ; inacceptable depuis que le tool
@@ -67,7 +68,9 @@ async function fetchOne(
     if (!res.ok) {
       // 502 = texte demandé non obtenu, sans cause présumée ; le reste
       // (401, 503, 5xx réseau) = panne technique.
-      return { ok: false, url, reason: res.status === 502 ? 'unreadable' : 'error' }
+      let failure: BrowserReadFailure | undefined
+      try { failure = parseBrowserReadFailure(await res.json()) ?? undefined } catch { /* Legacy errors may have no JSON body. */ }
+      return { ok: false, url, reason: res.status === 502 ? 'unreadable' : 'error', ...(failure ? { failure } : {}) }
     }
     const data = (await res.json()) as { markdown?: string; provider?: string; receipt?: PageReceipt }
     if (!data.markdown) return { ok: false, url, reason: 'unreadable' }
@@ -107,7 +110,9 @@ export interface UrlFetchResult {
   block: string | null
   /** URLs qui ont échoué pour cause de paywall / contenu illisible. */
   unreadable: string[]
+  failures?: UrlReaderFailure[]
 }
+export interface UrlReaderFailure extends BrowserReadFailure { url: string }
 
 /**
  * Récupère le texte des pages via le lecteur choisi côté serveur. Utilisé pour
@@ -129,6 +134,7 @@ export async function fetchUrlMarkdowns(
   )
   const ok = results.filter((r): r is Extract<FetchOutcome, { ok: true }> => r.ok)
   const unreadable = results.filter((r) => !r.ok && r.reason === 'unreadable').map((r) => r.url)
+  const failures = results.flatMap(r => !r.ok && r.failure ? [{ url: r.url, ...r.failure }] : [])
   const block = ok.length
     ? ok
         .map((r) => {
@@ -141,5 +147,5 @@ export async function fetchUrlMarkdowns(
         })
         .join('\n\n')
     : null
-  return { block, unreadable }
+  return { block, unreadable, ...(failures.length ? { failures } : {}) }
 }

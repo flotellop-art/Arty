@@ -21,6 +21,20 @@ exact navigation/resource hosts to `READER_PROFILES` in wrangler.toml to
 support another site. Users, page content and models cannot supply profiles.
 No alternate reader is invoked after a browser refusal, timeout or rate limit.
 
+Reads follow redirects in the same browser session and original deadline.
+The current main-document response is tied to its request, and CDP loader IDs
+attest that its document has committed before extraction. A navigation or URL
+change invalidates an extraction in progress. Context loss is recoverable only
+when a main navigation was observed during that extraction; no URL is reloaded.
+This does not guarantee that a page will never navigate again after a read.
+
+Failures expose only closed reason/stage codes and a validated upstream HTTP
+status. The gateway, client tool and terminal Claude response preserve those
+observations. A DOM network-security refusal differs from a plain HTTP refusal,
+a Cloudflare guardrail and an internal reader error. Raw exceptions, sessions,
+HTML and challenge query parameters are not forwarded. Reddit's security rule
+can still refuse this browser; neither the code nor its diagnostics bypass it.
+
 The original `markdown` field stays compatible. A browser receipt additionally
 records provider, request and final URL, timestamp, anonymous access, HTTP
 status, truncation and omissions. The final URL omits query/fragment; requested

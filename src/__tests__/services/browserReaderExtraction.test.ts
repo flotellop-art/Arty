@@ -5,6 +5,7 @@ const url = 'https://www.reddit.com/r/ChatGPT/comments/1vqo6kl/'
 function fixture(html: string, final = url) {
   document.body.innerHTML = html
   Object.defineProperty(document, 'URL', { value: final, configurable: true })
+  Object.defineProperty(document, 'readyState', { value: 'complete', configurable: true })
   // jsdom has no renderer. Only offline fixture stand-ins, never a live proof.
   vi.spyOn(HTMLElement.prototype, 'getClientRects').mockImplementation(function (this: HTMLElement) {
     return (this.hasAttribute('hidden') ? [] : [{}]) as unknown as DOMRectList
@@ -29,7 +30,13 @@ describe('rendered extraction', () => {
     fixture(post, 'https://www.reddit.com/r/x/comments/abcd/'); expect(extractRenderedPage(url).reason).toBe('wrong_page')
   })
   it('rejects HTTP200 interstitial', () => {
-    fixture("<p>You've been blocked by network security</p>"); expect(extractRenderedPage(url).reason).toBe('blocked')
+    fixture("<p>You've been blocked by network security</p>"); expect(extractRenderedPage(url).reason).toBe('site_security')
+  })
+  it('waits for a loading document and does not diagnose a quoted security phrase', () => {
+    fixture(post.replace('Actual body of the exact requested post.', 'I saw the message blocked by network security yesterday.'))
+    expect(extractRenderedPage(url).status).toBe('read')
+    Object.defineProperty(document, 'readyState', { value: 'loading', configurable: true })
+    expect(extractRenderedPage(url).reason).toBe('document_loading')
   })
   it('does not read a hidden post body', () => {
     fixture(post.replace('<div id="t3_1vqo6kl-post', '<div hidden id="t3_1vqo6kl-post'))

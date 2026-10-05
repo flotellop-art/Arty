@@ -26,6 +26,7 @@
 import { extractAllHttpUrls } from '../aiRouter'
 import { fetchUrlMarkdowns } from '../pdfUrlFetch'
 import { markUntrustedThirdPartyData } from './untrustedContent'
+import { describeUrlReaderFailure } from '../urlReaderFailure'
 
 // Le cap Linkup (3 URLs par appel de fetchUrlMarkdowns) ne borne plus rien
 // quand le modèle appelle le tool une URL à la fois, en boucle. L'en-tête de
@@ -119,7 +120,7 @@ export async function executeFetchUrlTool(
   }
   context.callCount.value++
 
-  const { block, unreadable } = await fetchUrlMarkdowns([url], context.signal)
+  const { block, unreadable, failures } = await fetchUrlMarkdowns([url], context.signal)
   if (block) {
     // Le contenu d'une page tierce est de la DONNÉE, jamais des instructions.
     // Le prompt système porte la règle d'autorité, mais elle est loin du
@@ -128,9 +129,10 @@ export async function executeFetchUrlTool(
     return { result: markUntrustedThirdPartyData('Page web', block) }
   }
   if (unreadable.length > 0) {
+    const failure = failures?.find(item => item.url === url)
     return {
       result:
-        `La page ${url} n'a pas pu être lue : le lecteur n'a pas obtenu le texte demandé. La cause exacte n'est pas confirmée. ` +
+        `La page ${url} n'a pas pu être lue : ${failure ? describeUrlReaderFailure(failure) : "le lecteur n'a pas obtenu le texte demandé. La cause exacte n'est pas confirmée."} ` +
         `Dis-le clairement à l'utilisateur et propose-lui de coller le texte de la page ici. N'invente PAS le contenu.`,
     }
   }

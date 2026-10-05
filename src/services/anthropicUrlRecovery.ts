@@ -1,5 +1,5 @@
 import { extractAllHttpUrls, extractWebUrls } from './aiRouter'
-import { fetchUrlMarkdowns, TOOL_FETCH_TIMEOUT_MS } from './pdfUrlFetch'
+import { fetchUrlMarkdowns, TOOL_FETCH_TIMEOUT_MS, type UrlFetchResult, type UrlReaderFailure } from './pdfUrlFetch'
 import { urlAllowlistKey } from './tools/fetchUrlTool'
 import { markUntrustedThirdPartyData } from './tools/untrustedContent'
 import type { SearchContextSource } from './factChecker'
@@ -78,32 +78,36 @@ export async function recoverRequestedUrls(
   denied: Set<string>,
   signal: AbortSignal,
   assertCurrent?: () => void,
-): Promise<{ context: string; unread: string[]; sources: SearchContextSource[] }> {
+): Promise<{ context: string; unread: string[]; sources: SearchContextSource[]; failures?: UrlReaderFailure[] }> {
   const guard = () => { signal.throwIfAborted(); assertCurrent?.() }
   guard()
   let attempts = 0
   const results = await Promise.all(urls.map(async url => {
     const key = urlAllowlistKey(url)
-    if (!key || denied.has(key) || attempts >= MAX_URL_RECOVERIES) return { url, block: null }
+    if (!key || denied.has(key) || attempts >= MAX_URL_RECOVERIES) return { url, block: null, failures: [] as UrlReaderFailure[] }
     attempts++
     guard()
     let block: string | null = null
+    let failures: UrlReaderFailure[] = []
     const readController = new AbortController()
     let timer: ReturnType<typeof setTimeout> | undefined
     let onAbort: (() => void) | undefined
     try {
       // Only the requested URL is forwarded: never a model-generated URL,
       // query parameter, session cookie or URL discovered inside page content.
-      block = await Promise.race([
-        fetchUrlMarkdowns([url], readController.signal).then(result => result.block),
-        new Promise<null>(resolve => {
-          onAbort = () => { readController.abort(signal.reason); resolve(null) }
+      const fetched = await Promise.race([
+        fetchUrlMarkdowns([url], readController.signal),
+        new Promise<UrlFetchResult>(resolve => {
+          const empty = { block: null, unreadable: [] }
+          onAbort = () => { readController.abort(signal.reason); resolve(empty) }
           signal.addEventListener('abort', onAbort, { once: true })
           if (signal.aborted) onAbort()
           // Bounds auth preparation as well as the underlying HTTP request.
-          timer = setTimeout(() => { readController.abort(); resolve(null) }, TOOL_FETCH_TIMEOUT_MS)
+          timer = setTimeout(() => { readController.abort(); resolve(empty) }, TOOL_FETCH_TIMEOUT_MS)
         }),
       ])
+      block = fetched.block
+      failures = (fetched.failures ?? []).filter(failure => failure.url === url)
       if (!hasReadableContent(block)) block = null
     } catch {
       // Auth/network errors remain an unavailable read, never a site diagnosis.
@@ -112,10 +116,11 @@ export async function recoverRequestedUrls(
       if (onAbort) signal.removeEventListener('abort', onAbort)
     }
     guard() // fetchOne deliberately absorbs AbortError; Stop still wins here.
-    return { url, block }
+    return { url, block, failures }
   }))
   guard()
-  const read = results.filter((r): r is { url: string; block: string } => !!r.block?.trim())
+  const read = results.filter((r): r is { url: string; block: string; failures: UrlReaderFailure[] } => !!r.block?.trim())
+  const failures = results.flatMap(r => r.failures)
   return {
     context: read.length ? [
       'Le lecteur alternatif a récupéré les contenus ci-dessous pour les URL demandées. Réponds maintenant à la demande initiale sans nouvel appel d’outil. Ignore ta réponse provisoire. Une extraction peut être partielle : indique ce qui manque, et ne remplace pas le post par un autre témoignage.',
@@ -125,5 +130,6 @@ export async function recoverRequestedUrls(
     // Available to the fact-checker, without claiming verified facts or a
     // provider citation linking this source to the final answer.
     sources: read.map(r => ({ title: new URL(r.url).hostname, url: r.url, snippet: r.block })),
+    ...(failures.length ? { failures } : {}),
   }
 }

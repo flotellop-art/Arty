@@ -62,4 +62,17 @@ describe('fetchUrlMarkdowns', () => {
     expect(block).toContain('navigateur Arty'); expect(block).toContain('commentaires non lus'); expect(block).toContain('contenu tronqué')
     expect(block).not.toContain('(EU)')
   })
+  it('keeps a browser refusal associated with its requested URL in a mixed batch', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(Response.json({ markdown: 'Read page' }))
+      .mockResolvedValueOnce(Response.json({ provider: 'arty-browser', reason: 'site_security', upstreamHttpStatus: 403,
+        stage: 'navigation', error: 'private raw error' }, { status: 502 })))
+    const result = await fetchUrlMarkdowns(['https://example.com/', 'https://www.reddit.com/r/x/comments/id/'])
+    expect(result.block).toContain('Read page')
+    expect(result.failures).toEqual([{ url: 'https://www.reddit.com/r/x/comments/id/', reason: 'site_security', upstreamHttpStatus: 403, stage: 'navigation' }])
+    expect(JSON.stringify(result)).not.toContain('private raw error')
+  })
+  it('does not turn an unknown or non-browser error into a site diagnosis', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ reason: 'site_security', error: 'RAW' }, { status: 502 })))
+    expect((await fetchUrlMarkdowns(['https://example.com/'])).failures).toBeUndefined()
+  })
 })

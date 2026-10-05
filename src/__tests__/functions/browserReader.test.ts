@@ -69,4 +69,19 @@ describe('private browser gateway', () => {
       receipt: { provider: 'arty-browser', requestedUrl: 'https://example.com/' } }))
     expect((await fetchBrowserPage(env, request(), url, 'a')).status).toBe(502)
   })
+  it('propagates only bounded reason, stage and upstream status after a refusal', async () => {
+    service.mockResolvedValue(Response.json({ status: 'unreadable', reason: 'site_security', stage: 'navigation', httpStatus: 403,
+      message: 'private-provider-error', sessionId: 'private-session', receipt: { finalUrl: 'https://reddit.com/?challenge=secret' } }))
+    const res = await fetchBrowserPage(env, request(), url, 'a')
+    expect(res.status).toBe(502)
+    expect(await res.json()).toEqual({ error: 'Page unreadable', provider: 'arty-browser', reason: 'site_security', stage: 'navigation', upstreamHttpStatus: 403 })
+    expect(fetch).not.toHaveBeenCalled()
+  })
+  it('discards unrecognised reasons and invalid diagnostic fields', async () => {
+    service.mockResolvedValue(Response.json({ status: 'unreadable', reason: 'raw private error', stage: 'raw stack', httpStatus: '403' }))
+    const first = await fetchBrowserPage(env, request(), url, 'a')
+    expect(await first.json()).toEqual({ error: 'Page unreadable', provider: 'arty-browser', reason: 'not_read' })
+    service.mockResolvedValue(Response.json({ status: 'unreadable', reason: 'blocked', stage: 'raw stack', httpStatus: 1000 }))
+    expect(await (await fetchBrowserPage(env, request(), url, 'a')).json()).toEqual({ error: 'Page unreadable', provider: 'arty-browser', reason: 'blocked' })
+  })
 })

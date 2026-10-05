@@ -112,6 +112,21 @@ describe('executeFetchUrlTool', () => {
     expect((await executeFetchUrlTool({ url: 'javascript:alert(1)' }, ctx)).result).toContain('invalide')
     expect(fetchUrlMarkdowns).not.toHaveBeenCalled()
   })
+  it('explains an observed security refusal without inventing an IP or account cause', async () => {
+    const url = 'https://www.reddit.com/r/ChatGPT/comments/1vqo6kl/'
+    vi.mocked(fetchUrlMarkdowns).mockResolvedValueOnce({ block: null, unreadable: [url],
+      failures: [{ url, reason: 'site_security', upstreamHttpStatus: 403 }] })
+    const result = (await executeFetchUrlTool({ url }, context([url]))).result
+    expect(result).toContain('sécurité réseau'); expect(result).toContain('HTTP 403'); expect(result).toContain('précis reste inconnu')
+    expect(result).not.toMatch(/IP|Cloudflare|paywall/)
+  })
+  it('a plain 403 remains an access refusal without an anti-bot diagnosis', async () => {
+    const url = 'https://example.com/'
+    vi.mocked(fetchUrlMarkdowns).mockResolvedValueOnce({ block: null, unreadable: [url],
+      failures: [{ url, reason: 'blocked', upstreamHttpStatus: 403 }] })
+    const result = (await executeFetchUrlTool({ url }, context([url]))).result
+    expect(result).toContain('HTTP 403'); expect(result).not.toContain('sécurité réseau')
+  })
 })
 
 describe('collectUrlAllowlist', () => {

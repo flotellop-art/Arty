@@ -15,6 +15,8 @@ export function extractRenderedPage(requestedUrl: string, doc: Document = docume
   }
   const blocked = (s: string) => /^(?:you['’]ve been blocked|access denied|just a moment|checking (?:your )?browser|verify (?:you are|you're) human|robot check|captcha)/i.test(s.trim())
   const bodyPrefix = visible(doc.body).slice(0, 500)
+  if (doc.readyState === 'loading') return { status: 'unreadable', reason: 'document_loading', receipt: base }
+  if (/^(?:you['’]ve been )?blocked by network security(?:[.!]|\s|$)/i.test(bodyPrefix)) return { status: 'unreadable', reason: 'site_security', receipt: base }
   if (/\b(?:sign in|log in|login|connexion)\s+(?:required|to (?:continue|view|read)|requise)\b/i.test(`${visible(doc.querySelector('h1'))}\n${bodyPrefix}`)
     || Array.from(doc.querySelectorAll('input[type="password"]')).some(el => visible(el) || el.getClientRects().length)) {
     return { status: 'unreadable', reason: 'login_required', receipt: base }

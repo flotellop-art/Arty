@@ -67,6 +67,16 @@ function body(fetchMock: ReturnType<typeof vi.fn>, index: number) {
 }
 
 describe('Actual Claude SSE loop — requested URL recovery', () => {
+  it('finishes a browser security refusal with its observed cause and no new model request', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(sse([...native(URL, 'unavailable'), { type: 'text', text: 'Guess a cause.' }]))
+    vi.stubGlobal('fetch', fetchMock)
+    fallback.mockResolvedValueOnce({ block: null, unreadable: [URL],
+      failures: [{ url: URL, reason: 'site_security', upstreamHttpStatus: 403, stage: 'navigation' }] })
+    const answer = await run()
+    expect(answer.error).toBeUndefined(); expect(answer.text).toContain('sécurité réseau'); expect(answer.text).toContain('HTTP 403')
+    expect(answer.text).not.toContain('Guess a cause.'); expect(answer.text).not.toContain('Je ne peux pas en déduire la cause')
+    expect(fallback).toHaveBeenCalledTimes(1); expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
   it('discards provisional text, reads the exact URL and preserves signed blocks for a single synthesis', async () => {
     const thinking = { type: 'thinking', thinking: 'Analyse', signature: 'opaque-test-signature' }
     const failedBlocks = [thinking,
