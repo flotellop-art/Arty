@@ -1163,7 +1163,7 @@ export function useConversation(options?: { onNavigate?: (id: string) => void })
           const webUrls = extractWebUrls(text).filter((u) => !pdfUrls.includes(u))
           if (webUrls.length > 0) {
             setProgressContent('🔗 Lecture du lien (EU)...', targetId)
-            const { block, unreadable } = await fetchUrlMarkdowns(webUrls)
+            const { block, unreadable } = await fetchUrlMarkdowns(webUrls, undefined, 'eu-only')
             assertInvocationCurrent()
             if (block) {
               outgoingText = `${outgoingText}\n\n${block}`

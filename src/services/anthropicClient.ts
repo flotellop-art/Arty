@@ -18,6 +18,7 @@ import { setSearchContext, type SearchContext } from './factChecker'
 import i18n from '../i18n'
 import { DOCUMENT_READ_ONLY_RULES } from './documents/documentPolicy'
 import { inspectRequestedUrlReads, recoverRequestedUrls, requestedWebUrls, URL_READING_RULES } from './anthropicUrlRecovery'
+import { formatUrlReaderFailures } from './urlReaderFailure'
 
 const ANTI_HALLU_PROMPT = `
 
@@ -1118,13 +1119,16 @@ async function runWithTools(
           controller.signal.throwIfAborted()
           options?.assertRequestCurrent?.()
           if (recovery.unread.length || toolContextChars + recovery.context.length > TOOL_CONTEXT_BUDGET_CHARS || maxIterations <= 0) {
-            onToken(i18n.t('errors.urlContentUnavailable', { urls: (recovery.unread.length ? recovery.unread : unread).join('\n') }))
+            const details = formatUrlReaderFailures(recovery.failures)
+            onToken(i18n.t(details ? 'errors.urlContentUnavailableWithDetails' : 'errors.urlContentUnavailable', {
+              urls: (recovery.unread.length ? recovery.unread : unread).join('\n'), details,
+            }))
             onDone()
             return
           }
           assertContentBlocksValid(contentBlocks)
           toolContextChars += recovery.context.length
-          setSearchContext({ provider: 'Linkup URL recovery', query: lastUserText, results: recovery.sources }, options?.conversationId)
+          setSearchContext({ provider: 'Arty URL reader', query: lastUserText, results: recovery.sources }, options?.conversationId)
           apiMessages.push({ role: 'assistant', content: contentBlocks })
           apiMessages.push({ role: 'user', content: recovery.context })
           continue

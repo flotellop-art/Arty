@@ -65,6 +65,9 @@ export interface Env extends Partial<WorkspaceSyncBindings> {
   // leurs tools natifs). 'linkup' par défaut, 'brave' en alternative.
   SEARCH_PROVIDER?: 'linkup' | 'brave'
   LINKUP_API_KEY?: string  // https://app.linkup.so/ — 1k req/mois free, EU-hosted
+  /** Private Worker service binding. Exact flag required; no browser cookies forwarded. */
+  URL_READER?: Fetcher
+  URL_READER_ENABLED?: string
   BRAVE_SEARCH_API_KEY?: string  // https://api.search.brave.com/ — index indépendant
   // Essai par email (OTP) — identité sans Google. TOUS serveur-only (RÈGLE 1) :
   // ne JAMAIS préfixer VITE_ (un secret HMAC dans le bundle = forge illimitée).

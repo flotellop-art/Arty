@@ -53,4 +53,26 @@ describe('fetchUrlMarkdowns', () => {
     expect(block).toContain('ok')
     expect(unreadable).toEqual(['https://b.fr/2'])
   })
+  it('passes EU-only policy and reports actual browser provenance and omissions', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ markdown: 'Read post',
+      receipt: { provider: 'arty-browser', access: 'anonymous', commentsIncluded: false, truncated: true } }) })
+    vi.stubGlobal('fetch', fetchMock)
+    const { block } = await fetchUrlMarkdowns(['https://example.com/'], undefined, 'eu-only')
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ url: 'https://example.com/', readerPolicy: 'eu-only' })
+    expect(block).toContain('navigateur Arty'); expect(block).toContain('commentaires non lus'); expect(block).toContain('contenu tronqué')
+    expect(block).not.toContain('(EU)')
+  })
+  it('keeps a browser refusal associated with its requested URL in a mixed batch', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(Response.json({ markdown: 'Read page' }))
+      .mockResolvedValueOnce(Response.json({ provider: 'arty-browser', reason: 'site_security', upstreamHttpStatus: 403,
+        stage: 'navigation', error: 'private raw error' }, { status: 502 })))
+    const result = await fetchUrlMarkdowns(['https://example.com/', 'https://www.reddit.com/r/x/comments/id/'])
+    expect(result.block).toContain('Read page')
+    expect(result.failures).toEqual([{ url: 'https://www.reddit.com/r/x/comments/id/', reason: 'site_security', upstreamHttpStatus: 403, stage: 'navigation' }])
+    expect(JSON.stringify(result)).not.toContain('private raw error')
+  })
+  it('does not turn an unknown or non-browser error into a site diagnosis', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ reason: 'site_security', error: 'RAW' }, { status: 502 })))
+    expect((await fetchUrlMarkdowns(['https://example.com/'])).failures).toBeUndefined()
+  })
 })

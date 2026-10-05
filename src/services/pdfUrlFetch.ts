@@ -8,6 +8,7 @@
 
 import { getValidAccessToken } from './googleAuth'
 import { apiUrl } from './apiBase'
+import { parseBrowserReadFailure, type BrowserReadFailure } from '../../shared/browserReaderFailure'
 
 // Cap dur : un message ne déclenche au plus que ce nombre de fetch PDF, pour
 // éviter d'épuiser le quota Linkup (clé serveur du owner) si quelqu'un colle
@@ -18,9 +19,18 @@ const MAX_PDFS_PER_MESSAGE = 3
 // que l'appelant puisse expliquer honnêtement à l'utilisateur (bug live
 // 11 juin : Figaro paywall → échec silencieux → Mistral disait « je ne peux
 // pas lire » sans dire pourquoi).
+interface PageReceipt {
+  provider: string
+  finalUrl?: string
+  retrievedAt?: string
+  access?: string
+  imagesIncluded?: boolean
+  commentsIncluded?: boolean | null
+  truncated?: boolean
+}
 type FetchOutcome =
-  | { ok: true; url: string; markdown: string }
-  | { ok: false; url: string; reason: 'unreadable' | 'error' }
+  | { ok: true; url: string; markdown: string; provider?: string; receipt?: PageReceipt }
+  | { ok: false; url: string; reason: 'unreadable' | 'error'; failure?: BrowserReadFailure }
 
 // Timeouts (10 août 2026) — ce fetch n'en avait AUCUN. Tolérable tant qu'il
 // n'était qu'une étape de pré-traitement ; inacceptable depuis que le tool
@@ -34,6 +44,7 @@ async function fetchOne(
   token: string | null,
   timeoutMs: number,
   externalSignal?: AbortSignal,
+  readerPolicy: 'eu-only' | 'public-browser' = 'public-browser',
 ): Promise<FetchOutcome> {
   const ctrl = new AbortController()
   const timeoutId = setTimeout(() => ctrl.abort(new DOMException('Timeout', 'AbortError')), timeoutMs)
@@ -51,17 +62,19 @@ async function fetchOne(
     const res = await fetch(apiUrl('/api/fetch/url'), {
       method: 'POST',
       headers,
-      body: JSON.stringify({ url }),
+      body: JSON.stringify({ url, readerPolicy }),
       signal: ctrl.signal,
     })
     if (!res.ok) {
-      // 502 « Empty document » = page protégée/illisible (paywall) ; le reste
+      // 502 = texte demandé non obtenu, sans cause présumée ; le reste
       // (401, 503, 5xx réseau) = panne technique.
-      return { ok: false, url, reason: res.status === 502 ? 'unreadable' : 'error' }
+      let failure: BrowserReadFailure | undefined
+      try { failure = parseBrowserReadFailure(await res.json()) ?? undefined } catch { /* Legacy errors may have no JSON body. */ }
+      return { ok: false, url, reason: res.status === 502 ? 'unreadable' : 'error', ...(failure ? { failure } : {}) }
     }
-    const data = (await res.json()) as { markdown?: string }
+    const data = (await res.json()) as { markdown?: string; provider?: string; receipt?: PageReceipt }
     if (!data.markdown) return { ok: false, url, reason: 'unreadable' }
-    return { ok: true, url, markdown: data.markdown }
+    return { ok: true, url, markdown: data.markdown, provider: data.provider, receipt: data.receipt }
   } catch {
     return { ok: false, url, reason: 'error' }
   } finally {
@@ -97,10 +110,12 @@ export interface UrlFetchResult {
   block: string | null
   /** URLs qui ont échoué pour cause de paywall / contenu illisible. */
   unreadable: string[]
+  failures?: UrlReaderFailure[]
 }
+export interface UrlReaderFailure extends BrowserReadFailure { url: string }
 
 /**
- * Récupère le Markdown de pages web (via Linkup, hébergé EU). Utilisé pour
+ * Récupère le texte des pages via le lecteur choisi côté serveur. Utilisé pour
  * les conversations euOnly : Mistral n'a aucune lecture d'URL — sans ce
  * fetch, un lien collé partait dans le vide (hallucinations PR #162).
  * Retourne le bloc à inliner ET la liste des URLs illisibles (paywall) pour
@@ -109,24 +124,28 @@ export interface UrlFetchResult {
 export async function fetchUrlMarkdowns(
   urls: string[],
   signal?: AbortSignal,
+  readerPolicy?: 'eu-only',
 ): Promise<UrlFetchResult> {
   if (!urls.length) return { block: null, unreadable: [] }
   const token = await getValidAccessToken()
   const picked = urls.slice(0, MAX_PDFS_PER_MESSAGE)
   const results = await Promise.all(
-    picked.map((u) => fetchOne(u, token, TOOL_FETCH_TIMEOUT_MS, signal)),
+    picked.map((u) => fetchOne(u, token, TOOL_FETCH_TIMEOUT_MS, signal, readerPolicy)),
   )
-  const ok = results.filter((r): r is { ok: true; url: string; markdown: string } => r.ok)
+  const ok = results.filter((r): r is Extract<FetchOutcome, { ok: true }> => r.ok)
   const unreadable = results.filter((r) => !r.ok && r.reason === 'unreadable').map((r) => r.url)
+  const failures = results.flatMap(r => !r.ok && r.failure ? [{ url: r.url, ...r.failure }] : [])
   const block = ok.length
     ? ok
         .map((r) => {
           const md = r.markdown.length > MAX_PAGE_CHARS
             ? r.markdown.slice(0, MAX_PAGE_CHARS) + '\n[… contenu tronqué]'
             : r.markdown
-          return `--- CONTENU DE LA PAGE (${r.url}) — récupéré via Linkup (EU) ---\n${md}\n--- FIN DE LA PAGE ---`
+          const source = r.receipt?.provider === 'arty-browser' ? 'navigateur Arty' : r.provider === 'linkup' ? 'Linkup' : 'lecteur web'
+          const limits = r.receipt ? `\nLecture : ${r.receipt.access ?? 'inconnue'} ; texte visible ; images non analysées ; commentaires ${r.receipt.commentsIncluded === false ? 'non lus' : 'non garantis'} ; URL finale : ${r.receipt.finalUrl ?? 'inconnue'} ; date : ${r.receipt.retrievedAt ?? 'inconnue'}${r.receipt.truncated ? ' ; contenu tronqué' : ''}.` : ''
+          return `--- CONTENU DE LA PAGE (${r.url}) — récupéré via ${source} ---${limits}\n${md}\n--- FIN DE LA PAGE ---`
         })
         .join('\n\n')
     : null
-  return { block, unreadable }
+  return { block, unreadable, ...(failures.length ? { failures } : {}) }
 }
