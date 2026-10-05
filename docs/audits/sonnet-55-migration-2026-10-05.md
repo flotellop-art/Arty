@@ -74,8 +74,14 @@ et contrôles Android.
 
 La publication a été explicitement demandée le 5 octobre. Firebase confirme
 en lecture authentifiée que la dernière version distribuée est 1.0.105/code
-106 (`5i1dajfnpgj6g`, 13 septembre). Le candidat de livraison est donc
-versionné 1.0.106/code 107 dans package, lock et Gradle, avant fusion. La
+106 (`5i1dajfnpgj6g`, 13 septembre). Le contrôle Cloudflare révèle une livraison
+directe hors main : production `78c767d0-440b-45ab-a15f-aea5cc94f659`, source
+`0f632c4832fdbd15233764dd791ac529fc46f85d`, version web 1.0.106. Les deux
+commits de code `f34ee827` et `0f632c48` sont conservés : catalogue existant,
+tarifs et paliers de contexte/cache, snapshots et distinction débit/facturation.
+Les lots ultérieurs de PR513 ne sont pas intégrés. Le candidat est versionné
+1.0.110/code 111, supérieur aux versions connues préparées jusqu'à 1.0.109/code
+110, dans package, lock et Gradle avant fusion. La
 fusion sur main déclenche le workflow Firebase existant ; ne pas démarrer
 une seconde distribution concurrente. Les reçus de déploiement web et APK
 restent distincts d'une installation physique sur les téléphones.
