@@ -21,6 +21,7 @@ import { getActiveUserId } from './userSession'
 import * as scoped from './scopedStorage'
 import * as storage from './storage'
 import { recordUsage } from './costTracker'
+import { formatModelName } from './modelLabels'
 import type { FactCheckResult, FactCheckClaim, Message } from '../types'
 import { getMessageTextForModel } from './quickActions'
 import { requiresFaithfulText } from './faithfulText'
@@ -1399,9 +1400,9 @@ async function runCheckTier(
       overallConfidence,
       claims,
       modelLabel: fallback === 'model'
-        ? 'Sonnet 5.5 (secours)'
+        ? `${formatModelName(servedModel).replace(/^Claude /, '')} (secours)`
         : fallback === 'without_web_search'
-          ? 'Sonnet 5.5 (secours sans recherche)'
+          ? `${formatModelName(servedModel).replace(/^Claude /, '')} (secours sans recherche)`
           : fallback === 'provider'
             ? `${servedModel.startsWith('gemini-3.8') ? 'Gemini 3.8 Flash' : servedModel.startsWith('gemini-3.5') ? 'Gemini 3.5 Flash' : 'Gemini 3.6 Flash'} (secours)`
           : tier === 'gemini' && !servedModel.startsWith('gemini-3.8') ? `${servedModel} (secours)` : info.label,

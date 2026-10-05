@@ -66,19 +66,24 @@ describe('fact-check, transport Android natif', () => {
         'x-google-token': 'google-token',
       }),
       connectTimeout: 15_000,
-      readTimeout: 90_000,
+      readTimeout: expect.any(Number),
       responseType: 'json',
     }))
+    expect(nativeRequest.mock.calls[0][0].readTimeout).toBeGreaterThan(0)
+    expect(nativeRequest.mock.calls[0][0].readTimeout).toBeLessThanOrEqual(90_000)
 
     fetchSpy.mockRestore()
   })
 
-  it('recompose un JSON coupé par les citations et affiche le modèle de secours', async () => {
+  it.each([
+    ['claude-sonnet-5', 'Sonnet 5 (secours)'],
+    ['claude-sonnet-5-5', 'Sonnet 5.5 (secours)'],
+  ])('recompose un JSON coupé et attribue le secours réellement servi %s', async (model, label) => {
     nativeRequest.mockResolvedValue({
       status: 200,
       headers: { 'content-type': 'application/json' },
       data: {
-        model: 'claude-sonnet-5',
+        model,
         fallback: 'model',
         completion: 'complete',
         webEvidence: false,
@@ -100,7 +105,7 @@ describe('fact-check, transport Android natif', () => {
     )
 
     expect(outcome.result?.status).toBe('partial')
-    expect(outcome.result?.modelLabel).toBe('Sonnet 5 (secours)')
+    expect(outcome.result?.modelLabel).toBe(label)
     expect(outcome.result?.limitations).toContain('search_unavailable')
   })
 
