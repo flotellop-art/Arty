@@ -54,6 +54,7 @@ export async function executeClientWebSearch(
   args: Record<string, unknown>,
   contextScope?: string,
   externalSignal?: AbortSignal,
+  euOnly = false,
 ): Promise<{ result: string }> {
   const query = String(args.query || '').trim()
   if (!query) return { result: 'Erreur: paramètre `query` manquant.' }
@@ -86,7 +87,8 @@ export async function executeClientWebSearch(
     response = await fetch(apiUrl('/api/search/web'), {
       method: 'POST',
       headers,
-      body: JSON.stringify({ query, maxResults, ...(sources ? { sources } : {}) }),
+      body: JSON.stringify({ query, maxResults, ...(sources ? { sources } : {}), readerPolicy: euOnly ? 'eu-only' : 'public-browser',
+        ...(import.meta.env.VITE_AUTONOMOUS_WEB === 'true' ? { requireOwnedIndex: true } : {}) }),
       signal: searchCtrl.signal,
     })
   } catch (err) {
@@ -111,6 +113,9 @@ export async function executeClientWebSearch(
         provider: string
         bySource: Record<string, { answer?: string; results: Array<{ title: string; url: string; snippet: string }> }>
       }
+
+  const ownedNote = data.provider === 'arty-index'
+    ? 'Corpus Arty limité aux pages déjà collectées, sans moteur externe. Les extraits sont partiels, la date de collecte ne prouve pas la date de publication. Une absence de résultat ne prouve pas qu’un fait est faux.\n\n' : ''
 
   // Notifie l'UI du provider qui a répondu (Linkup ou Brave).
   try {
@@ -156,7 +161,7 @@ export async function executeClientWebSearch(
     }
     return {
       result:
-        `Recherche multi-source (${data.provider}) pour "${query}" :\n\n${sections.join('\n\n')}\n\n` +
+        ownedNote + `Recherche multi-source (${data.provider}) pour "${query}" :\n\n${sections.join('\n\n')}\n\n` +
         `IMPORTANT : chaque section ci-dessus correspond À UNE SOURCE PRÉCISE. NE MÉLANGE JAMAIS les données entre sources. Si une source dit X et une autre Y, mentionne les deux. Cite via [Brico Dépôt: prix X], [Cedeo: prix Y], etc.`,
     }
   }
@@ -175,14 +180,14 @@ export async function executeClientWebSearch(
   }
 
   if (!data.results || data.results.length === 0) {
-    return { result: `Aucun résultat trouvé pour "${query}".` }
+    return { result: ownedNote + `Aucun résultat trouvé pour "${query}".` }
   }
   const formatted = data.results
     .map((r, i) => `[${i + 1}] **${r.title}**\n${clip(r.snippet, MAX_SNIPPET_CHARS)}\nSource: ${r.url}`)
     .join('\n\n')
   return {
     result:
-      `Résultats de recherche (${data.provider}) pour "${query}" :\n\n${formatted}\n\n` +
+      ownedNote + `Résultats de recherche (${data.provider}) pour "${query}" :\n\n${formatted}\n\n` +
       `IMPORTANT : ne devine pas, ne mélange pas les sources, cite via [1], [2], etc.`,
   }
 }

@@ -1,0 +1,7 @@
+data/
+*.key
+*.sqlite*
+*.jsonl
+*.log
+*.pid
+.venv/

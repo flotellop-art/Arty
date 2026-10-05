@@ -63,7 +63,14 @@ export interface Env extends Partial<WorkspaceSyncBindings> {
   // Web search proxy (utilisé par Mistral via /api/search/web pour ajouter
   // une capacité recherche en temps réel — Anthropic et Gemini ont déjà
   // leurs tools natifs). 'linkup' par défaut, 'brave' en alternative.
-  SEARCH_PROVIDER?: 'linkup' | 'brave'
+  SEARCH_PROVIDER?: 'linkup' | 'brave' | 'arty-index'
+  /** Owned read-only corpus. These values are SERVER ONLY; never VITE_*.
+   * HTTPS reverse proxy in deployment, explicit loopback permission for local dev. */
+  AUTONOMOUS_WEB_URL?: string
+  AUTONOMOUS_WEB_KEY?: string
+  AUTONOMOUS_WEB_LOCAL?: string
+  /** Operator attestation after checking hosting/logging geography; no default. */
+  AUTONOMOUS_WEB_REGION?: 'eu'
   LINKUP_API_KEY?: string  // https://app.linkup.so/ — 1k req/mois free, EU-hosted
   /** Private Worker service binding. Exact flag required; no browser cookies forwarded. */
   URL_READER?: Fetcher

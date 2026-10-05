@@ -53,6 +53,17 @@ describe('fetchUrlMarkdowns', () => {
     expect(block).toContain('ok')
     expect(unreadable).toEqual(['https://b.fr/2'])
   })
+  it('keeps a service 503 and the fourth unprocessed URL explicit in a mixed batch', async () => {
+    const spy = vi.fn().mockResolvedValueOnce(Response.json({ markdown: 'first page' }))
+      .mockResolvedValueOnce(Response.json({ error: 'index_unavailable' }, { status: 503 }))
+      .mockResolvedValueOnce(Response.json({ markdown: 'third page' }))
+    vi.stubGlobal('fetch', spy)
+    const result = await fetchUrlMarkdowns(['https://a.test/', 'https://b.test/', 'https://c.test/', 'https://d.test/'])
+    expect(result.block).toContain('first page')
+    expect(result.unavailable).toEqual(['https://b.test/', 'https://d.test/'])
+    expect(result.unreadable).toEqual([])
+    expect(spy).toHaveBeenCalledTimes(3)
+  })
   it('passes EU-only policy and reports actual browser provenance and omissions', async () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ markdown: 'Read post',
       receipt: { provider: 'arty-browser', access: 'anonymous', commentsIncluded: false, truncated: true } }) })

@@ -17,6 +17,8 @@ import {
   planSubjectToOwnerApiCap,
 } from '../_lib/freeQuota'
 import { isSafePublicUrl, isShortLinkHost } from '../_lib/urlSafety'
+import { isAutonomousWeb, searchAutonomous } from '../_lib/autonomousWeb'
+import { readRequestTextWithLimit } from '../_lib/boundedRequestBody'
 
 interface SearchRequest {
   query: string
@@ -35,6 +37,8 @@ interface SearchRequest {
   // Mistral ait halluciné en mélangeant les revendeurs sur un comparatif
   // PAC (mai 2026).
   sources?: string[]
+  readerPolicy?: 'eu-only' | 'public-browser'
+  requireOwnedIndex?: boolean
 }
 
 interface NormalisedResult {
@@ -73,14 +77,21 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     return Response.json({ error: 'Authentication required' }, { status: 401 })
   }
 
+  let body: SearchRequest
+  try {
+    body = JSON.parse(await readRequestTextWithLimit(request, 8192))
+    if (!body || typeof body !== 'object' || Array.isArray(body)) throw new Error('body')
+  } catch { return Response.json({ error: 'Invalid request' }, { status: 400 }) }
+  if (body.requireOwnedIndex === true && !isAutonomousWeb(env)) return Response.json({ error: 'index_unavailable' }, { status: 409 })
   const {
     query,
     maxResults: rawMaxResults = 5,
     sources,
     verifyUrls = false,
     redirectUrls,
-  } = (await request.json()) as SearchRequest
-  if (!query || typeof query !== 'string' || query.length < 2) {
+    readerPolicy,
+  } = body
+  if (!query || typeof query !== 'string' || query.length < 2 || query.length > 1024) {
     return Response.json({ error: 'Query missing or too short' }, { status: 400 })
   }
   const maxResults = Number.isFinite(rawMaxResults)
@@ -90,12 +101,13 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   // Domaines nettoyés (mode multi-source) — calculés AVANT le cap pour compter
   // le nombre d'appels Linkup RÉELS (1 par source), pas 1 par requête HTTP :
   // sinon un user consommerait jusqu'à 6× le budget Linkup sous 1 unité de cap.
-  const cleanedSources = (sources ?? [])
+  const cleanedSources = (Array.isArray(sources) ? sources : [])
+    .filter((s): s is string => typeof s === 'string')
     .map((s) => s.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, ''))
     .filter((s) => /^[a-z0-9.-]+\.[a-z]{2,}$/.test(s))
     .slice(0, 6) // cap à 6 sources max pour éviter d'exploser le quota Linkup
   const isMultiSource = cleanedSources.length > 0
-  const cleanedRedirects = (redirectUrls ?? [])
+  const cleanedRedirects = (Array.isArray(redirectUrls) ? redirectUrls : [])
     .filter((value): value is string => typeof value === 'string')
     .filter(isGoogleGroundingRedirect)
     .slice(0, 5)
@@ -108,6 +120,10 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     : 0
   const providerCalls = searchCalls + verificationCalls + (verifyUrls ? cleanedRedirects.length : 0)
 
+  if (isAutonomousWeb(env)) {
+    if (readerPolicy !== 'eu-only' && readerPolicy !== 'public-browser') return Response.json({ error: 'autonomous_web_policy_required' }, { status: 409 })
+    if (readerPolicy === 'eu-only' && env.AUTONOMOUS_WEB_REGION !== 'eu') return Response.json({ error: 'eu_backend_unconfirmed' }, { status: 503 })
+  }
   // Cap journalier par email sur la clé de recherche PAYANTE du owner
   // (Linkup/Brave), appliqué aux seuls plans non-payants. Compté en appels
   // potentiels, sans restitution des tentatives non exécutées. Ce cap par
@@ -118,6 +134,14 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     if (!cap.allowed) return ownerApiLimitResponse('web-search', cap.limit)
   }
 
+  if (isAutonomousWeb(env)) {
+    try {
+      return Response.json(await searchAutonomous(env, query, maxResults, cleanedSources, verifyUrls, request.signal),
+        { headers: { 'x-search-provider': 'arty-index', 'Cache-Control': 'no-store' } })
+    } catch {
+      return Response.json({ error: 'index_unavailable', provider: 'arty-index' }, { status: 503 })
+    }
+  }
   const provider: 'linkup' | 'brave' = (env.SEARCH_PROVIDER as 'linkup' | 'brave') || 'linkup'
 
   try {

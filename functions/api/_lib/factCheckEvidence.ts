@@ -3,6 +3,7 @@ import type { FactReview, FactEvidence } from '../../../shared/factCheckEvidence
 import { factCorrection, factProofTarget } from '../../../shared/factCheckEvidence'
 import { isSafePublicUrl } from './urlSafety'
 import { consumeCapAtomic } from './atomicQuota'
+import { isAutonomousWeb, readAutonomousPage } from './autonomousWeb'
 
 export const EVIDENCE_LIMITS = { pages: 3, pageBytes: 160_000, pageChars: 20_000, claims: 10, reviewTokens: 4000 } as const
 export interface EvidenceClaim {
@@ -80,6 +81,14 @@ export async function readBoundedJSON(res: Response, maxBytes: number): Promise<
   } finally { await reader.cancel().catch(() => {}); reader.releaseLock() }
 }
 export async function readEvidencePage(env: Env, email: string, url: string, deadline: number): Promise<EvidenceDocument | null> {
+  if (isAutonomousWeb(env)) {
+    if (!safeSourceUrls([url]).length || Date.now() >= deadline || !await admitEvidenceWork(env, email, 'page')) return null
+    try {
+      const doc = await readAutonomousPage(env, url, AbortSignal.timeout(Math.max(1, Math.min(12_000, deadline - Date.now()))))
+      if (doc.markdown.length > EVIDENCE_LIMITS.pageChars) return null
+      return { id: '', url, text: doc.markdown, fetchedAt: Date.parse(doc.receipt.retrievedAt), sha256: doc.receipt.sha256 }
+    } catch { return null }
+  }
   if (!env.LINKUP_API_KEY || !safeSourceUrls([url]).length || Date.now() >= deadline) return null
   if (!await admitEvidenceWork(env, email, 'page') || Date.now() >= deadline) return null
   try {

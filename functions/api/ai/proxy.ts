@@ -1,6 +1,7 @@
 import type { Env } from '../../env'
 import { isAdmissionUnavailable, admissionUnavailableResponse } from '../_lib/admission'
 import { readAnthropicRequestBody } from '../_lib/anthropicRequestBody'
+import { nativeWebForbidden, autonomousNativeToolResponse } from '../_lib/autonomousWeb'
 import { BILLING_LEAK_PATTERN as SHARED_BILLING_LEAK_PATTERN } from '../_lib/upstreamBilling'
 import {
   checkAllowedVerifiedUser,
@@ -138,6 +139,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
     { error: 'invalid_request_body' }, { status: 400, headers: { 'cache-control': 'no-store' } },
   )
   let parsedBody = bodyRead.body
+  if (nativeWebForbidden(env, parsedBody, 'anthropic')) return autonomousNativeToolResponse()
 
   // BYOK prioritaire — si le client envoie sa propre clé, on l'utilise
   // telle quelle (chaque user paie ses propres appels, donc pas de quota

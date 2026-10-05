@@ -25,6 +25,7 @@ import { isSafePublicUrl, isShortLinkHost } from '../_lib/urlSafety'
 import { truncateWithNotice } from '../_lib/truncate'
 import { fetchBrowserPage } from '../_lib/browserReader'
 import { readRequestTextWithLimit } from '../_lib/boundedRequestBody'
+import { isAutonomousWeb, readAutonomousPage, AutonomousWebError } from '../_lib/autonomousWeb'
 
 const MAX_URL_LEN = 2048
 const MAX_MARKDOWN_CHARS = 200_000
@@ -38,13 +39,14 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     return Response.json({ error: 'Authentication required' }, { status: 401 })
   }
 
-  let body: { url?: unknown; readerPolicy?: unknown }
+  let body: { url?: unknown; readerPolicy?: unknown; requireOwnedIndex?: unknown }
   try {
     body = JSON.parse(await readRequestTextWithLimit(request, 4096))
     if (!body || typeof body !== 'object' || Array.isArray(body)) throw new Error('invalid_body')
   } catch {
     return Response.json({ error: 'Invalid request' }, { status: 400 })
   }
+  if (body.requireOwnedIndex === true && !isAutonomousWeb(env)) return Response.json({ error: 'index_unavailable' }, { status: 409 })
 
   const rawUrl = body.url
   if (typeof rawUrl !== 'string' || rawUrl.length === 0 || rawUrl.length > MAX_URL_LEN) {
@@ -73,6 +75,18 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     return Response.json({ error: 'Unsupported file type' }, { status: 400 })
   }
 
+  if (isAutonomousWeb(env)) {
+    if (planSubjectToOwnerApiCap(user.planType)) {
+      const cap = await consumeOwnerApiQuota(env, user.email, 'url-fetch')
+      if (cap.unavailable) return admissionUnavailableResponse()
+      if (!cap.allowed) return ownerApiLimitResponse('url-fetch', cap.limit)
+    }
+    try { return Response.json(await readAutonomousPage(env, parsed.toString(), request.signal, body.readerPolicy === 'eu-only')) }
+    catch (err) {
+      const code = err instanceof AutonomousWebError ? err.code : 'index_unavailable'
+      return Response.json({ error: code, provider: 'arty-index' }, { status: code === 'not_in_index' ? 502 : 503 })
+    }
+  }
   // Keep EU-only and PDF turns on the legacy route. This does not attest
   // Linkup processing geography; it prevents a new global browser transfer.
   if (!/\.pdf$/i.test(parsed.pathname) && body.readerPolicy === 'public-browser') {

@@ -1184,8 +1184,9 @@ export function useConversation(options?: { onNavigate?: (id: string) => void })
 
       if (provider === 'hybrid') {
         setProgressContent('🔍 Recherche en cours (Gemini)...', targetId)
+        controller = new AbortController()
         Promise.all([
-          geminiResearch(modelText, undefined, getReflectionLevel(), targetId, assertInvocationCurrent),
+          geminiResearch(modelText, undefined, getReflectionLevel(), targetId, assertInvocationCurrent, controller.signal),
           buildApiMessages(chatMessages),
         ]).then(([research, enrichedMessages]) => {
           // Si l'utilisateur a cliqué Stop PENDANT la recherche Gemini,
@@ -1219,7 +1220,6 @@ export function useConversation(options?: { onNavigate?: (id: string) => void })
           if (!invocationStillCurrent()) { controller.abort(); return }
           setAbortController(targetId, controller)
         }).catch(onErr)
-        controller = new AbortController()
       } else if (provider === 'gemini') {
         // Gemini text-only pour l'instant — le multimodal Gemini sera dans
         // une PR future (formats parts/inlineData différents de Claude).

@@ -1223,6 +1223,7 @@ async function runCheckTier(
         ...(work.context !== response ? { context: work.context } : {}),
         budgetMs: Math.max(1, timeoutMs - 1000),
         recoverEvidence,
+        ...(import.meta.env.VITE_AUTONOMOUS_WEB === 'true' ? { requireOwnedIndex: true } : {}),
       },
       timeoutMs,
       controller.signal,

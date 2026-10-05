@@ -1,0 +1,9 @@
+{
+  "allowed_hosts": ["www.sqlite.org", "docs.python.org"],
+  "seeds": ["https://www.sqlite.org/fts5.html", "https://www.sqlite.org/about.html"],
+  "max_pages": 6,
+  "max_depth": 1,
+  "max_seconds": 120,
+  "fresh_hours": 168,
+  "delay_seconds": 2
+}
