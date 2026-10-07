@@ -11,6 +11,7 @@ import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useParams } from 'react-router-dom'
 import { MarkdownRenderer } from '../shared/MarkdownRenderer'
+import { LocalReportNavigationContext } from '../shared/LocalReportNavigationContext'
 import { ArtyWordmark } from '../shared/PrismMark'
 import { apiUrl } from '../../services/apiBase'
 
@@ -90,7 +91,11 @@ export function SharedConversationView() {
                     </div>
                   ) : (
                     <div className="max-w-[92%]">
-                      <MarkdownRenderer content={m.content} />
+                      {/* Public content never inherits private capabilities,
+                          including when /share is visited while signed in. */}
+                      <LocalReportNavigationContext.Provider value={null}>
+                        <MarkdownRenderer content={m.content} />
+                      </LocalReportNavigationContext.Provider>
                     </div>
                   )}
                 </div>

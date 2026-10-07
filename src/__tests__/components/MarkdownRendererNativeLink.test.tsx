@@ -7,7 +7,7 @@ const { browserOpen } = vi.hoisted(() => ({
 }))
 const session = vi.hoisted(() => ({ owner: 'a' as string | null, epoch: 1 }))
 vi.mock('../../services/userSession', () => ({
-  getActiveUserId: () => session.owner,
+  getActiveUserId: vi.fn(() => session.owner),
   getActiveSessionEpoch: () => session.epoch,
 }))
 
@@ -24,16 +24,18 @@ vi.mock('@capacitor/browser', () => ({
 }))
 
 import { MarkdownRenderer } from '../../components/shared/MarkdownRenderer'
+import { PrivateReportNavigation } from '../../components/shared/PrivateReportNavigation'
+import { getActiveUserId } from '../../services/userSession'
 
 const reportId = '91fe72b8-8dca-4d4f-a8c0-8184f971f298'
 const reportPath = `/report/${reportId}`
 const reportKey = `arty-a-report-${reportId}`
 const reportUrl = `${location.origin}${reportPath}`
 function reportChat(content: string, historical = false) {
-  return <MemoryRouter initialEntries={['/chat']}><Routes>
+  return <MemoryRouter initialEntries={['/chat']}><PrivateReportNavigation owner="a"><Routes>
     <Route path="/chat" element={<MarkdownRenderer content={content} historical={historical} />} />
     <Route path="/report/:id" element={<p>Page du rapport local</p>} />
-  </Routes></MemoryRouter>
+  </Routes></PrivateReportNavigation></MemoryRouter>
 }
 
 describe('MarkdownRenderer, liens Android', () => {
@@ -41,6 +43,7 @@ describe('MarkdownRenderer, liens Android', () => {
     localStorage.clear()
     session.owner = 'a'
     session.epoch = 1
+    vi.mocked(getActiveUserId).mockClear()
     browserOpen.mockReset()
     browserOpen.mockResolvedValue(undefined)
   })
@@ -86,6 +89,18 @@ describe('MarkdownRenderer, liens Android', () => {
     expect(browserOpen).not.toHaveBeenCalled()
   })
 
+  it('can resolve a fresh link after the same account starts a new session', () => {
+    localStorage.setItem(reportKey, 'v2:encrypted')
+    const { rerender } = render(reportChat(`[Ancien rapport](${reportUrl})`))
+    session.epoch++
+    fireEvent.click(screen.getByRole('link', { name: 'Ancien rapport' }))
+    expect(screen.queryByText('Page du rapport local')).toBeNull()
+    rerender(reportChat(`[Nouveau rapport](${reportUrl})`))
+    fireEvent.click(screen.getByRole('link', { name: 'Nouveau rapport' }))
+    expect(screen.getByText('Page du rapport local')).toBeVisible()
+    expect(browserOpen).not.toHaveBeenCalled()
+  })
+
   it('does not activate archived links, archived inline code or fenced code', () => {
     localStorage.setItem(reportKey, 'v2:encrypted')
     const { rerender } = render(reportChat(`[Rapport](${reportUrl})\n\n\`${reportUrl}\``, true))
@@ -99,6 +114,16 @@ describe('MarkdownRenderer, liens Android', () => {
     localStorage.setItem(reportKey, 'v2:encrypted')
     render(<MarkdownRenderer content={`[Rapport](${reportUrl})`} />)
     expect(screen.queryByRole('link')).toBeNull()
+  })
+
+  it('never reads private identity or report storage without a private provider', () => {
+    localStorage.setItem(reportKey, 'v2:encrypted')
+    const readStorage = vi.spyOn(Storage.prototype, 'getItem')
+    render(<MemoryRouter><MarkdownRenderer content={`[Rapport](${reportUrl})\n\n\`${reportUrl}\``} /></MemoryRouter>)
+    expect(screen.queryByRole('link')).toBeNull()
+    expect(getActiveUserId).not.toHaveBeenCalled()
+    expect(readStorage).not.toHaveBeenCalled()
+    readStorage.mockRestore()
   })
 
   it('ouvre une source http/https dans le navigateur natif Capacitor', async () => {

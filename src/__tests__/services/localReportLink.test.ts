@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 const session = vi.hoisted(() => ({ owner: 'a' as string | null }))
 vi.mock('../../services/userSession', () => ({ getActiveUserId: () => session.owner }))
-import { localReportPath, storedLocalReportPath } from '../../services/localReportLink'
+import { localReportPath } from '../../services/localReportLink'
+import { storedLocalReportPath } from '../../services/storedLocalReportLink'
 import { prepareAssistantContent } from '../../services/factChecker'
 
 const id = '91fe72b8-8dca-4d4f-a8c0-8184f971f298'

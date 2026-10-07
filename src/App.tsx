@@ -21,6 +21,7 @@ import { ProjectReviewDialog } from './components/chat/ProjectReviewDialog'
 import { ContextualComparisonDialog } from './components/comparator/ContextualComparisonDialog'
 import type { Project } from './services/projects/types'
 import { ReportPage } from './components/shared/ReportPage'
+import { PrivateReportNavigation } from './components/shared/PrivateReportNavigation'
 import { ErrorBoundary } from './components/shared/ErrorBoundary'
 import { Toaster } from './components/shared/Toaster'
 import { PublicLandingFallback } from './components/shared/PublicLandingFallback'
@@ -1176,13 +1177,14 @@ export default function App() {
           entourait MessageList : un crash dans Sidebar, InputBar ou un screen
           lazy = écran blanc total sans message. */}
       <ErrorBoundary>
-        <AppContent
-          key={auth.currentUser?.userId ?? 'no-account'}
-          onLogout={auth.logout}
-          userName={auth.currentUser?.displayName}
-          authMethod={auth.currentUser?.authMethod}
-          userEmail={auth.currentUser?.email}
-        />
+        <PrivateReportNavigation key={auth.currentUser?.userId ?? 'no-account'} owner={auth.currentUser?.userId ?? null}>
+          <AppContent
+            onLogout={auth.logout}
+            userName={auth.currentUser?.displayName}
+            authMethod={auth.currentUser?.authMethod}
+            userEmail={auth.currentUser?.email}
+          />
+        </PrivateReportNavigation>
       </ErrorBoundary>
       {/* Bannière mode démo preview — pill discrète, non bloquante
           (pointer-events-none), pour ne jamais masquer le design relu.

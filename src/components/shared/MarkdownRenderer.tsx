@@ -11,8 +11,8 @@ import { isValidElement } from 'react'
 import { Capacitor } from '@capacitor/core'
 import { Link, useInRouterContext } from 'react-router-dom'
 import { isAllowedReportAction } from '../../services/reportActions'
-import { localReportPath, storedLocalReportPath } from '../../services/localReportLink'
-import { getActiveSessionEpoch, getActiveUserId } from '../../services/userSession'
+import { localReportPath } from '../../services/localReportLink'
+import { LocalReportNavigationContext } from './LocalReportNavigationContext'
 
 // Model/public Markdown never grants access to private local file IDs.
 function UnavailableImage() {
@@ -47,18 +47,16 @@ function MarkdownLink({
   className?: string
 }) {
   const inRouter = useInRouterContext()
+  const resolveReport = useContext(LocalReportNavigationContext)
   const reportPath = href ? localReportPath(href) : null
   if (reportPath) {
-    const owner = getActiveUserId()
-    const epoch = getActiveSessionEpoch()
-    if (!inRouter || !href || !storedLocalReportPath(href)) {
+    const report = href ? resolveReport?.(href) : null
+    if (!inRouter || !report || report.path !== reportPath) {
       return <span>{children} <span className="text-xs text-theme-muted">(rapport indisponible sur cet appareil pour ce compte)</span></span>
     }
     return (
       <Link to={reportPath} className={className} onClick={event => {
-        if (owner !== getActiveUserId() || epoch !== getActiveSessionEpoch() || storedLocalReportPath(href) !== reportPath) {
-          event.preventDefault()
-        }
+        if (!report.canNavigate()) event.preventDefault()
       }}>
         {children}
       </Link>
@@ -210,6 +208,7 @@ function MarkdownCode({ className, children, recoverLocalReport = true, ...props
   children?: ReactNode
   recoverLocalReport?: boolean
 }) {
+  const resolveReport = useContext(LocalReportNavigationContext)
   const text = extractText(children)
   const isBlock = /language-|hljs/.test(className ?? '') || text.includes('\n')
   if (isBlock) return <CodeBlock className={className} {...props}>{children}</CodeBlock>
@@ -220,7 +219,7 @@ function MarkdownCode({ className, children, recoverLocalReport = true, ...props
       </code>
       {/* Recover links neutralized by older fact-checkers without rewriting
           saved messages, activating code blocks or granting archive actions. */}
-      {recoverLocalReport && storedLocalReportPath(text) && (
+      {recoverLocalReport && resolveReport?.(text) && (
         <> <MarkdownLink href={text}>📄 Ouvrir le rapport</MarkdownLink></>
       )}
     </>
