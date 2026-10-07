@@ -71,8 +71,11 @@ export function ReportPage() {
 
   if (!html) {
     return (
-      <div className="flex items-center justify-center h-[100dvh] bg-theme-bg">
+      <div className="flex flex-col gap-4 items-center justify-center h-[100dvh] bg-theme-bg">
         <p className="text-theme-muted">Rapport introuvable</p>
+        <button type="button" onClick={() => navigate(-1)} className="rounded-md bg-theme-ink px-3.5 py-2 text-theme-bg">
+          ← Retour
+        </button>
       </div>
     )
   }

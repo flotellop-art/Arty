@@ -9,7 +9,10 @@ import type { Components } from 'react-markdown'
 import type { MouseEvent, ReactNode } from 'react'
 import { isValidElement } from 'react'
 import { Capacitor } from '@capacitor/core'
+import { Link, useInRouterContext } from 'react-router-dom'
 import { isAllowedReportAction } from '../../services/reportActions'
+import { localReportPath } from '../../services/localReportLink'
+import { LocalReportNavigationContext } from './LocalReportNavigationContext'
 
 // Model/public Markdown never grants access to private local file IDs.
 function UnavailableImage() {
@@ -43,6 +46,22 @@ function MarkdownLink({
   children: ReactNode
   className?: string
 }) {
+  const inRouter = useInRouterContext()
+  const resolveReport = useContext(LocalReportNavigationContext)
+  const reportPath = href ? localReportPath(href) : null
+  if (reportPath) {
+    const report = href ? resolveReport?.(href) : null
+    if (!inRouter || !report || report.path !== reportPath) {
+      return <span>{children} <span className="text-xs text-theme-muted">(rapport indisponible sur cet appareil pour ce compte)</span></span>
+    }
+    return (
+      <Link to={reportPath} className={className} onClick={event => {
+        if (!report.canNavigate()) event.preventDefault()
+      }}>
+        {children}
+      </Link>
+    )
+  }
   const openNative = (event: MouseEvent<HTMLAnchorElement>) => {
     if (!href || !Capacitor.isNativePlatform()) return
     try {
@@ -184,6 +203,29 @@ function CodeBlock({ className, children, ...props }: { className?: string; chil
   )
 }
 
+function MarkdownCode({ className, children, recoverLocalReport = true, ...props }: {
+  className?: string
+  children?: ReactNode
+  recoverLocalReport?: boolean
+}) {
+  const resolveReport = useContext(LocalReportNavigationContext)
+  const text = extractText(children)
+  const isBlock = /language-|hljs/.test(className ?? '') || text.includes('\n')
+  if (isBlock) return <CodeBlock className={className} {...props}>{children}</CodeBlock>
+  return (
+    <>
+      <code className="bg-theme-accent/10 text-theme-accent px-1.5 py-0.5 rounded-md text-sm font-medium" {...props}>
+        {children}
+      </code>
+      {/* Recover links neutralized by older fact-checkers without rewriting
+          saved messages, activating code blocks or granting archive actions. */}
+      {recoverLocalReport && resolveReport?.(text) && (
+        <> <MarkdownLink href={text}>📄 Ouvrir le rapport</MarkdownLink></>
+      )}
+    </>
+  )
+}
+
 const components: Components = {
   h1: ({ children }) => (
     <h1 className="text-xl font-display font-medium text-theme-ink mt-4 mb-2 pb-2 border-b-2 border-theme-accent/30">
@@ -282,21 +324,7 @@ const components: Components = {
   td: ({ children }) => (
     <td className="px-4 py-2.5">{children}</td>
   ),
-  code: ({ className, children, ...props }) => {
-    // Après rehype-highlight, la classe devient "hljs language-x" → un simple
-    // startsWith('language-') raterait tous les blocs colorés. Les blocs SANS
-    // langage (``` nu) n'ont aucune classe : on les détecte au saut de ligne
-    // (un code inline n'en contient jamais) — fix du bug "bloc rendu en inline".
-    const isBlock = /language-|hljs/.test(className ?? '') || extractText(children).includes('\n')
-    if (isBlock) {
-      return <CodeBlock className={className} {...props}>{children}</CodeBlock>
-    }
-    return (
-      <code className="bg-theme-accent/10 text-theme-accent px-1.5 py-0.5 rounded-md text-sm font-medium" {...props}>
-        {children}
-      </code>
-    )
-  },
+  code: (props) => <MarkdownCode {...props} />,
   pre: ({ children }) => <>{children}</>,
   // HTML elements for rich reports
   div: ({ className, children, style, ...props }) => (
@@ -336,6 +364,7 @@ const historicalComponents: Components = {
   // Original content remains byte-for-byte available to copying/export. These
   // old links may target private IDs on THIS account, so none grant navigation.
   a: ({ children }) => <span>{children}</span>,
+  code: (props) => <MarkdownCode {...props} recoverLocalReport={false} />,
   button: ({ children }) => <span>{children}</span>,
   img: () => <UnavailableImage />,
 }
