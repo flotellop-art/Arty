@@ -18,6 +18,7 @@ import { Capacitor } from '@capacitor/core'
 import { postJsonNativeWithFallback } from './aiHttp'
 import { getValidAccessToken } from './googleAuth'
 import { getActiveUserId } from './userSession'
+import { storedLocalReportPath } from './localReportLink'
 import * as scoped from './scopedStorage'
 import * as storage from './storage'
 import { recordUsage } from './costTracker'
@@ -175,6 +176,7 @@ function extractHttpUrls(text: string): string[] {
 }
 
 function isArtyInternalUrl(value: string): boolean {
+  if (storedLocalReportPath(value)) return true
   try {
     const host = new URL(value).hostname.toLowerCase()
     return host === 'tryarty.com' ||

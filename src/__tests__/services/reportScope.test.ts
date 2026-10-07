@@ -22,4 +22,10 @@ describe('report storage remains with its captured identity', () => {
     await expect(getReport('r')).rejects.toThrow('Report cancelled')
     expect(mock.set).not.toHaveBeenCalled()
   })
+  it('does not decrypt another account report with the same requested id', async () => {
+    localStorage.setItem('arty-a-report-r', 'v2:encrypted')
+    mock.owner = 'b'
+    await expect(getReport('r')).resolves.toBeNull()
+    expect(mock.get).not.toHaveBeenCalled()
+  })
 })
