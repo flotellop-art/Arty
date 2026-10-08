@@ -25,6 +25,7 @@ describe('premium model classification stays aligned with exposed models', () =>
 
   it.each([
     'claude-haiku-4-5-20251001',
+    'claude-haiku-5-5',
     'gpt-5-mini',
     'gpt-5.5-mini',
     'gpt-5-nano',

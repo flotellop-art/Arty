@@ -376,9 +376,8 @@ export function needsThinking(message: string): ThinkingConfig {
 //
 // Niveaux d'effort valides : low/medium/high/max sur Opus 4.5→4.8 ET Sonnet 5.
 // `xhigh` existe sur Opus 4.7/4.8 et Sonnet 5 mais reste volontairement hors
-// type (non exploité — voir CDC sonnet-5). Haiku 4.5 ne supporte AUCUN effort
-// (400) → le garde-fou est côté anthropicClient (n'envoie jamais d'effort si
-// le modèle résolu est Haiku).
+// type (non exploité — voir CDC sonnet-5). anthropicClient fixe Haiku 5.5
+// à low et conserve le transport sans effort des anciens Haiku 4.5.
 export type ClaudeEffort = 'low' | 'medium' | 'high' | 'max'
 
 export interface ClaudeThinkingDirective {

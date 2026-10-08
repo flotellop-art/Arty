@@ -22,7 +22,7 @@ export const FREE_DAILY_LIMITS: Record<ModelFamily, number> = {
 // Familles de modèles que les utilisateurs free peuvent appeler. Tout le
 // reste (Sonnet, Opus, Mistral, Gemini, GPT) est verrouillé → 403.
 export const FREE_ALLOWED_MODELS: ReadonlyArray<string> = [
-  'claude-haiku-4-5-20251001',
+  'claude-haiku-5-5',
 ]
 
 export function modelFamilyFor(model: string): ModelFamily | null {

@@ -936,14 +936,12 @@ async function runWithTools(
         : resolveClaudeThinking(lastUserText, options?.reflectionLevel ?? 'auto', isPro)
     const ANTHROPIC_MODEL =
       options?.model || rd?.subModel || selectClaudeSubModel(lastUserText, thinking, isPrivateData, isPro)
-    // Garde-fou Haiku : effort/adaptive thinking renvoient 400 sur Haiku 4.5.
-    // selectClaudeSubModel ne renvoie Haiku QUE si thinking.enabled est false
-    // (message trivial) OU si le plan est free (verrouillé Haiku). Dans le 1er
-    // cas effort est déjà null ; le garde couvre le seul cas résiduel (un user
-    // free qui a réglé « Approfondi/Max ») → réflexion ignorée silencieusement.
+    // The promoted Haiku 5.5 uses the benchmarked adaptive/low setting,
+    // including forced and free calls. Legacy 4.5 still omits thinking.
     const isHaiku = ANTHROPIC_MODEL.includes('haiku')
-    const effortActive = thinking.enabled && !isHaiku
-    const effort = effortActive ? thinking.effort : null
+    const isHaiku55 = ANTHROPIC_MODEL === 'claude-haiku-5-5'
+    const effortActive = isHaiku55 || (thinking.enabled && !isHaiku)
+    const effort = isHaiku55 ? 'low' : effortActive ? thinking.effort : null
     // Sonnet 5.5 enables adaptive thinking when omitted. Bounded/fast calls
     // must explicitly avoid thinking before the first response. Keep this
     // configuration stable through every tool iteration.
@@ -1016,9 +1014,9 @@ async function runWithTools(
     // P0.9 — cumul des chars de tool_results de CE message (texte + base64).
     let toolContextChars = 0
     while (maxIterations-- > 0) {
-      // Haiku max output = 64000 tokens (API limit). Cap unconditionally.
+      // Keep the chat output budget bounded; legacy Haiku 4.5 caps at 64k.
       const maxTokens = options?.documentReadOnly && Number.isInteger(options.maxOutputTokens) && options.maxOutputTokens! >= 1 && options.maxOutputTokens! <= 8192
-        ? options.maxOutputTokens! : isHaiku ? 64000 : 65536
+        ? options.maxOutputTokens! : isHaiku && !isHaiku55 ? 64000 : 65536
       // Cache de l'historique : (re)pose le marqueur sur le dernier bloc à
       // CHAQUE itération (cf. lookback 20 blocs dans markLastBlockForCaching).
       markLastBlockForCaching(apiMessages)
@@ -1027,9 +1025,8 @@ async function runWithTools(
         max_tokens: maxTokens,
         // temperature/top_p/top_k ont été RETIRÉS de l'API de réflexion
         // moderne : les envoyer à Opus 4.8/4.7 (et Sonnet 5) renvoie 400.
-        // On ne les garde que pour Haiku, qui n'a pas de réflexion et accepte
-        // encore le sampling (modèle du plan free — comportement inchangé).
-        ...(isHaiku && { temperature: 0.7 }),
+        // Seul Haiku 4.5 conserve le sampling historique.
+        ...(isHaiku && !isHaiku55 && { temperature: 0.7 }),
         stream: true,
         system: systemBlocks,
         // N'inclus le champ `tools` que s'il est non-vide. La doc Anthropic
@@ -1069,10 +1066,8 @@ async function runWithTools(
         reportModel({
           model: servedModel,
           provider: 'claude',
-          // reflecting recalculé sur le modèle SERVI : un swap vers Haiku
-          // (trial) ne réfléchit pas — sans ce garde, le 🧠 resterait affiché
-          // à tort (revue Opus, retouche cosmétique).
-          reflecting: effortActive && !servedModel.toLowerCase().includes('haiku'),
+          // Haiku 5.5 may think at low effort; legacy 4.5 never does.
+          reflecting: servedModel === 'claude-haiku-5-5' || (effortActive && !servedModel.toLowerCase().includes('haiku')),
           confirmed: true,
           ...eventScope,
           ...(servedSubModelReason ? { subModelReason: servedSubModelReason } : {}),
@@ -1090,11 +1085,13 @@ async function runWithTools(
       // Coût attribué au modèle SERVI (F-1 : le local divergeait de D1 en
       // cas de substitution trial — le serveur enregistrait Haiku, ici Sonnet).
       try {
-        recordUsage(
-          servedModel || ANTHROPIC_MODEL,
-          inputTokens + cacheCreationTokens + Math.ceil(cacheReadTokens * 0.1),
-          outputTokens
-        )
+        const costModel = servedModel || ANTHROPIC_MODEL
+        if (costModel === 'claude-haiku-5-5') {
+          recordUsage(costModel, inputTokens + cacheCreationTokens * 1.25 + cacheReadTokens * 0.1,
+            outputTokens, inputTokens + cacheCreationTokens + cacheReadTokens)
+        } else {
+          recordUsage(costModel, inputTokens + cacheCreationTokens + Math.ceil(cacheReadTokens * 0.1), outputTokens)
+        }
       } catch {
         // Le tracking ne doit jamais casser le flux de réponse.
       }
@@ -1115,6 +1112,11 @@ async function runWithTools(
         throw new Error(i18n.t('errors.responseIncomplete'))
       }
       const hasToolUse = contentBlocks.some((b) => b.type === 'tool_use')
+      if (stopReason === 'pause_turn' && !hasToolUse) {
+        assertContentBlocksValid(contentBlocks)
+        apiMessages.push({ role: 'assistant', content: contentBlocks })
+        continue
+      }
       if (!hasToolUse || !options?.onToolCall || options.documentReadOnly || options.comparisonTextOnly) {
         onDone()
         return
@@ -1148,7 +1150,7 @@ async function runWithTools(
       apiMessages.push({ role: 'user', content: toolResults })
     }
 
-    onDone()
+    throw new Error(i18n.t('errors.responseIncomplete'))
   } catch (err) {
     // AbortError = Stop utilisateur : stopStreaming a déjà finalisé et démonté
     // le stream — ne rien rappeler. TOUT le reste doit atteindre onError :

@@ -72,6 +72,46 @@ export function alignBodyWithServedModel(body: string, servedModel: string): str
 function alignParsedBodyWithServedModel(parsed: Record<string, unknown>, servedModel: string): boolean {
   if (!servedModel.toLowerCase().includes('haiku')) return false
   let changed = false
+  if (servedModel === 'claude-haiku-5-5') {
+    for (const key of ['temperature', 'top_p', 'top_k']) {
+      if (key in parsed) { delete parsed[key]; changed = true }
+    }
+    const thinking = parsed.thinking as { type?: string } | undefined
+    // Preserve supported explicit modes (short auxiliaries use disabled).
+    if (!thinking || !['adaptive', 'disabled'].includes(thinking.type ?? '')) {
+      parsed.thinking = { type: 'adaptive' }; changed = true
+    }
+    const config = parsed.output_config as { effort?: string } | undefined
+    if (!config?.effort) {
+      parsed.output_config = { ...config, effort: 'low' }; changed = true
+    }
+    if (typeof parsed.max_tokens === 'number' && parsed.max_tokens > 128000) {
+      parsed.max_tokens = 128000; changed = true
+    }
+    // Arty tracks 5-minute cache writes. Normalize explicit TTLs before
+    // reservation and settlement so a 1-hour write cannot be undercharged.
+    const normalizeCache = (value: unknown) => {
+      if (Array.isArray(value)) { value.forEach(normalizeCache); return }
+      if (!value || typeof value !== 'object' || Array.isArray(value)) return
+      const block = value as Record<string, unknown>
+      const control = block.cache_control
+      if (control && typeof control === 'object' && !Array.isArray(control)) {
+        const cache = control as Record<string, unknown>
+        if (cache.ttl === '1h') { cache.ttl = '5m'; changed = true }
+      }
+      normalizeCache(block.content)
+      if (block.type === 'document') normalizeCache(block.source)
+    }
+    normalizeCache(parsed)
+    for (const key of ['system', 'tools']) {
+      if (Array.isArray(parsed[key])) parsed[key].forEach(normalizeCache)
+    }
+    if (Array.isArray(parsed.messages)) for (const message of parsed.messages) {
+      if (Array.isArray(message?.content)) message.content.forEach(normalizeCache)
+    }
+    return changed
+  }
+  if (!servedModel.startsWith('claude-haiku-4-5')) return false
   if ('thinking' in parsed) { delete parsed.thinking; changed = true }
   if ('output_config' in parsed) { delete parsed.output_config; changed = true }
   if (typeof parsed.max_tokens === 'number' && parsed.max_tokens > 64000) {
@@ -201,24 +241,17 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
 
   let modelName = typeof parsedBody.model === 'string' && parsedBody.model.length > 0 ? parsedBody.model : 'claude'
 
-  // Defense-in-depth: cap max_tokens for any Haiku request regardless of path.
-  // claude-haiku-4-5-20251001 hard limit = 64000 output tokens.
-  if (modelName.includes('haiku')) {
-    if (typeof parsedBody.max_tokens === 'number' && parsedBody.max_tokens > 64000) parsedBody.max_tokens = 64000
-  }
-
   // Trial : override silencieux du modèle vers Haiku si le modèle demandé
   // n'est pas autorisé. On ne retourne plus de 403 — on substitue le modèle
   // côté serveur pour garantir que les trials restent sur le tier gratuit
   // sans exposer d'erreur visible au client.
   if (!isByok && userPlan === 'trial' && !isModelAllowedInTrial(modelName)) {
-      parsedBody.model = 'claude-haiku-4-5-20251001'
-      // Haiku max_tokens = 64000 — cap pour éviter l'erreur 400
-      if (typeof parsedBody.max_tokens === 'number' && parsedBody.max_tokens > 64000) {
-        parsedBody.max_tokens = 64000
-      }
-      modelName = 'claude-haiku-4-5-20251001'
+      parsedBody.model = 'claude-haiku-5-5'
+      parsedBody.thinking = { type: 'adaptive' }
+      parsedBody.output_config = { effort: 'low' }
+      modelName = 'claude-haiku-5-5'
   }
+  alignParsedBodyWithServedModel(parsedBody, modelName)
 
   // Sans abo : si l'utilisateur a des crédits, il passe par son WALLET (n'importe
   // quel modèle, payé à l'usage) ; sinon le tier gratuit Haiku 10/jour (inchangé).

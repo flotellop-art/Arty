@@ -11,6 +11,7 @@ describe('parité tarifs client ↔ serveur — modèles de chat exposés', () =
   })
   const cases: Array<[string, number, number]> = [
     ['claude-haiku-4-5-20251001', 1, 5],
+    ['claude-haiku-5-5', 0.1, 0.5],
     ['claude-sonnet-5', 2, 10],
     ['claude-sonnet-5-5', 2, 10],
     ['claude-opus-5', 5, 25],

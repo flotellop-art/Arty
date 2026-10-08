@@ -18,6 +18,7 @@ vi.mock('../../services/apiBase', () => ({ apiUrl: (path: string) => path }))
 const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite') as typeof import('node:sqlite')
 let raw: SQLiteDatabase, env: Env, providerCalls: number, replies: number[], attemptedUrls: string[]
 let replacementId: string
+let stopReason: string
 const conversation = (): Conversation => ({ id: 'public-memory-roundtrip', title: 'Synthetic', createdAt: 1, updatedAt: 1,
   messages: [1, 2, 3].map(n => ({ id: `m${n}`, role: 'user', content: 'Préférence synthétique durable. '.repeat(6), timestamp: n })) })
 
@@ -37,7 +38,7 @@ beforeEach(async () => {
     }
   } } as unknown as D1Database
   env = { DB: db, GOOGLE_CLIENT_ID: 'synthetic-client', ANTHROPIC_API_KEY: 'synthetic-server-key' } as Env
-  providerCalls = 0; replies = []; attemptedUrls = []; replacementId = 'lm-not-sent'
+  providerCalls = 0; replies = []; attemptedUrls = []; replacementId = 'lm-not-sent'; stopReason = 'end_turn'
   vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input)
     attemptedUrls.push(url)
@@ -50,7 +51,7 @@ beforeEach(async () => {
     })
     if (url === 'https://api.anthropic.com/v1/messages') {
       providerCalls++
-      return Response.json({ content: [{ type: 'text', text: JSON.stringify({
+      return Response.json({ model: 'claude-haiku-5-5', stop_reason: stopReason, content: [{ type: 'text', text: JSON.stringify({
         add: [{ fact: 'Nouveau souvenir synthétique' }], replace: [{ id: replacementId, fact: 'Remplacement synthétique' }],
       }) }], usage: { input_tokens: 10, output_tokens: 2 } })
     }
@@ -60,6 +61,13 @@ beforeEach(async () => {
 afterEach(() => { raw?.close(); vi.restoreAllMocks(); vi.unstubAllGlobals() })
 
 describe('new memory client → unchanged public handler → SQL → ciphertext → reload', () => {
+  it.each(['max_tokens','refusal','pause_turn'])('keeps existing memory when complete JSON arrives on %s', async stop => {
+    stopReason = stop
+    const fact = await memory.addFact('Ancien souvenir synthétique'), cipher = scoped.getItem('local-memory-facts')
+    await maybeExtractMemory(conversation())
+    expect(replies).toEqual([502]); expect(providerCalls).toBe(1)
+    expect(memory.getAll()).toEqual([fact]); expect(scoped.getItem('local-memory-facts')).toBe(cipher)
+  })
   it('keeps encrypted A and adds B without any subsidy policy or new API contract', async () => {
     const a = await memory.addFact('Ancien souvenir synthétique')
     await maybeExtractMemory(conversation())

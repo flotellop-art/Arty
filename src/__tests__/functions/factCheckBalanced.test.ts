@@ -21,6 +21,13 @@ beforeEach(() => { vi.clearAllMocks(); auth.mockResolvedValue({ email: 'test@exa
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals() })
 
 describe('bounded balanced fact-check', () => {
+  it('uses Haiku 5.5 low with the actual 3000 token verdict budget', async () => {
+    http.mockResolvedValueOnce(anthropic({ model: 'claude-haiku-5-5' }))
+    expect((await call('haiku')).status).toBe(200)
+    expect(JSON.parse(http.mock.calls[0]![1].body)).toMatchObject({
+      model:'claude-haiku-5-5', max_tokens:3000, thinking:{type:'adaptive'}, output_config:{effort:'low'},
+    })
+  })
   it('attaches receipts to a complete verdict after a preamble in the same text block', async () => {
     http.mockResolvedValueOnce(anthropic({ content: [{ type: 'text', text: 'Voici le résultat demandé :\n```json\n' + JSON.stringify({ overall_confidence: 'high', claims: [{ claim: 'Fait', verdict: 'verified', explanation: 'À vérifier.' }] }) + '\n```' }] }))
     const result = await (await call('haiku')).json()
@@ -102,7 +109,7 @@ describe('bounded balanced fact-check', () => {
     expect(result.content).toEqual([{ type: 'text', text: '{"overall_confidence":"high","claims":[]}' }])
     expect(result.completion).toBe('complete')
   })
-  it.each(['haiku', 'sonnet'])('sets an explicit Sonnet effort without changing Haiku (%s)', async tier => {
+  it.each(['haiku', 'sonnet'])('sets the promoted model effort explicitly (%s)', async tier => {
     http.mockResolvedValueOnce(anthropic())
     expect((await call(tier)).status).toBe(200)
     const body = JSON.parse(http.mock.calls[0]![1].body)
@@ -112,7 +119,9 @@ describe('bounded balanced fact-check', () => {
       expect(body.output_config).toEqual({ effort: 'medium' })
       expect(body.tools).toEqual([expect.objectContaining({ type: 'web_search_20260318', max_uses: 3, allowed_callers: ['direct'] })])
     } else {
-      expect(body.thinking).toBeUndefined(); expect(body.output_config).toBeUndefined(); expect(body.tools).toBeUndefined()
+      expect(body.model).toBe('claude-haiku-5-5')
+      expect(body.thinking).toEqual({ type: 'adaptive' })
+      expect(body.output_config).toEqual({ effort: 'low' }); expect(body.tools).toBeUndefined()
     }
   })
   it('reaches Gemini after both Anthropic calls time out, with one initial quota debit', async () => {

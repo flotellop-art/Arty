@@ -1314,7 +1314,7 @@
       "description": "Vérifie les claims factuels de chaque réponse",
       "off": "Désactivé",
       "auto": "Auto (recommandé)",
-      "haiku": "Toujours rapide (Haiku 4.5)",
+    "haiku": "Toujours rapide (Haiku 5.5)",
       "sonnet": "Toujours strict (Sonnet 5.5)",
       "costAuto": "Premier contrôle rapide, puis lecture des preuves si nécessaire. Les corrections sensibles exigent un autre modèle. Coût et durée variables.",
       "costHaiku": "Premier contrôle seulement : les corrections sans preuve contrôlée restent des propositions.",

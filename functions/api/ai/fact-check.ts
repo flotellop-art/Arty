@@ -44,7 +44,7 @@ import { admitEvidenceWork, evidenceClaims, initialReviews, readEvidencePage, sa
 // Sonnet ne partait jamais). Cause n°1 des échecs remontés en juillet 2026.
 const TIERS = {
   haiku: {
-    model: 'claude-haiku-4-5-20251001',
+    model: 'claude-haiku-5-5',
     maxTokens: 3000,
     webSearch: false,
     dailyCap: 60,
@@ -273,7 +273,9 @@ function anthropicBody(
     // Keep the independent sensitive challenge strong; ordinary checks use medium.
     ...(model === FACT_CHECK_FALLBACK_MODEL
       ? { thinking: { type: 'adaptive', display: 'omitted' }, output_config: { effort } }
-      : {}),
+      : model === TIERS.haiku.model
+        ? { thinking: { type: 'adaptive' }, output_config: { effort: 'low' } }
+        : {}),
     ...(webSearch
       ? {
           tools: [{

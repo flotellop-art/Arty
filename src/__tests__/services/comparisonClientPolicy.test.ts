@@ -86,7 +86,7 @@ describe('Real clients, simulated HTTP: text-only and attribution', () => {
     expect(JSON.parse((fetch.mock.calls[0] as unknown as [string, RequestInit])[1].body as string).max_tokens).toBe(65536)
   })
   it.each(providers)('%s preserves requested model when the provider reports a substitution', async provider => {
-    const substituted = { claude: 'claude-haiku-4-5-20251001', mistral: 'mistral-medium-2505', gemini: 'gemini-3.5-flash', openai: 'gpt-5' }[provider]
+    const substituted = { claude: 'claude-haiku-5-5', mistral: 'mistral-medium-2505', gemini: 'gemini-3.5-flash', openai: 'gpt-5' }[provider]
     vi.stubGlobal('fetch', vi.fn(async () => new Response(sse(provider, substituted))))
     const onModelUsed = vi.fn()
     await new Promise<void>((resolve, reject) => start(provider, { onModelUsed }, resolve, reject))

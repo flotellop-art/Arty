@@ -1,0 +1,901 @@
+{
+  "date": "2026-10-08",
+  "workspaceCandidate": "045453f2767dac0d768b113656a21efd5cc5f0c5",
+  "scope": "Synthetic direct-provider repeated comparison, no Arty authenticated or Android run",
+  "cells": 260,
+  "providerCalls": 300,
+  "allHTTP200": true,
+  "transportErrors": 0,
+  "incompleteResponses": 0,
+  "startedAt": "2026-10-08T05:11:25.947Z",
+  "endedAt": "2026-10-08T05:16:06.582Z",
+  "technicalReservationLimitUSD": 6,
+  "reservedUSD": 5.858571875,
+  "estimatedReportedUsageUSD": 0.7326784099999999,
+  "costCorrection": "OpenAI cache writes repriced at 1.25x input; raw initial costs preserved",
+  "jsonRecoveryCorrection": [
+    {
+      "model": "claude-haiku-4-5-20251001",
+      "caseId": "calculation-B",
+      "repetition": 1
+    }
+  ],
+  "summary": [
+    {
+      "model": "claude-haiku-4-5-20251001",
+      "overall": {
+        "cells": 52,
+        "strictPasses": 0,
+        "semanticPasses": 42,
+        "jsonOnly": 0,
+        "criticalCells": 4
+      },
+      "primary": {
+        "cells": 40,
+        "strictPasses": 0,
+        "semanticPasses": 34,
+        "jsonOnly": 0,
+        "criticalCells": 0
+      },
+      "stablePrimaryContentCases": 17,
+      "stablePrimaryStrictCases": 0,
+      "cohorts": {
+        "original_unambiguous": {
+          "cells": 28,
+          "strictPasses": 0,
+          "semanticPasses": 24,
+          "jsonOnly": 0,
+          "criticalCells": 0
+        },
+        "legacy_ambiguous": {
+          "cells": 12,
+          "strictPasses": 0,
+          "semanticPasses": 8,
+          "jsonOnly": 0,
+          "criticalCells": 4
+        },
+        "clarified": {
+          "cells": 12,
+          "strictPasses": 0,
+          "semanticPasses": 10,
+          "jsonOnly": 0,
+          "criticalCells": 0
+        }
+      },
+      "runtime": {
+        "cells": 52,
+        "strictPasses": 0,
+        "semanticPasses": 41,
+        "formatConforming": 0,
+        "criticalCells": 4,
+        "transportErrors": 0,
+        "incomplete": 0,
+        "estimatedUSD": 0.4225429999999999,
+        "medianMs": 2300,
+        "p95Ms": 3728
+      },
+      "costs": {
+        "inputTokens": 370393,
+        "outputTokens": 10430,
+        "cachedTokens": 0,
+        "cacheCreationTokens": 0,
+        "reportedThinkingTokens": 0,
+        "estimatedUSD": 0.4225429999999999,
+        "uncachedProjectionUSD": 0.4225429999999999
+      },
+      "failures": [
+        {
+          "caseId": "table-A",
+          "repetition": 1,
+          "cohort": "original_unambiguous",
+          "errors": [
+            "totalHT"
+          ],
+          "critical": [],
+          "answer": {
+            "totalHT": 1999.5,
+            "included": [
+              "L1",
+              "L3"
+            ],
+            "excluded": [
+              "L2"
+            ]
+          }
+        },
+        {
+          "caseId": "calculation-A",
+          "repetition": 1,
+          "cohort": "original_unambiguous",
+          "errors": [
+            "markupOnSalesPercent"
+          ],
+          "critical": [],
+          "answer": {
+            "salesHT": 2025.84,
+            "costHT": 1453.32,
+            "margin": 572.52,
+            "TTC": 2228.42,
+            "markupOnSalesPercent": 28.27,
+            "markupOnCostPercent": 39.39
+          }
+        },
+        {
+          "caseId": "conflict-A",
+          "repetition": 1,
+          "cohort": "legacy_ambiguous",
+          "errors": [
+            "conflict",
+            "requestedRate",
+            "sourceIds"
+          ],
+          "critical": [
+            "conflict"
+          ],
+          "answer": {
+            "conflict": true,
+            "requestedRate": null,
+            "sourceIds": [
+              "S5",
+              "S6"
+            ]
+          }
+        },
+        {
+          "caseId": "units-B",
+          "repetition": 1,
+          "cohort": "legacy_ambiguous",
+          "errors": [
+            "approximationAcceptable"
+          ],
+          "critical": [
+            "approximationAcceptable"
+          ],
+          "answer": {
+            "exactValueWrong": true,
+            "correctValue": 1000,
+            "correctUnit": "g",
+            "approximationAcceptable": false
+          }
+        },
+        {
+          "caseId": "conflict-A-clarified",
+          "repetition": 1,
+          "cohort": "clarified",
+          "errors": [
+            "requestedRate",
+            "sourceIds"
+          ],
+          "critical": [],
+          "answer": {
+            "conflict": false,
+            "requestedRate": null,
+            "sourceIds": []
+          }
+        },
+        {
+          "caseId": "table-A",
+          "repetition": 2,
+          "cohort": "original_unambiguous",
+          "errors": [
+            "totalHT"
+          ],
+          "critical": [],
+          "answer": {
+            "totalHT": 1999.5,
+            "included": [
+              "L1",
+              "L3"
+            ],
+            "excluded": [
+              "L2"
+            ]
+          }
+        },
+        {
+          "caseId": "calculation-A",
+          "repetition": 2,
+          "cohort": "original_unambiguous",
+          "errors": [
+            "markupOnSalesPercent",
+            "markupOnCostPercent"
+          ],
+          "critical": [],
+          "answer": {
+            "salesHT": 2025.84,
+            "costHT": 1453.32,
+            "margin": 572.52,
+            "TTC": 2228.42,
+            "markupOnSalesPercent": 28.27,
+            "markupOnCostPercent": 39.38
+          }
+        },
+        {
+          "caseId": "conflict-A",
+          "repetition": 2,
+          "cohort": "legacy_ambiguous",
+          "errors": [
+            "conflict",
+            "requestedRate",
+            "sourceIds"
+          ],
+          "critical": [
+            "conflict"
+          ],
+          "answer": {
+            "conflict": true,
+            "requestedRate": null,
+            "sourceIds": [
+              "S5",
+              "S6"
+            ]
+          }
+        },
+        {
+          "caseId": "units-B",
+          "repetition": 2,
+          "cohort": "legacy_ambiguous",
+          "errors": [
+            "approximationAcceptable"
+          ],
+          "critical": [
+            "approximationAcceptable"
+          ],
+          "answer": {
+            "exactValueWrong": true,
+            "correctValue": 1000,
+            "correctUnit": "g",
+            "approximationAcceptable": false
+          }
+        },
+        {
+          "caseId": "conflict-A-clarified",
+          "repetition": 2,
+          "cohort": "clarified",
+          "errors": [
+            "requestedRate",
+            "sourceIds"
+          ],
+          "critical": [],
+          "answer": {
+            "conflict": false,
+            "requestedRate": null,
+            "sourceIds": []
+          }
+        }
+      ]
+    },
+    {
+      "model": "claude-haiku-5-5",
+      "overall": {
+        "cells": 52,
+        "strictPasses": 48,
+        "semanticPasses": 49,
+        "jsonOnly": 51,
+        "criticalCells": 2
+      },
+      "primary": {
+        "cells": 40,
+        "strictPasses": 40,
+        "semanticPasses": 40,
+        "jsonOnly": 40,
+        "criticalCells": 0
+      },
+      "stablePrimaryContentCases": 20,
+      "stablePrimaryStrictCases": 20,
+      "cohorts": {
+        "original_unambiguous": {
+          "cells": 28,
+          "strictPasses": 28,
+          "semanticPasses": 28,
+          "jsonOnly": 28,
+          "criticalCells": 0
+        },
+        "legacy_ambiguous": {
+          "cells": 12,
+          "strictPasses": 8,
+          "semanticPasses": 9,
+          "jsonOnly": 11,
+          "criticalCells": 2
+        },
+        "clarified": {
+          "cells": 12,
+          "strictPasses": 12,
+          "semanticPasses": 12,
+          "jsonOnly": 12,
+          "criticalCells": 0
+        }
+      },
+      "runtime": {
+        "cells": 52,
+        "strictPasses": 48,
+        "semanticPasses": 49,
+        "formatConforming": 51,
+        "criticalCells": 2,
+        "transportErrors": 0,
+        "incomplete": 0,
+        "estimatedUSD": 0.05506060000000001,
+        "medianMs": 1515,
+        "p95Ms": 2798
+      },
+      "costs": {
+        "inputTokens": 490401,
+        "outputTokens": 12041,
+        "cachedTokens": 0,
+        "cacheCreationTokens": 0,
+        "reportedThinkingTokens": 9266,
+        "estimatedUSD": 0.05506060000000001,
+        "uncachedProjectionUSD": 0.05506060000000001
+      },
+      "failures": [
+        {
+          "caseId": "units-A",
+          "repetition": 1,
+          "cohort": "legacy_ambiguous",
+          "errors": [
+            "exactValueWrong"
+          ],
+          "critical": [
+            "exactValueWrong"
+          ],
+          "answer": {
+            "exactValueWrong": false,
+            "correctValue": 299792458,
+            "correctUnit": "m/s",
+            "approximationAcceptable": true
+          }
+        },
+        {
+          "caseId": "units-A",
+          "repetition": 2,
+          "cohort": "legacy_ambiguous",
+          "errors": [
+            "exactValueWrong"
+          ],
+          "critical": [
+            "exactValueWrong"
+          ],
+          "answer": {
+            "exactValueWrong": false,
+            "correctValue": 299792458,
+            "correctUnit": "m/s",
+            "approximationAcceptable": true
+          }
+        },
+        {
+          "caseId": "conflict-A",
+          "repetition": 2,
+          "cohort": "legacy_ambiguous",
+          "errors": [
+            "sourceIds"
+          ],
+          "critical": [],
+          "answer": {
+            "conflict": false,
+            "requestedRate": 14,
+            "sourceIds": [
+              "S5",
+              "S6"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "model": "gpt-5.6-luna",
+      "overall": {
+        "cells": 52,
+        "strictPasses": 43,
+        "semanticPasses": 43,
+        "jsonOnly": 52,
+        "criticalCells": 3
+      },
+      "primary": {
+        "cells": 40,
+        "strictPasses": 38,
+        "semanticPasses": 38,
+        "jsonOnly": 40,
+        "criticalCells": 0
+      },
+      "stablePrimaryContentCases": 19,
+      "stablePrimaryStrictCases": 19,
+      "cohorts": {
+        "original_unambiguous": {
+          "cells": 28,
+          "strictPasses": 26,
+          "semanticPasses": 26,
+          "jsonOnly": 28,
+          "criticalCells": 0
+        },
+        "legacy_ambiguous": {
+          "cells": 12,
+          "strictPasses": 5,
+          "semanticPasses": 5,
+          "jsonOnly": 12,
+          "criticalCells": 3
+        },
+        "clarified": {
+          "cells": 12,
+          "strictPasses": 12,
+          "semanticPasses": 12,
+          "jsonOnly": 12,
+          "criticalCells": 0
+        }
+      },
+      "runtime": {
+        "cells": 52,
+        "strictPasses": 43,
+        "semanticPasses": 43,
+        "formatConforming": 52,
+        "criticalCells": 3,
+        "transportErrors": 0,
+        "incomplete": 0,
+        "estimatedUSD": 0.009942240000000001,
+        "medianMs": 1151,
+        "p95Ms": 2500
+      },
+      "costs": {
+        "inputTokens": 284004,
+        "outputTokens": 1672,
+        "cachedTokens": 271472,
+        "cacheCreationTokens": 12352,
+        "reportedThinkingTokens": 0,
+        "estimatedUSD": 0.010559840000000003,
+        "uncachedProjectionUSD": 0.0588072
+      },
+      "failures": [
+        {
+          "caseId": "citation-A",
+          "repetition": 1,
+          "cohort": "legacy_ambiguous",
+          "errors": [
+            "speakerCorrect"
+          ],
+          "critical": [
+            "speakerCorrect"
+          ],
+          "answer": {
+            "quote": "Le phare mesure 324 m après mars 2022.",
+            "speakerCorrect": true,
+            "documentedHeightM": 330,
+            "sourceIds": [
+              "S2"
+            ]
+          }
+        },
+        {
+          "caseId": "calculation-A",
+          "repetition": 1,
+          "cohort": "original_unambiguous",
+          "errors": [
+            "markupOnCostPercent"
+          ],
+          "critical": [],
+          "answer": {
+            "salesHT": 2025.84,
+            "costHT": 1453.32,
+            "margin": 572.52,
+            "TTC": 2228.42,
+            "markupOnSalesPercent": 28.26,
+            "markupOnCostPercent": 39.4
+          }
+        },
+        {
+          "caseId": "conflict-A",
+          "repetition": 1,
+          "cohort": "legacy_ambiguous",
+          "errors": [
+            "requestedRate",
+            "sourceIds"
+          ],
+          "critical": [],
+          "answer": {
+            "conflict": false,
+            "requestedRate": null,
+            "sourceIds": [
+              "S5",
+              "S6"
+            ]
+          }
+        },
+        {
+          "caseId": "conflict-B",
+          "repetition": 1,
+          "cohort": "legacy_ambiguous",
+          "errors": [
+            "sourceIds"
+          ],
+          "critical": [],
+          "answer": {
+            "conflict": true,
+            "requestedRate": null,
+            "sourceIds": []
+          }
+        },
+        {
+          "caseId": "citation-A",
+          "repetition": 2,
+          "cohort": "legacy_ambiguous",
+          "errors": [
+            "speakerCorrect"
+          ],
+          "critical": [
+            "speakerCorrect"
+          ],
+          "answer": {
+            "quote": "Le phare mesure 324 m après mars 2022.",
+            "speakerCorrect": true,
+            "documentedHeightM": 330,
+            "sourceIds": [
+              "S2"
+            ]
+          }
+        },
+        {
+          "caseId": "calculation-A",
+          "repetition": 2,
+          "cohort": "original_unambiguous",
+          "errors": [
+            "markupOnSalesPercent",
+            "markupOnCostPercent"
+          ],
+          "critical": [],
+          "answer": {
+            "salesHT": 2025.84,
+            "costHT": 1453.32,
+            "margin": 572.52,
+            "TTC": 2228.42,
+            "markupOnSalesPercent": 28.27,
+            "markupOnCostPercent": 39.41
+          }
+        },
+        {
+          "caseId": "conflict-A",
+          "repetition": 2,
+          "cohort": "legacy_ambiguous",
+          "errors": [
+            "requestedRate",
+            "sourceIds"
+          ],
+          "critical": [],
+          "answer": {
+            "conflict": false,
+            "requestedRate": null,
+            "sourceIds": []
+          }
+        },
+        {
+          "caseId": "citation-B",
+          "repetition": 2,
+          "cohort": "legacy_ambiguous",
+          "errors": [
+            "speakerCorrect"
+          ],
+          "critical": [
+            "speakerCorrect"
+          ],
+          "answer": {
+            "quote": "La tour mesure 80 m en 2018.",
+            "speakerCorrect": true,
+            "documentedHeightM": 82,
+            "sourceIds": [
+              "S2"
+            ]
+          }
+        },
+        {
+          "caseId": "conflict-B",
+          "repetition": 2,
+          "cohort": "legacy_ambiguous",
+          "errors": [
+            "sourceIds"
+          ],
+          "critical": [],
+          "answer": {
+            "conflict": true,
+            "requestedRate": null,
+            "sourceIds": []
+          }
+        }
+      ]
+    },
+    {
+      "model": "gpt-6-luna",
+      "overall": {
+        "cells": 52,
+        "strictPasses": 47,
+        "semanticPasses": 47,
+        "jsonOnly": 52,
+        "criticalCells": 3
+      },
+      "primary": {
+        "cells": 40,
+        "strictPasses": 39,
+        "semanticPasses": 39,
+        "jsonOnly": 40,
+        "criticalCells": 0
+      },
+      "stablePrimaryContentCases": 19,
+      "stablePrimaryStrictCases": 19,
+      "cohorts": {
+        "original_unambiguous": {
+          "cells": 28,
+          "strictPasses": 27,
+          "semanticPasses": 27,
+          "jsonOnly": 28,
+          "criticalCells": 0
+        },
+        "legacy_ambiguous": {
+          "cells": 12,
+          "strictPasses": 8,
+          "semanticPasses": 8,
+          "jsonOnly": 12,
+          "criticalCells": 3
+        },
+        "clarified": {
+          "cells": 12,
+          "strictPasses": 12,
+          "semanticPasses": 12,
+          "jsonOnly": 12,
+          "criticalCells": 0
+        }
+      },
+      "runtime": {
+        "cells": 52,
+        "strictPasses": 47,
+        "semanticPasses": 47,
+        "formatConforming": 52,
+        "criticalCells": 3,
+        "transportErrors": 0,
+        "incomplete": 0,
+        "estimatedUSD": 0.0048099200000000005,
+        "medianMs": 1656,
+        "p95Ms": 3149
+      },
+      "costs": {
+        "inputTokens": 284004,
+        "outputTokens": 1684,
+        "cachedTokens": 271472,
+        "cacheCreationTokens": 12352,
+        "reportedThinkingTokens": 0,
+        "estimatedUSD": 0.005118719999999999,
+        "uncachedProjectionUSD": 0.029242399999999998
+      },
+      "failures": [
+        {
+          "caseId": "citation-A",
+          "repetition": 1,
+          "cohort": "legacy_ambiguous",
+          "errors": [
+            "speakerCorrect"
+          ],
+          "critical": [
+            "speakerCorrect"
+          ],
+          "answer": {
+            "quote": "Le phare mesure 324 m après mars 2022.",
+            "speakerCorrect": true,
+            "documentedHeightM": 330,
+            "sourceIds": [
+              "S2"
+            ]
+          }
+        },
+        {
+          "caseId": "calculation-A",
+          "repetition": 1,
+          "cohort": "original_unambiguous",
+          "errors": [
+            "markupOnSalesPercent"
+          ],
+          "critical": [],
+          "answer": {
+            "salesHT": 2025.84,
+            "costHT": 1453.32,
+            "margin": 572.52,
+            "TTC": 2228.42,
+            "markupOnSalesPercent": 28.28,
+            "markupOnCostPercent": 39.39
+          }
+        },
+        {
+          "caseId": "citation-A",
+          "repetition": 2,
+          "cohort": "legacy_ambiguous",
+          "errors": [
+            "speakerCorrect"
+          ],
+          "critical": [
+            "speakerCorrect"
+          ],
+          "answer": {
+            "quote": "Le phare mesure 324 m après mars 2022.",
+            "speakerCorrect": true,
+            "documentedHeightM": 330,
+            "sourceIds": [
+              "S2"
+            ]
+          }
+        },
+        {
+          "caseId": "conflict-A",
+          "repetition": 2,
+          "cohort": "legacy_ambiguous",
+          "errors": [
+            "requestedRate"
+          ],
+          "critical": [],
+          "answer": {
+            "conflict": false,
+            "requestedRate": null,
+            "sourceIds": [
+              "S5"
+            ]
+          }
+        },
+        {
+          "caseId": "citation-B",
+          "repetition": 2,
+          "cohort": "legacy_ambiguous",
+          "errors": [
+            "speakerCorrect"
+          ],
+          "critical": [
+            "speakerCorrect"
+          ],
+          "answer": {
+            "quote": "La tour mesure 80 m en 2018.",
+            "speakerCorrect": true,
+            "documentedHeightM": 82,
+            "sourceIds": [
+              "S2"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "model": "gemini-3.8-flash",
+      "overall": {
+        "cells": 52,
+        "strictPasses": 50,
+        "semanticPasses": 50,
+        "jsonOnly": 52,
+        "criticalCells": 0
+      },
+      "primary": {
+        "cells": 40,
+        "strictPasses": 40,
+        "semanticPasses": 40,
+        "jsonOnly": 40,
+        "criticalCells": 0
+      },
+      "stablePrimaryContentCases": 20,
+      "stablePrimaryStrictCases": 20,
+      "cohorts": {
+        "original_unambiguous": {
+          "cells": 28,
+          "strictPasses": 28,
+          "semanticPasses": 28,
+          "jsonOnly": 28,
+          "criticalCells": 0
+        },
+        "legacy_ambiguous": {
+          "cells": 12,
+          "strictPasses": 10,
+          "semanticPasses": 10,
+          "jsonOnly": 12,
+          "criticalCells": 0
+        },
+        "clarified": {
+          "cells": 12,
+          "strictPasses": 12,
+          "semanticPasses": 12,
+          "jsonOnly": 12,
+          "criticalCells": 0
+        }
+      },
+      "runtime": {
+        "cells": 52,
+        "strictPasses": 50,
+        "semanticPasses": 50,
+        "formatConforming": 52,
+        "criticalCells": 0,
+        "transportErrors": 0,
+        "incomplete": 0,
+        "estimatedUSD": 0.23939625000000003,
+        "medianMs": 2577,
+        "p95Ms": 7972
+      },
+      "costs": {
+        "inputTokens": 297570,
+        "outputTokens": 4325,
+        "cachedTokens": 0,
+        "cacheCreationTokens": 0,
+        "reportedThinkingTokens": 2693,
+        "estimatedUSD": 0.23939625000000003,
+        "uncachedProjectionUSD": 0.23939625000000003
+      },
+      "failures": [
+        {
+          "caseId": "units-B",
+          "repetition": 1,
+          "cohort": "legacy_ambiguous",
+          "errors": [
+            "correctValue",
+            "correctUnit"
+          ],
+          "critical": [],
+          "answer": {
+            "exactValueWrong": true,
+            "correctValue": 1,
+            "correctUnit": "kg",
+            "approximationAcceptable": true
+          }
+        },
+        {
+          "caseId": "units-B",
+          "repetition": 2,
+          "cohort": "legacy_ambiguous",
+          "errors": [
+            "correctValue",
+            "correctUnit"
+          ],
+          "critical": [],
+          "answer": {
+            "exactValueWrong": true,
+            "correctValue": 1,
+            "correctUnit": "kg",
+            "approximationAcceptable": true
+          }
+        }
+      ]
+    }
+  ],
+  "files": [
+    {
+      "path": "docs/evaluations/2026-10-08-small-model-protocol.json",
+      "sha256": "e75c9a101c8fc6972a695ad70ef65a776e50ee8bb869eb5dc2d41aa18745ec91"
+    },
+    {
+      "path": ".playwright-mcp/competence-20261008/run/started.json",
+      "sha256": "2fddc5e5945a50611b178c7c204afee30354372aa46db37c0655049aaff45601"
+    },
+    {
+      "path": ".playwright-mcp/competence-20261008/run/protocol.json",
+      "sha256": "e75c9a101c8fc6972a695ad70ef65a776e50ee8bb869eb5dc2d41aa18745ec91"
+    },
+    {
+      "path": ".playwright-mcp/competence-20261008/run/results.jsonl",
+      "sha256": "4a6a18eaae38fa22c2d83acfa6f41f5e67674a5fc207867fcfa08631c2a153cd"
+    },
+    {
+      "path": ".playwright-mcp/competence-20261008/run/summary.json",
+      "sha256": "574365ccad8cfd46472968f8a7c1ebca8d6c956f58e197f081bcdcaa714b76a0"
+    },
+    {
+      "path": ".playwright-mcp/competence-20261008/run/audited.json",
+      "sha256": "e24711d4f238de3f80749a1a89c55c70261478fc234376510395ade8888d22f5"
+    },
+    {
+      "path": ".playwright-mcp/competence-20261008/run/audited-final.json",
+      "sha256": "b474e82aa2853be9196e1d84a6a7a403e7dda4d399a799ddfd8fc6f0749eb640"
+    },
+    {
+      "path": ".playwright-mcp/competence-20261008/run/evaluate-small-models.executed.mjs",
+      "sha256": "17ce6c101522af0666c5d0e8b19c484e572ef7dbe8210a70de164d4c5d653b5d"
+    },
+    {
+      "path": "scripts/evaluate-small-models.mjs",
+      "sha256": "835628b0ecbf0134146070fd6a33de7502f248ea3d559af00ec1edddd241a746"
+    },
+    {
+      "path": "scripts/audit-small-model-evaluation.mjs",
+      "sha256": "93e53322e876214e12ac30706ebd6527b65b0e14a9c1503eb412fd35a9186d10"
+    },
+    {
+      "path": "scripts/prepare-small-model-retest.mjs",
+      "sha256": "c7e24c3cc90529e6119fd771314fe427fbdafb464edf9daa5321211bb0ff1f56"
+    }
+  ]
+}

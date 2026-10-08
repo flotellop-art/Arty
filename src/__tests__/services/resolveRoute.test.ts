@@ -404,7 +404,7 @@ describe('resolveRoute — sous-décision Claude sur le texte ORIGINAL', () => {
   it('plan free sans crédits → Haiku avec raison plan_locked_haiku', () => {
     const d = resolveRoute(input({ availability: NONE, plan: FREE }))
     expect(d.provider).toBe('claude')
-    expect(d.subModel).toBe('claude-haiku-4-5-20251001')
+    expect(d.subModel).toBe('claude-haiku-5-5')
     expect(d.subModelReason?.code).toBe('plan_locked_haiku')
   })
 

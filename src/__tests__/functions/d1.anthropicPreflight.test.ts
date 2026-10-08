@@ -126,8 +126,7 @@ describe('Anthropic preflight before every funding mutation — real local D1', 
     expect(response.status).toBe(200)
     await response.text(); await Promise.all(background)
     if (path === 'google' || path === 'otp') {
-      expect(sent[0].body).toEqual({ model: MODEL, max_tokens: 64000, stream: false,
-        tools: [body.tools[1]], messages: body.messages })
+      expect(sent[0].body).toEqual({ ...body, model: 'claude-haiku-5-5', output_config: { effort: 'low' } })
     } else expect(sent[0].body).toEqual(body)
   })
   it('refuses oversized declared input before trial consumption', async () => {

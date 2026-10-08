@@ -9,7 +9,7 @@ describe('contextual comparison modal focus', () => {
   it('only the top review owns Escape; Tab recovers from its removed focus target while documents are pending', () => {
     const cancel = vi.fn(), answer = vi.fn(), start = vi.fn(async () => null)
     const selection = { sourceId: 'source', provider: 'anthropic' as const, question: 'FIRST QUESTION', busy: false,
-      panels: [{ id: 'a', provider: 'anthropic' as const, modelId: 'claude-haiku-4-5' }, { id: 'b', provider: 'anthropic' as const, modelId: 'claude-sonnet-5-5' }] }
+      panels: [{ id: 'a', provider: 'anthropic' as const, modelId: 'claude-haiku-5-5' }, { id: 'b', provider: 'anthropic' as const, modelId: 'claude-sonnet-5-5' }] }
     const controller = { selection, cancel, start, getAccess: () => null, getQuota: () => ({ key: 'compare.context.quotaUnknown' }) } as unknown as ReturnType<typeof useContextualComparisons>
     const request = { kind: 'confirm' as const, provider: 'claude' as const, question: 'FIRST QUESTION', systemPrompt: 'RULES', historyMessages: 1, files: [], textChars: 12, binaryBytes: 0, context: null,
       comparisonModels: ['Haiku', 'Sonnet'] as [string, string] }

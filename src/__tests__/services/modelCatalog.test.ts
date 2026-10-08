@@ -11,7 +11,7 @@ import { createModelReporter, formatModelName, getLastModelAttribution } from '.
 const paid = [...new Set(TEXT_MODELS.map(m => m.family))] as PlanStatus['allowedFamilies']
 const plan = (extra: Partial<PlanStatus> = {}): PlanStatus => ({ plan: 'free', allowedFamilies: ['claude-haiku'], lockedFamilies: [], loading: false,
   statusUnavailable: false, authRequired: false, authRejected: false, dailyRemaining: null, dailyLimits: null, monthlyCap: null, premiumPackRemaining: 0, ...extra })
-const config = (modelId = 'claude-haiku-4-5') => ({ id: 'a', provider: TEXT_MODELS.find(m => m.modelId === modelId)!.provider, modelId })
+const config = (modelId = 'claude-haiku-5-5') => ({ id: 'a', provider: TEXT_MODELS.find(m => m.modelId === modelId)!.provider, modelId })
 const access = (modelId: string, extra: Partial<PlanStatus> = {}, personalKey = false, trialRemaining: number | null = null) => panelAccess(config(modelId), {
   plan: plan(extra), personalKey, trialRemaining, authenticated: true,
 })
@@ -51,8 +51,8 @@ describe('Eligibility is not a server entitlement grant', () => {
     for (const m of TEXT_MODELS) expect(access(m.modelId, { plan: p, allowedFamilies: paid })).toBeNull()
   })
   it('keeps a true free Haiku usable with a second BYOK provider, unlike an exhausted trial', () => {
-    expect(access('claude-haiku-4-5')).toBeNull()
-    expect(access('claude-haiku-4-5', {}, false, 0)).toBe('compare.access.plan')
+    expect(access('claude-haiku-5-5')).toBeNull()
+    expect(access('claude-haiku-5-5', {}, false, 0)).toBe('compare.access.plan')
     expect(access('gemini-3.5-flash', {}, true)).toBeNull()
     expect(access('gemini-3.5-flash')).toBe('compare.access.plan')
   })

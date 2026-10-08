@@ -11,7 +11,7 @@ vi.mock('../../components/shared/MarkdownRenderer', () => ({ MarkdownRenderer: (
 import { getActiveSessionEpoch } from '../../services/userSession'
 const initialPanels: PanelConfig[] = [
   { id: 'one', provider: 'anthropic', modelId: 'claude-sonnet-5-5' },
-  { id: 'two', provider: 'anthropic', modelId: 'claude-haiku-4-5' },
+  { id: 'two', provider: 'anthropic', modelId: 'claude-haiku-5-5' },
 ]
 type Call = { token: (s: string) => void; done: () => void; error: (e: Error) => void; options: Record<string, unknown>; controller: AbortController }
 let calls: Call[], factories: StreamFactories
@@ -52,7 +52,7 @@ describe('Comparator invocation lifecycle', () => {
   it('separates two same-provider reports and computes cost only from a known reported model', async () => {
     const { result } = mount(); let done!: Promise<void>
     act(() => { done = result.current.send('Hello') })
-    act(() => { calls[0]!.token('one'); calls[1]!.token('two'); report(calls[1]!, 'claude-haiku-4-5'); report(calls[0]!, 'new-unknown-model') })
+    act(() => { calls[0]!.token('one'); calls[1]!.token('two'); report(calls[1]!, 'claude-haiku-5-5'); report(calls[0]!, 'new-unknown-model') })
     expect(result.current.panels[0]!.attribution?.model).toBe('new-unknown-model')
     expect(result.current.panels[0]!.metrics.costEur).toBeNull()
     expect(result.current.panels[1]!.metrics.costEur).toBeGreaterThan(0)

@@ -6,6 +6,19 @@ import { calculateCost, EUR_PER_USD } from '../../services/costTracker'
 import { estimateCostEur } from '../../services/comparator/tokenEstimator'
 
 describe('September model pricing across context and cache boundaries', () => {
+  it.each([99999, 100000, 100001])('Haiku 5.5 applies the complete prompt tier at %s', count => {
+    const model = 'claude-haiku-5-5', multiplier = count > 100000 ? 5 : 1
+    expect(getPricing(model, count)).toEqual({ input: 0.1 * multiplier, output: 0.5 * multiplier,
+      cacheRead: 0.01 * multiplier, cacheCreation: 0.125 * multiplier })
+    const usage = { inputTokens: 100, cacheReadTokens: count - 200, cacheCreationTokens: 100, outputTokens: 200, audioSeconds: 0 }
+    const exact = (100 * 0.1 + (count - 200) * 0.01 + 100 * 0.125 + 200 * 0.5) * multiplier
+    expect(computeCostMicroUsd(model, usage)).toBe(Math.round(exact))
+    expect(calculateCost(model, 100 + (count - 200) * 0.1 + 100 * 1.25, 200, count))
+      .toBeCloseTo(exact / 1e6 * EUR_PER_USD, 10)
+    expect(estimateCostEur(model, count, 200)).toBeCloseTo((count * 0.1 + 200 * 0.5) * multiplier / 1e6 * EUR_PER_USD)
+    const miss = Math.round((count * 0.125 + 200 * 0.5) * multiplier)
+    expect(estimateReserveMicro(model, 200, count)).toBeGreaterThanOrEqual(applyMarkup(miss, model, 'text'))
+  })
   it.each([
     ['gpt-5.6-luna', 272_000, 0.2, 1.2], ['gpt-5.6-terra', 272_000, 2, 12],
     ['gpt-5.6-sol', 272_000, 4, 20], ['gpt-6-astra', 272_000, 10, 50],

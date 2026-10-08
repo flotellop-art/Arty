@@ -182,7 +182,7 @@ describe('compte free en Auto (verrou AVANT envoi, pas de 403)', () => {
   ])('« %s » → Claude Haiku (plan_locked_haiku)', (text) => {
     const d = route(text, FREE)
     expect(d.provider).toBe('claude')
-    expect(d.subModel).toBe('claude-haiku-4-5-20251001')
+    expect(d.subModel).toBe('claude-haiku-5-5')
     expect(d.subModelReason?.code).toBe('plan_locked_haiku')
   })
 })

@@ -16,6 +16,7 @@ describe('parité TRIAL_ALLOWED_MODELS ↔ isModelAllowedInTrial', () => {
   // serveur (proxy.ts → Haiku daté ; mistral-proxy.ts → medium-latest).
   it.each([
     'claude-haiku-4-5-20251001',
+    'claude-haiku-5-5',
     'mistral-medium-latest',
     'gemini-2.5-flash',
     'gemini-3.5-flash',

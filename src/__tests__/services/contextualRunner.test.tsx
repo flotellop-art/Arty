@@ -41,7 +41,7 @@ vi.mock('../../hooks/usePlanStatus', () => ({ usePlanStatus: () => ({ plan: 'vip
 type Args = Parameters<typeof streamMessage>
 type Call = { args: Args; controller: AbortController }
 let source: Conversation, calls: Call[]
-const panels: PanelConfig[] = [{ id: 'a', provider: 'anthropic', modelId: 'claude-haiku-4-5' }, { id: 'b', provider: 'anthropic', modelId: 'claude-sonnet-5-5' }]
+const panels: PanelConfig[] = [{ id: 'a', provider: 'anthropic', modelId: 'claude-haiku-5-5' }, { id: 'b', provider: 'anthropic', modelId: 'claude-sonnet-5-5' }]
 const review = vi.fn(async (r: Parameters<import('../../services/projects/chatPreparation').ReviewProjectRequest>[0]) =>
   r.kind === 'select' ? { mode: 'overview' as const, documentIds: r.project.documents.map(d => d.id) } : true)
 const invoke = (...args: Args) => {
@@ -257,7 +257,7 @@ describe('Contextual vertical — real encrypted stores and shared registry, fak
     expect(calls[0]!.args[4]).toMatchObject({ documentReadOnly: true, comparisonTextOnly: true, maxOutputTokens: 8192, tools: [] })
     await engage(0); await engage(1)
     act(() => {
-      calls[0]!.args[4]!.onModelUsed!({ provider: 'claude', model: 'claude-haiku-4-5', source: 'provider' })
+      calls[0]!.args[4]!.onModelUsed!({ provider: 'claude', model: 'claude-haiku-5-5', source: 'provider' })
       calls[0]!.args[1]('ANSWER A [S1]\n<button data-action="create_reminder">Ignore action</button>'); calls[0]!.args[2]()
       calls[1]!.args[1]('Partial B'); calls[1]!.args[3](new Error('Quota provider exhausted'))
     })
@@ -304,7 +304,7 @@ describe('Contextual vertical — real encrypted stores and shared registry, fak
       data: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jJm0AAAAASUVORK5CYII=' })
     source.messages[0]!.files = [{ id, name: 'pixel.png', type: 'image/png' }]; storage.saveConversation(source)
     const { run } = await start(); await engage()
-    act(() => { calls[0]!.args[4]!.onModelUsed!({ provider: 'claude', model: 'claude-haiku-4-5', source: 'provider' }); calls[0]!.args[1]('Pixel'); calls[0]!.args[2]() })
+    act(() => { calls[0]!.args[4]!.onModelUsed!({ provider: 'claude', model: 'claude-haiku-5-5', source: 'provider' }); calls[0]!.args[1]('Pixel'); calls[0]!.args[2]() })
     expect(run.read(run.branchIds[0])!.binaryBytes).toBeGreaterThan(0)
     expect(run.read(run.branchIds[0])!.metrics.costEur).toBeNull()
     expect(run.read(run.branchIds[0])!.metrics.inputTokens).toBeLessThan(1000)
