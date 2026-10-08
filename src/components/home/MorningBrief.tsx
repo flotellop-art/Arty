@@ -1,4 +1,4 @@
-import { memo, useEffect, useState, useRef } from 'react'
+import { memo, useCallback, useEffect, useState, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { CalendarEvent } from '../../types/google'
 import { captureCalendarContext, listEvents, type CalendarContext } from '../../services/calendarClient'
@@ -29,22 +29,29 @@ function MorningBriefInner({ onClose, onSend, userName, isGoogleConnected }: Pro
 
   const [audioStatus, setAudioStatus] = useState<'idle' | 'loading' | 'playing' | 'paused' | 'error'>('idle')
   const [audioError, setAudioError] = useState<string | null>(null)
-  const [audioUrl, setAudioUrl] = useState<string | null>(null)
+  const audioUrl = useRef<string | null>(null)
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const listScope = useRef<CalendarContext | null>(null)
   const audioScope = useRef<CalendarContext | null>(null)
+  const audioRequest = useRef<symbol | null>(null)
   const lifetime = useRef(new AbortController())
 
+  const releaseAudio = useCallback(() => {
+    const audio = audioRef.current
+    // Detach ownership before pause/source changes can emit media events.
+    audioRef.current = null
+    if (audio) {
+      audio.pause()
+      audio.src = ''
+    }
+    if (audioUrl.current) {
+      URL.revokeObjectURL(audioUrl.current)
+      audioUrl.current = null
+    }
+  }, [])
+
   const stopAudio = () => {
-    if (audioRef.current) {
-      audioRef.current.pause()
-      audioRef.current.src = ''
-      audioRef.current = null
-    }
-    if (audioUrl) {
-      URL.revokeObjectURL(audioUrl)
-      setAudioUrl(null)
-    }
+    releaseAudio()
     setAudioStatus('idle')
   }
 
@@ -74,27 +81,20 @@ function MorningBriefInner({ onClose, onSend, userName, isGoogleConnected }: Pro
         if (!scope) continue
         try { scope.assertCurrent() } catch {
           setEvents([]); setCalendarUnavailable(true)
-          if (audioRef.current) { audioRef.current.pause(); audioRef.current.src = ''; audioRef.current = null }
+          audioScope.current = null
+          releaseAudio()
           setAudioStatus('error'); setAudioError(t('calendarWorkflow.reopenBrief'))
           break
         }
       }
     }
     window.addEventListener('google-storage-ready', invalidate)
-    return () => { lifetime.current.abort(); window.removeEventListener('google-storage-ready', invalidate) }
-  }, [])
-
-  useEffect(() => {
     return () => {
-      if (audioRef.current) {
-        audioRef.current.pause()
-        audioRef.current.src = ''
-      }
-      if (audioUrl) {
-        URL.revokeObjectURL(audioUrl)
-      }
+      lifetime.current.abort()
+      window.removeEventListener('google-storage-ready', invalidate)
+      releaseAudio()
     }
-  }, [audioUrl])
+  }, [releaseAudio])
 
   const handlePlayPause = async () => {
     if (audioStatus === 'playing') {
@@ -103,19 +103,27 @@ function MorningBriefInner({ onClose, onSend, userName, isGoogleConnected }: Pro
     }
 
     if (audioStatus === 'paused' && audioRef.current) {
+      const audio = audioRef.current
       try {
         audioScope.current?.assertCurrent()
-        await audioRef.current.play()
+        await audio.play()
       } catch (e) {
+        if (audioRef.current !== audio) return
+        releaseAudio()
         setAudioStatus('error')
         setAudioError(t('morningBrief.player.errorGeneric'))
       }
       return
     }
 
+    // Admission must precede the first await: rapid taps must not buy two briefs.
+    if (audioRequest.current) return
     const signal = lifetime.current.signal, scope = captureCalendarContext(signal)
+    const requestId = Symbol('morning-brief-audio')
+    audioRequest.current = requestId
     audioScope.current = scope
     const finishWork = beginConversationWork('morning-brief-audio')
+    let playback: HTMLAudioElement | null = null
     try {
     let token: string | null = null
     try {
@@ -174,40 +182,46 @@ function MorningBriefInner({ onClose, onSend, userName, isGoogleConnected }: Pro
 
       const blob = await res.blob()
       finishWork() // local playback is not an in-flight AI request
+      if (audioRequest.current === requestId) audioRequest.current = null
       scope.assertCurrent()
       const url = URL.createObjectURL(blob)
 
-      if (audioRef.current) {
-        audioRef.current.pause()
-        audioRef.current.src = ''
-      }
-      if (audioUrl) {
-        URL.revokeObjectURL(audioUrl)
-      }
-
-      setAudioUrl(url)
+      releaseAudio()
+      audioUrl.current = url
 
       const audio = new Audio(url)
+      playback = audio
       audioRef.current = audio
 
-      audio.addEventListener('playing', () => setAudioStatus('playing'))
-      audio.addEventListener('pause', () => setAudioStatus('paused'))
+      audio.addEventListener('playing', () => {
+        if (audioRef.current === audio) setAudioStatus('playing')
+      })
+      audio.addEventListener('pause', () => {
+        if (audioRef.current === audio) setAudioStatus('paused')
+      })
       audio.addEventListener('ended', () => {
+        if (audioRef.current !== audio) return
+        releaseAudio()
         setAudioStatus('idle')
-        URL.revokeObjectURL(url)
-        setAudioUrl(null)
       })
       audio.addEventListener('error', () => {
+        if (audioRef.current !== audio) return
+        releaseAudio()
         setAudioStatus('error')
         setAudioError(t('morningBrief.player.errorGeneric'))
       })
 
       await audio.play()
     } catch (e) {
+      if (signal.aborted || audioScope.current !== scope || (playback && audioRef.current !== playback)) return
+      releaseAudio()
       setAudioStatus('error')
       setAudioError(t('morningBrief.player.errorGeneric'))
     }
-    } finally { finishWork() }
+    } finally {
+      if (audioRequest.current === requestId) audioRequest.current = null
+      finishWork()
+    }
   }
 
   const handleClose = () => {
