@@ -80,10 +80,29 @@ imbriqués.
 
 La campagne ciblée initiale passe : 13 fichiers, 430 tests. Types, garde OAuth
 public, manifeste add-on, build web et worker Office passent.
-La campagne complète avec couverture est en cours, un worker pour conserver
-la fiabilité des suites D1 Windows. Aucun résultat de production, téléphone
-réel ou distribution APK n'est déduit de ces preuves locales.
+La première CI complète sur `ae8d1ede` passe 6107 tests, échoue sur deux
+attentes encore 4.5 (libellé du comparateur et thinking fact-check), et ignore
+un test. Les deux attentes sont corrigées ; les 60 tests des deux fichiers
+passent localement. La CI du candidat corrigé constitue le gate final.
+La campagne Windows complète a été interrompue après ce diagnostic CI ;
+elle ne constitue pas une validation complète acquise.
+Android lint/tests/compilation/permissions et le service secondaire passent
+sur ce premier candidat. L'aperçu Cloudflare sert bien le défaut 5.5 et la
+version 1.0.112. Aucun téléphone réel ni distribution APK n'est déduit de ces
+preuves.
 Version préparée : 1.0.112, code Android 113.
+
+Contrôle vision complémentaire direct API, distinct du benchmark de sélection :
+image synthétique 10/20/30, deux lectures exactes et somme 60, modèle 5.5
+et fins normales attestés. Les deux réponses entourent le JSON de Markdown :
+2/2 sur les valeurs, 0/2 sur le format strict. Une première tentative avait
+échoué dans le parseur du harnais avant sauvegarde brute ; elle reste non
+notée sur les valeurs. Après ce constat, la capture précède la notation et
+la récupération de l'enveloppe est une mesure secondaire, pas un succès strict.
+Protocole SHA-256
+`1bacb19614ccfb6d7b7c779f88cd31fdb9bde81163878d7559b426ee8c68bf07`,
+preuves locales `.playwright-mcp/haiku55-vision-evidence.json`.
+Ce contrôle ne valide ni l'OCR de documents réels ni la chaîne Android.
 
 Retour arrière : revenir au défaut Haiku 4.5 et à son transport legacy ;
 conserver la tarification 5.5 et les quotas partagés pour les clients déjà
