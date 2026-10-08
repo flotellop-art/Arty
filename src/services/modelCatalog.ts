@@ -11,7 +11,7 @@ export const CHAT_PROVIDERS: Array<{ id: ChatProvider; transport: TransportProvi
   { id: 'openai', transport: 'openai', label: 'ChatGPT', flag: '🇺🇸', family: 'gpt-mini' },
 ]
 export const TEXT_DEFAULTS = {
-  haiku: 'claude-haiku-4-5-20251001', sonnet: 'claude-sonnet-5-5', opus: 'claude-opus-4-8',
+  haiku: 'claude-haiku-5-5', sonnet: 'claude-sonnet-5-5', opus: 'claude-opus-4-8',
   geminiChat: 'gemini-3.5-flash', geminiResearch: 'gemini-3.6-flash',
   mistralSmall: 'mistral-small-2603', mistralChat: 'mistral-medium-latest',
   openaiChat: 'gpt-5.6-terra', openaiFallback: 'gpt-5',
@@ -28,7 +28,7 @@ export interface TextModel {
 }
 export const TEXT_MODELS: readonly TextModel[] = [
   { provider: 'anthropic', modelId: TEXT_DEFAULTS.sonnet, costKey: TEXT_DEFAULTS.sonnet, label: 'Claude Sonnet 5.5', family: 'claude-sonnet', trial: false },
-  { provider: 'anthropic', modelId: 'claude-haiku-4-5', responseIds: [TEXT_DEFAULTS.haiku], costKey: 'claude-haiku-4-5', label: 'Claude Haiku 4.5', family: 'claude-haiku', trial: true },
+  { provider: 'anthropic', modelId: TEXT_DEFAULTS.haiku, costKey: TEXT_DEFAULTS.haiku, label: 'Claude Haiku 5.5', family: 'claude-haiku', trial: true },
   { provider: 'anthropic', modelId: TEXT_DEFAULTS.opus, costKey: 'claude-opus-4-8', label: 'Claude Opus 4.8', family: 'claude-opus', trial: false },
   { provider: 'anthropic', modelId: 'claude-opus-5', costKey: 'claude-opus-5', label: 'Claude Opus 5', family: 'claude-opus', trial: false },
   { provider: 'anthropic', modelId: 'claude-fable-5-1', costKey: 'claude-fable-5-1', label: 'Claude Fable 5.1', family: 'claude-opus', trial: false },

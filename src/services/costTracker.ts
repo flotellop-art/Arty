@@ -19,6 +19,7 @@ export const EUR_PER_USD = 0.92
 export const MODEL_COSTS: Record<string, { input: number; output: number }> = {
   get 'gemini-3.8-flash'() { const { input, output } = gemini38Pricing(); return { input, output } },
   get 'gemini-flash-3.8'() { const { input, output } = gemini38Pricing(); return { input, output } },
+  'claude-haiku-5-5':  { input: 0.10,  output: 0.50 },
   'claude-haiku-4-5':  { input: 1.00,  output: 5.00 },
   'claude-sonnet-4-6': { input: 3.00,  output: 15.00 }, // legacy — conservé pour les coûts historiques
   // Tarifs courants vérifiés le 05/10/2026 ; ne recalcule pas les coûts enregistrés.
@@ -156,12 +157,13 @@ export function normaliseModel(model: string): string {
 export function calculateCost(
   model: string,
   inputTokens: number,
-  outputTokens: number
+  outputTokens: number,
+  totalPromptTokens = inputTokens,
 ): number {
   const normalized = normaliseModel(model)
   const baseRate = MODEL_COSTS[normalized]
   if (!baseRate) return 0
-  const rate = contextPricing(normalized, baseRate, inputTokens)
+  const rate = contextPricing(normalized, baseRate, totalPromptTokens)
   const inputUsd = (inputTokens / 1_000_000) * rate.input
   const outputUsd = (outputTokens / 1_000_000) * rate.output
   return (inputUsd + outputUsd) * EUR_PER_USD
@@ -204,11 +206,12 @@ function writeHistory(history: Record<string, MonthStats>): void {
 export function recordUsage(
   model: string,
   inputTokens: number,
-  outputTokens: number
+  outputTokens: number,
+  totalPromptTokens = inputTokens,
 ): void {
   if ((!inputTokens && !outputTokens) || !model) return
 
-  const cost = calculateCost(model, inputTokens, outputTokens)
+  const cost = calculateCost(model, inputTokens, outputTokens, totalPromptTokens)
   const normalized = normaliseModel(model)
   const monthKey = currentMonthKey()
   const dayKey = currentDayKey()

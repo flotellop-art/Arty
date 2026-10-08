@@ -399,7 +399,7 @@ describe('resolveClaudeThinking — niveau → effort', () => {
 describe('selectClaudeSubModel', () => {
   it('greeting + no thinking + no private data → haiku', () => {
     expect(selectClaudeSubModel('bonjour', { enabled: false, budget: 0 }, false, false))
-      .toBe('claude-haiku-4-5-20251001')
+      .toBe('claude-haiku-5-5')
   })
 
   it('debug + thinking → sonnet', () => {
@@ -431,13 +431,13 @@ describe('selectClaudeSubModel — verrou Haiku par plan (C-E)', () => {
   it.each(['free', 'trial'])('plan %s sans crédits → Haiku, même sur une requête à thinking', (plan) => {
     localStorage.setItem('arty-plan-cache', plan)
     expect(selectClaudeSubModel(REQUEST_SONNET, THINKING, false, false))
-      .toBe('claude-haiku-4-5-20251001')
+      .toBe('claude-haiku-5-5')
   })
 
   it('setTrialToken conserve le routage Haiku de l’essai email', () => {
     setTrialToken('opaque-trial-token')
     expect(selectClaudeSubModel(REQUEST_SONNET, THINKING, false, false))
-      .toBe('claude-haiku-4-5-20251001')
+      .toBe('claude-haiku-5-5')
   })
 
   it('cache vide (jamais fetché) → sélection normale (sonnet)', () => {

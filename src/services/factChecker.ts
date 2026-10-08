@@ -1121,7 +1121,7 @@ const TIER_INFO = {
   // Le serveur peut basculer une passe Haiku indisponible vers Sonnet, puis
   // vers Gemini. Le délai client couvre la cascade sans jeter un résultat
   // encore en cours côté serveur.
-  haiku: { model: 'claude-haiku-4-5-20251001', label: 'Haiku 4.5', timeoutMs: 90_000 },
+  haiku: { model: 'claude-haiku-5-5', label: 'Haiku 5.5', timeoutMs: 90_000 },
   // Sonnet + web_search en non-streamé : Anthropic accumule toute la réponse
   // avant de répondre. Le budget inclut aussi Gemini + google_search si
   // Anthropic reste indisponible.

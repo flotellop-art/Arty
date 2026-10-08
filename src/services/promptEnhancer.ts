@@ -72,8 +72,10 @@ async function enhanceViaHaiku(text: string): Promise<string> {
     method: 'POST',
     headers,
     body: JSON.stringify({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 500,
+      model: 'claude-haiku-5-5',
+      max_tokens: 650,
+      thinking: { type: 'disabled' },
+      output_config: { effort: 'low' },
       system: SYSTEM_PROMPT,
       messages: [{ role: 'user', content: text }],
     }),
@@ -84,8 +86,9 @@ async function enhanceViaHaiku(text: string): Promise<string> {
   }
 
   const data = await safeJson(res)
-  const content = (data.content as Array<{ text?: string }> | undefined)?.[0]?.text
-  if (!content) {
+  const content = (data.content as Array<{ type?: string; text?: string }> | undefined)
+    ?.filter(block => block.type === 'text').map(block => block.text ?? '').join('')
+  if (data.stop_reason !== 'end_turn' || !content?.trim()) {
     throw new Error(i18n.t('errors.promptEnhancementFailed'))
   }
   return content.trim()

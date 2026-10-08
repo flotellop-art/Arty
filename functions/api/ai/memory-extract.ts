@@ -20,7 +20,7 @@ import { readRequestTextWithLimit, RequestBodyTooLargeError, requestBodyTooLarge
  * Garde-fous :
  * - Auth Google obligatoire (anti-relais anonyme, CRIT-4).
  * - Rate-limit propre : 20 extractions/utilisateur/jour (compteur atomique D1).
- * - Modèle FORCÉ Haiku, max_tokens 400, texte d'entrée tronqué côté serveur.
+ * - Modèle FORCÉ Haiku 5.5, réflexion désactivée, max_tokens 520.
  * - recordUsage trace le coût réel en D1 (sans incrémenter les compteurs
  *   de quota visibles).
  *
@@ -29,7 +29,7 @@ import { readRequestTextWithLimit, RequestBodyTooLargeError, requestBodyTooLarge
  * données sensibles non négociables côté serveur.
  */
 
-const EXTRACT_MODEL = 'claude-haiku-4-5-20251001'
+const EXTRACT_MODEL = 'claude-haiku-5-5'
 const DAILY_EXTRACT_CAP = 20
 const MAX_TRANSCRIPT_CHARS = 6000
 const MAX_FACTS_CHARS = 5000
@@ -150,7 +150,9 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
       },
       body: JSON.stringify({
         model: EXTRACT_MODEL,
-        max_tokens: 400,
+        max_tokens: 520,
+        thinking: { type: 'disabled' },
+        output_config: { effort: 'low' },
         system: EXTRACTION_SYSTEM,
         messages: [{ role: 'user', content: userContent }],
       }),
@@ -162,6 +164,8 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     }
 
     const data = (await res.json()) as {
+      model?: string
+      stop_reason?: string
       content?: Array<{ type: string; text?: string }>
       usage?: { input_tokens?: number; output_tokens?: number }
     }
@@ -175,7 +179,10 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
       audioSeconds: 0,
     })
 
-    const text = data.content?.find((b) => b.type === 'text')?.text ?? ''
+    if (data.model !== EXTRACT_MODEL || data.stop_reason !== 'end_turn') {
+      return Response.json({ error: 'extract_incomplete' }, { status: 502 })
+    }
+    const text = data.content?.filter((b) => b.type === 'text').map(b => b.text ?? '').join('') ?? ''
     let parsed: { add?: unknown; replace?: unknown } = {}
     try {
       // Haiku peut entourer le JSON de texte — on isole le premier objet.

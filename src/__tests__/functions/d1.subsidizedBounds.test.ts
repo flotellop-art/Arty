@@ -26,9 +26,10 @@ beforeEach(async () => {
     }
     if (url.endsWith('/v1/fetch')) return Response.json({})
     if (url === 'https://api.anthropic.com/v1/messages') {
-      expect(body.model).toBe('claude-haiku-4-5-20251001'); expect(body.max_tokens).toBe(400)
+      expect(body.model).toBe('claude-haiku-5-5'); expect(body.max_tokens).toBe(520)
+      expect(body.thinking).toEqual({ type: 'disabled' }); expect(body.output_config).toEqual({ effort: 'low' })
       prompts.push(body.messages[0].content)
-      return Response.json({ content: [{ type: 'text', text: '{"add":[],"replace":[]}' }], usage: { input_tokens: 10, output_tokens: 2 } })
+      return Response.json({ model: 'claude-haiku-5-5', stop_reason: 'end_turn', content: [{ type: 'text', text: '{"add":[],"replace":[]}' }], usage: { input_tokens: 10, output_tokens: 2 } })
     }
     throw new Error('Unexpected provider URL')
   }))

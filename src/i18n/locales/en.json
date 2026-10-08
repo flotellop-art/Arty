@@ -1314,7 +1314,7 @@
       "description": "Verifies the factual claims in each response",
       "off": "Disabled",
       "auto": "Auto (recommended)",
-      "haiku": "Always fast (Haiku 4.5)",
+    "haiku": "Always fast (Haiku 5.5)",
       "sonnet": "Always strict (Sonnet 5.5)",
       "costAuto": "Quick initial check, then evidence reading when needed. Sensitive corrections require another model. Cost and duration vary.",
       "costHaiku": "Initial check only: corrections without checked evidence remain proposals.",

@@ -4,6 +4,13 @@
 export function contextPricing<T extends { input: number; output: number; cacheRead?: number; cacheCreation?: number }>(
   model: string, rate: T, totalInputTokens: number,
 ): T {
+  if (model === 'claude-haiku-5-5' && Number.isFinite(totalInputTokens) && totalInputTokens > 100_000) {
+    return {
+      ...rate, input: rate.input * 5, output: rate.output * 5,
+      ...(rate.cacheRead !== undefined ? { cacheRead: rate.cacheRead * 5 } : {}),
+      ...(rate.cacheCreation !== undefined ? { cacheCreation: rate.cacheCreation * 5 } : {}),
+    }
+  }
   const openai = ['gpt-5.6-luna', 'gpt-5.6-terra', 'gpt-5.6-sol', 'gpt-6-astra'].includes(model)
   const pro = model === 'gemini-3.1-pro-preview'
   if ((!openai || totalInputTokens <= 272_000) && (!pro || totalInputTokens <= 200_000)) return rate
