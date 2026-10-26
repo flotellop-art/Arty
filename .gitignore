@@ -10,8 +10,9 @@ coverage
 # Claude Code worktrees (local only, never commit)
 .claude/worktrees/
 
-# Playwright MCP artifacts (snapshots / console logs, local only)
+# Playwright MCP artifacts (snapshots / console logs / screenshots, local only)
 .playwright-mcp/
+arty-*.png
 
 # Computer-use relay runtime logs (local tooling, never commit)
 local/*.log
