@@ -744,7 +744,18 @@ Slash command **`/audit-secu`** (défini dans `.claude/commands/audit-secu.md`) 
 
 ### TODO Sécurité — prochain audit
 
-Dernier audit : **3 juillet 2026** — audit repo complet A→Z (5 agents : backend Opus, auth+crypto Opus, frontend Sonnet, build/config Sonnet, qualité Sonnet + vérifs directes tsc/tests/build/headers prod). Rapport : `docs/audits/repo-audit-2026-07-03.md`, remédiation : PR #307 (voir bloc « Corrigé le 3 juillet 2026 » ci-dessous). Précédents : 14 juin 2026, 7 juin 2026, 4 mai 2026 (PR #127 + #128).
+Dernier audit : **24 juillet 2026** — tour du code complet (4 agents : backend Opus, vision/routage Opus, frontend Sonnet, qualité/config Sonnet + vérification directe `fichier:ligne` de chaque claim). Rapport : `docs/audits/repo-audit-2026-07-24.md`. **Aucun trou d'authz, aucun IDOR, aucune fuite inter-provider** ; le motif dominant est *un correctif appliqué à un seul chemin sur quatre*. 4 HIGH ouverts (écrasement d'historique au switch de compte, watchdog de stream sur 1 client sur 4, quota/essai brûlés par les retries, `web_search` Anthropic hors comptabilité). Précédents : 3 juillet 2026 (`repo-audit-2026-07-03.md`, PR #307), 14 juin 2026, 7 juin 2026, 4 mai 2026 (PR #127 + #128).
+
+> **Deux affirmations de ce fichier étaient périmées au 24 juillet 2026** :
+> 1. « `npm audit` = 0 vulnérabilité » (F-14, 3 juillet) → **8 vulnérabilités**
+>    dont 5 en production, y compris un **bypass de la CVE react-router
+>    corrigée le 3 juillet**. Cause structurelle : ni la CI ni `/audit-secu` ne
+>    lancent `npm audit`, donc la dérive est invisible entre deux audits.
+> 2. **BUG 37** — la règle « `.npmrc` avec `legacy-peer-deps=true` est
+>    OBLIGATOIRE, ne jamais le supprimer » décrit un fichier qui n'a **jamais**
+>    été commité (`git log --all -- .npmrc` vide), pour une dépendance
+>    (`@codetrix-studio/capacitor-google-auth`) depuis entièrement retirée.
+>    `npm ci` passe sans. Règle à considérer comme caduque.
 
 > **MAJ 14 juin 2026** — Audit complet `/audit-secu` (3 agents) déclenché après une
 > comparaison aux failles d'Odysseus (l'assistant de PewDiePie). **Verdict : aucun CRIT,
