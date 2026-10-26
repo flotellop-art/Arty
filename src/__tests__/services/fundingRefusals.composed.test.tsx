@@ -65,6 +65,21 @@ beforeEach(async () => {
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals() })
 
 describe('real AI client → current funding cache → rendered badge / plan (synthetic HTTP)', () => {
+  it.each(['fr', 'en'])('Anthropic redirect is terminal and localized in %s, without changing account, trial or wallet', async language => {
+    await i18n.changeLanguage(language); setTrialRemaining(17)
+    const http = stub(async () => Response.json({ error: 'upstream_outcome_unknown' }, { status: 409 }))
+    await fetchWalletBalance()
+    const before = getWalletSnapshot(), count = http.mock.calls.length
+    const call = invoke('anthropic'), error = await call.outcome
+    expect(error.message).toBe(i18n.t('errors.apiOutcomeUnknown'))
+    expect(error.message).not.toMatch(/upstream_outcome_unknown|errors\./)
+    expect(error.name).not.toBe('WalletReconciliationError')
+    expect(http.mock.calls.slice(count).map(([url]) => url)).toEqual(['/api/ai/proxy'])
+    expect(getWalletSnapshot()).toEqual(before); expect(getTrialRemaining()).toBe(17)
+    expect(session.getActiveUserId()).toBe(owner)
+    expect(call.onError).toHaveBeenCalledOnce()
+    expect(call.onDone).not.toHaveBeenCalled(); expect(call.onToken).not.toHaveBeenCalled(); expect(call.onToolCall).not.toHaveBeenCalled()
+  })
   it.each(providers.flatMap(provider => ['fr', 'en'].map(language => ({ provider, language }))))('$provider closes a warm wallet immediately after 409 in $language without extra network', async ({ provider, language }) => {
     await i18n.changeLanguage(language)
     const http = stub(async () => Response.json({ error: 'wallet_reconciliation_pending' }, { status: 409 }))
