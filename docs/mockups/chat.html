@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="fr" data-theme="ember">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Arty — Maquette Conversation (ergonomique)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..700;1,9..144,300..700&family=Inter:wght@300;400;500;600;700&family=Lora:wght@400;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<link href="tokens.css" rel="stylesheet" />
+<style>
+  body { display:flex; flex-direction:column; align-items:center; gap:14px; padding:28px 12px; min-height:100vh; }
+  .toolbar { display:flex; gap:8px; align-items:center; }
+  .toolbar button, .toolbar a {
+    font-family:'Inter',sans-serif; font-size:12px; font-weight:600; cursor:pointer; text-decoration:none;
+    padding:8px 14px; border-radius:100px; border:1px solid rgb(var(--theme-border));
+    background:rgb(var(--theme-surface)); color:rgb(var(--theme-ink));
+  }
+  .screen { flex:1; display:flex; flex-direction:column; overflow:hidden; position:relative; }
+  .scroll { flex:1; overflow-y:auto; padding:8px 0 10px; }
+  .iconbtn {
+    display:flex; align-items:center; justify-content:center; width:44px; height:44px;
+    border-radius:12px; border:none; background:transparent; color:rgb(var(--theme-ink)); cursor:pointer;
+  }
+  .iconbtn:active { background:rgb(var(--theme-ink)/0.06); }
+
+  /* ── TopBar UNE seule rangée : back + titre + Mode + ⋯ ── */
+  .topbar {
+    display:flex; align-items:center; gap:6px; padding:calc(14px + 6px) 8px 8px;
+    border-bottom:1px solid rgb(var(--theme-ink)/0.10);
+  }
+  .title-wrap { flex:1; min-width:0; }
+  .title-kicker { font-family:'Inter'; font-size:9px; font-weight:600; text-transform:uppercase; letter-spacing:0.18em; color:rgb(var(--theme-muted)); }
+  .title { font-family:'Fraunces',serif; font-style:italic; font-size:16px; line-height:1.15; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .mode-chip {
+    display:flex; align-items:center; gap:6px; height:34px; padding:0 12px; border-radius:100px;
+    background:rgb(var(--theme-accent)/0.10); border:1px solid rgb(var(--theme-accent)/0.25);
+    color:rgb(var(--theme-accent)); font-family:'Inter'; font-size:11.5px; font-weight:600; cursor:pointer; white-space:nowrap;
+  }
+
+  /* ── Bulles ── */
+  .msg { padding:4px 16px; }
+  .row-user { display:flex; flex-direction:column; align-items:flex-end; }
+  .row-asst { display:flex; flex-direction:column; align-items:flex-start; }
+  .bubble-user {
+    max-width:85%; background:rgb(var(--theme-ink)); color:rgb(var(--theme-bg));
+    padding:10px 14px; border-radius:18px 18px 4px 18px;
+    font-family:'Inter'; font-weight:300; font-size:14.5px; line-height:1.5;
+  }
+  .asst-head { display:flex; align-items:center; gap:8px; margin-bottom:4px; }
+  .asst-ava {
+    width:26px; height:26px; border-radius:50%; flex-shrink:0;
+    background:linear-gradient(135deg, rgb(var(--theme-accent)), rgb(var(--theme-accent)/0.7));
+    display:flex; align-items:center; justify-content:center;
+  }
+  .asst-name { font-family:'Inter'; font-size:11px; font-weight:600; color:rgb(var(--theme-muted)); }
+  .bubble-asst {
+    max-width:92%; color:rgb(var(--theme-ink));
+    font-family:'Inter'; font-weight:300; font-size:14.5px; line-height:1.6;
+  }
+  .bubble-asst p { margin:0 0 8px; }
+  .bubble-asst strong { font-weight:600; }
+  .bubble-asst em { font-style:italic; color:rgb(var(--theme-accent)); } /* italique préservé */
+
+  /* Bloc code AVEC bouton copier (manquant dans l'app) */
+  .code {
+    position:relative; margin:8px 0; border-radius:12px; overflow:hidden;
+    background:#181613; border:1px solid rgb(var(--theme-border));
+  }
+  .code-bar { display:flex; align-items:center; justify-content:space-between; padding:6px 10px; background:rgba(255,255,255,0.04); }
+  .code-lang { font-family:'JetBrains Mono'; font-size:10px; color:#8F8B82; text-transform:uppercase; letter-spacing:0.1em; }
+  .code-copy { display:flex; align-items:center; gap:5px; height:30px; padding:0 9px; border-radius:8px; border:none; cursor:pointer;
+    background:rgba(255,255,255,0.06); color:#E8E2D4; font-family:'Inter'; font-size:11px; font-weight:500; }
+  .code pre { margin:0; padding:11px 12px; overflow-x:auto; }
+  .code code { font-family:'JetBrains Mono'; font-size:12.5px; line-height:1.6; color:#F5E6D0; }
+  .tok-k { color:#F59A4B; } .tok-s { color:#9DCF8A; } .tok-c { color:#8F8B82; }
+
+  /* Rangée d'actions SOUS la bulle (plus en overlay 14px) */
+  .actions { display:flex; gap:2px; margin-top:4px; }
+  .actions.right { align-self:flex-end; }
+  .act {
+    display:flex; align-items:center; gap:5px; height:36px; padding:0 10px; border-radius:10px;
+    border:none; background:transparent; color:rgb(var(--theme-muted)); cursor:pointer;
+    font-family:'Inter'; font-size:11.5px; font-weight:500;
+  }
+  .act:active { background:rgb(var(--theme-ink)/0.06); }
+
+  /* Pastille de progression streaming, indépendante du scroll */
+  .stream-pill {
+    position:absolute; top:calc(14px + 60px); right:14px; z-index:30;
+    display:flex; align-items:center; gap:7px; height:30px; padding:0 12px; border-radius:100px;
+    background:rgb(var(--theme-surface)); border:1px solid rgb(var(--theme-border));
+    box-shadow:0 4px 14px rgba(0,0,0,0.12);
+    font-family:'Inter'; font-size:11px; font-weight:600; color:rgb(var(--theme-muted));
+  }
+  .spin { width:11px; height:11px; border-radius:50%; border:2px solid rgb(var(--theme-accent)/0.3); border-top-color:rgb(var(--theme-accent)); animation:sp 0.7s linear infinite; }
+  @keyframes sp { to { transform:rotate(360deg); } }
+
+  /* ── InputBar simplifiée : +, champ, 1 voix, envoi morph ── */
+  .inputbar { padding:8px 14px calc(8px + 6px); }
+  .route-hint {
+    display:flex; align-items:center; gap:6px; margin:0 4px 6px; padding:4px 0;
+    font-family:'Inter'; font-size:11px; color:rgb(var(--theme-muted));
+  }
+  .route-hint .flag { font-size:13px; }
+  .inputrow {
+    display:flex; align-items:flex-end; gap:6px;
+    background:rgb(var(--theme-surface)); border:1px solid rgb(var(--theme-border));
+    border-radius:18px; padding:5px 6px 5px 10px; box-shadow:0 1px 2px rgba(0,0,0,0.04);
+  }
+  .inputrow .plus { width:40px; height:40px; flex-shrink:0; }
+  .inputrow textarea {
+    flex:1; border:none; outline:none; resize:none; background:transparent; padding:9px 2px;
+    font-family:'Inter'; font-weight:300; font-size:14.5px; color:rgb(var(--theme-ink)); max-height:90px;
+  }
+  .send {
+    width:44px; height:44px; border-radius:50%; border:none; cursor:pointer; flex-shrink:0;
+    background:rgb(var(--theme-accent)); color:rgb(var(--theme-bg));
+    display:flex; align-items:center; justify-content:center; box-shadow:0 2px 8px rgba(200,90,40,0.3);
+  }
+  .voice-sm {
+    width:40px; height:40px; border-radius:50%; border:none; cursor:pointer; flex-shrink:0;
+    background:rgb(var(--theme-accent)/0.15); color:rgb(var(--theme-muted));
+    display:flex; align-items:center; justify-content:center;
+  }
+
+  /* ── Bottom-sheet "Mode" ── */
+  .sheet-back { position:absolute; inset:0; background:rgb(0 0 0/0.4); z-index:40; opacity:0; pointer-events:none; transition:opacity .2s; }
+  .sheet-back.on { opacity:1; pointer-events:auto; }
+  .sheet {
+    position:absolute; left:0; right:0; bottom:0; z-index:50; transform:translateY(100%); transition:transform .26s cubic-bezier(.3,1,.4,1);
+    background:rgb(var(--theme-surface)); border-radius:22px 22px 0 0; padding:8px 18px calc(18px + 6px);
+    box-shadow:0 -8px 30px rgba(0,0,0,0.2);
+  }
+  .sheet.on { transform:translateY(0); }
+  .grab { width:36px; height:4px; border-radius:2px; background:rgb(var(--theme-muted)/0.4); margin:6px auto 12px; }
+  .sheet h3 { font-family:'Fraunces',serif; font-size:18px; margin:0 0 2px; }
+  .sheet .sub { font-family:'Inter'; font-size:11.5px; color:rgb(var(--theme-muted)); margin-bottom:14px; }
+  .sheet-label { font-family:'Inter'; font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:0.14em; color:rgb(var(--theme-muted)); margin:14px 0 8px; }
+  .opt-row { display:flex; gap:8px; flex-wrap:wrap; }
+  .opt {
+    display:flex; align-items:center; gap:6px; min-height:40px; padding:0 14px; border-radius:100px; cursor:pointer;
+    border:1px solid rgb(var(--theme-border)); background:transparent; color:rgb(var(--theme-ink));
+    font-family:'Inter'; font-size:13px; font-weight:500;
+  }
+  .opt.sel { background:rgb(var(--theme-accent)); border-color:rgb(var(--theme-accent)); color:rgb(var(--theme-bg)); }
+  .why { margin-top:16px; padding:12px 14px; border-radius:12px; background:rgb(var(--surface-elev)); border:1px solid rgb(var(--border-weak));
+    font-family:'Inter'; font-size:12px; line-height:1.5; color:rgb(var(--theme-ink)); }
+  .why b { color:rgb(var(--theme-accent)); }
+
+  .annot { max-width:390px; font-family:'Inter'; font-size:12.5px; line-height:1.5; color:#444; background:#fffdf8; border:1px solid #eadfca; border-radius:12px; padding:12px 14px; }
+  .annot b { color:#C85A28; } .annot ul { margin:6px 0 0; padding-left:18px; } .annot li { margin:3px 0; }
+</style>
+</head>
+<body>
+  <div class="toolbar">
+    <a href="index.html">← Galerie</a>
+    <button onclick="tog()">◐ Ember / Nocturne</button>
+    <a href="home.html">Accueil →</a>
+  </div>
+
+  <div class="phone">
+    <div class="phone-notch"></div>
+    <div class="screen">
+      <!-- TopBar : UNE rangée -->
+      <div class="topbar">
+        <button class="iconbtn" aria-label="Retour">
+          <svg width="22" height="22" viewBox="0 0 20 20" fill="none"><path d="M12 4L6 10L12 16" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <div class="title-wrap">
+          <div class="title-kicker">Conversation</div>
+          <div class="title">Devis carrosserie Clio</div>
+        </div>
+        <button class="mode-chip" onclick="openSheet()" aria-label="Mode : ton et modèle">
+          <svg width="13" height="13" viewBox="0 0 64 64" fill="none"><path d="M32 6 L58 54 L32 40 Z" fill="currentColor"/><path d="M32 6 L6 54 L32 40 Z" fill="currentColor" opacity="0.45"/></svg>
+          Concis · Auto
+          <svg width="10" height="10" viewBox="0 0 10 10" fill="none" style="opacity:.6"><path d="M2.5 4L5 6.5L7.5 4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+        </button>
+        <button class="iconbtn" aria-label="Plus d'actions" onclick="alert('Menu ⋯ : Résumé · Exporter · Partager · Renommer')">
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><circle cx="10" cy="4" r="1.6" fill="currentColor"/><circle cx="10" cy="10" r="1.6" fill="currentColor"/><circle cx="10" cy="16" r="1.6" fill="currentColor"/></svg>
+        </button>
+      </div>
+
+      <!-- Pastille streaming, fixe (indépendante du scroll) -->
+      <div class="stream-pill"><span class="spin"></span> Arty répond…</div>
+
+      <div class="scroll">
+        <!-- User -->
+        <div class="msg row-user">
+          <div class="bubble-user">Compare les 3 devis et donne-moi le meilleur rapport qualité/prix.</div>
+          <div class="actions right">
+            <button class="act"><svg width="14" height="14" viewBox="0 0 16 16" fill="none"><rect x="5" y="5" width="8" height="9" rx="1.5" stroke="currentColor" stroke-width="1.3"/><path d="M3 11V3a1.5 1.5 0 0 1 1.5-1.5H11" stroke="currentColor" stroke-width="1.3"/></svg>Copier</button>
+            <button class="act"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M9.5 2.5L11.5 4.5L5 11H3V9L9.5 2.5Z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>Modifier</button>
+          </div>
+        </div>
+
+        <!-- Assistant -->
+        <div class="msg row-asst">
+          <div class="asst-head">
+            <span class="asst-ava"><svg width="13" height="13" viewBox="0 0 64 64" fill="none"><path d="M32 6 L58 54 L32 40 Z" fill="#1C0E06"/><path d="M32 6 L6 54 L32 40 Z" fill="#1C0E06" opacity="0.5"/></svg></span>
+            <span class="asst-name">Arty · Claude Sonnet</span>
+          </div>
+          <div class="bubble-asst">
+            <p>Voici le classement par <strong>rapport qualité/prix</strong>. Le devis <em>Garage Renaud</em> ressort en tête : prix médian mais garantie pièces la plus longue.</p>
+            <p>Tableau de synthèse en JSON si tu veux l'importer :</p>
+            <div class="code">
+              <div class="code-bar"><span class="code-lang">json</span>
+                <button class="code-copy"><svg width="12" height="12" viewBox="0 0 16 16" fill="none"><rect x="5" y="5" width="8" height="9" rx="1.5" stroke="currentColor" stroke-width="1.3"/><path d="M3 11V3a1.5 1.5 0 0 1 1.5-1.5H11" stroke="currentColor" stroke-width="1.3"/></svg>Copier</button>
+              </div>
+              <pre><code><span class="tok-c">// meilleur choix en tête</span>
+[{ <span class="tok-k">"garage"</span>: <span class="tok-s">"Renaud"</span>, <span class="tok-k">"prix"</span>: <span class="tok-s">"840 €"</span> },
+ { <span class="tok-k">"garage"</span>: <span class="tok-s">"AD Valence"</span>, <span class="tok-k">"prix"</span>: <span class="tok-s">"790 €"</span> }]</code></pre>
+            </div>
+          </div>
+          <div class="actions">
+            <button class="act"><svg width="14" height="14" viewBox="0 0 16 16" fill="none"><rect x="5" y="5" width="8" height="9" rx="1.5" stroke="currentColor" stroke-width="1.3"/><path d="M3 11V3a1.5 1.5 0 0 1 1.5-1.5H11" stroke="currentColor" stroke-width="1.3"/></svg>Copier</button>
+            <button class="act"><svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M3 6h2l3-3v10l-3-3H3z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/><path d="M11 6c.8.6.8 3.4 0 4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>Lire</button>
+            <button class="act"><svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M8 2l1.6 3.6 3.9.3-3 2.6.9 3.8L8 10.8 4.6 12.3l.9-3.8-3-2.6 3.9-.3z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/></svg>Épingler</button>
+            <button class="act"><svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M3 8a5 5 0 0 1 5-5h2M13 8a5 5 0 0 1-5 5H6M10 1l2 2-2 2M6 15l-2-2 2-2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>Régénérer</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- InputBar simplifiée -->
+      <div class="inputbar">
+        <!-- Prédiction de routage EN TEMPS RÉEL (avant envoi) -->
+        <div class="route-hint">
+          <span class="flag">🇪🇺</span> Donnée privée détectée → <b style="color:rgb(var(--theme-accent));font-weight:600">restera en Europe (Mistral)</b>
+        </div>
+        <div class="inputrow">
+          <button class="iconbtn plus" aria-label="Joindre">
+            <svg width="20" height="20" viewBox="0 0 18 18" fill="none"><line x1="9" y1="3" x2="9" y2="15" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><line x1="3" y1="9" x2="15" y2="9" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+          </button>
+          <textarea rows="1" placeholder="Réponds à Arty…">Renvoie le devis Renaud par mail à Mégane</textarea>
+          <!-- 1 seul bouton voix : reste visible même en saisie (ajoute par la voix) -->
+          <button class="voice-sm" aria-label="Ajouter par la voix">
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><rect x="6.5" y="2" width="5" height="9" rx="2.5" stroke="currentColor" stroke-width="1.6"/><path d="M4 9C4 11.76 6.24 14 9 14C11.76 14 14 11.76 14 9" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><line x1="9" y1="14" x2="9" y2="16" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+          </button>
+          <button class="send" aria-label="Envoyer">
+            <svg width="18" height="18" viewBox="0 0 14 14" fill="none"><path d="M7 12V2M7 2L3 6M7 2L11 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Bottom-sheet Mode (Style + Modèle + transparence regroupés) -->
+      <div class="sheet-back" id="back" onclick="closeSheet()"></div>
+      <div class="sheet" id="sheet">
+        <div class="grab"></div>
+        <h3>Mode de réponse</h3>
+        <div class="sub">Ton, modèle et confidentialité — au même endroit.</div>
+
+        <div class="sheet-label">Ton</div>
+        <div class="opt-row">
+          <button class="opt sel">⚡ Concis</button>
+          <button class="opt">📖 Détaillé</button>
+          <button class="opt">🎓 Pédagogue</button>
+          <button class="opt">💼 Pro</button>
+        </div>
+
+        <div class="sheet-label">Modèle</div>
+        <div class="opt-row">
+          <button class="opt sel"><svg width="12" height="12" viewBox="0 0 64 64" fill="none"><path d="M32 6 L58 54 L32 40 Z" fill="currentColor"/><path d="M32 6 L6 54 L32 40 Z" fill="currentColor" opacity="0.45"/></svg> Auto</button>
+          <button class="opt">🇺🇸 Claude</button>
+          <button class="opt">🇪🇺 Mistral</button>
+          <button class="opt">🇺🇸 Gemini</button>
+        </div>
+
+        <div class="why">
+          <b>Pourquoi « Auto » ?</b> Arty choisit le bon modèle selon ta requête : Mistral (Europe) pour tes données privées, Claude pour les fichiers et outils, Gemini pour le web. Le bandeau au-dessus de l'input te dit où partira ton prochain message <em>avant</em> de l'envoyer.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="annot">
+    <b>Conversation — améliorations ergonomiques</b>
+    <ul>
+      <li><b>TopBar : 4 rangées → 1</b> (back · titre · chip Mode · ⋯). ~20% d'écran rendu au contenu.</li>
+      <li><b>Style + Modèle fusionnés</b> dans un chip « Mode » → bottom-sheet, plus 3 rangées de contrôles permanents.</li>
+      <li><b>Actions sous la bulle</b> (≥36px) au lieu d'un overlay 14px qui chevauche le texte.</li>
+      <li><b>Copier</b> sur les messages ET les blocs de code (absent aujourd'hui).</li>
+      <li><b>Routage prédit en temps réel</b> avant l'envoi (🇪🇺/🇺🇸) — cœur de la promesse de confidentialité.</li>
+      <li><b>1 seul bouton voix</b>, qui reste visible pendant la saisie ; pastille « Arty répond… » fixe.</li>
+    </ul>
+  </div>
+
+<script>
+  function tog(){ var h=document.documentElement; h.dataset.theme = h.dataset.theme==='ember'?'nocturne':'ember'; try{localStorage.setItem('arty-mock-theme',h.dataset.theme)}catch(e){} }
+  function openSheet(){ document.getElementById('sheet').classList.add('on'); document.getElementById('back').classList.add('on'); }
+  function closeSheet(){ document.getElementById('sheet').classList.remove('on'); document.getElementById('back').classList.remove('on'); }
+  try{var t=localStorage.getItem('arty-mock-theme'); if(t)document.documentElement.dataset.theme=t;}catch(e){}
+  // auto-grow textarea
+  var ta=document.querySelector('textarea'); function gr(){ta.style.height='auto';ta.style.height=Math.min(ta.scrollHeight,90)+'px';} ta.addEventListener('input',gr); gr();
+</script>
+</body>
+</html>
