@@ -1,4 +1,5 @@
 import type { Env } from '../../env'
+import { isRefundableUpstreamFailure } from '../_lib/unservedRefunds'
 import { isAdmissionUnavailable, admissionUnavailableResponse } from '../_lib/admission'
 import {
   checkAllowedVerifiedUser,
@@ -243,6 +244,17 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
     }
     scheduleTrialRefund()
   }
+  // Refus upstream du CONTENU (400 non-facturation…) : la réserve wallet est
+  // rendue, essai/quota/cap restent débités (`isRefundableUpstreamFailure`).
+  const scheduleWalletOnlyRefund = () => {
+    if (walletResId) {
+      waitUntil(voidWalletBilling(env, walletResId, email))
+      walletResId = undefined
+    }
+    capConsumed = undefined
+    dailyConsumed = undefined
+    trialConsumedBy = undefined
+  }
   try {
     let body: BodyInit
     let parsedPayload: Record<string, unknown> | undefined
@@ -356,8 +368,9 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
       },
     )
     if (isAdmissionUnavailable(result)) return cancelBufferedVision(admissionUnavailableResponse())
+    // M8 (#393) : le chemin texte rembourse aussi l'unité d'essai. La garde
+    // `usesVisionTransport &&` laissait le texte sans remboursement.
     if (
-      usesVisionTransport &&
       result &&
       !isTrialExpired(result) &&
       result.planType === 'trial' &&
@@ -578,11 +591,19 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
 
     if (!response.ok) {
       const errorText = await response.text().catch(() => 'Unknown OpenAI error')
+      const modelRejected =
+        /model/i.test(errorText) && /not.?found|does.?not.?exist|unknown|invalid/i.test(errorText)
+      const billing = classifyUpstreamBilling(errorText)
       // Le fetch upstream a échoué → libère la réserve wallet en vol (PR #281)
-      // ET rembourse quota/cap consommés en amont (revue C3 — invariant :
-      // « quota/cap consommé ⟺ réponse servie »). Couvre le rejet de modèle
-      // (retry client → sans ça, 2 unités par message) ET tout autre échec.
-      scheduleUnservedRefunds()
+      // ET rembourse quota/cap/essai consommés en amont (revue C3, issue #393 —
+      // invariant : « unité consommée ⟺ réponse servie »). Le rejet de modèle
+      // est TOUJOURS rendu : le client retombe sur FALLBACK_MODEL (sans ça,
+      // 2 unités par message). Un refus de contenu (400…) garde son unité.
+      if (modelRejected || isRefundableUpstreamFailure(response.status, billing !== null)) {
+        scheduleUnservedRefunds()
+      } else {
+        scheduleWalletOnlyRefund()
+      }
       // Leak d'info (N-2) : sur la clé serveur, masquer l'erreur OpenAI brute
       // (état de la clé owner). EXCEPTION : le rejet de modèle doit rester
       // détectable — le client (startChatRequest) s'en sert pour retomber de
@@ -591,15 +612,12 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
       // OpenAI. premium_cap_reached est émis avant le fetch (non concerné).
       // Passthrough conservé pour le BYOK.
       if (usingServerKey) {
-        const modelRejected =
-          /model/i.test(errorText) && /not.?found|does.?not.?exist|unknown|invalid/i.test(errorText)
         // Terrain 10 août 2026 — « Erreur OpenAI (400) » sur un simple
         // « Salut » : le motif était masqué ici, et le statut seul ne dit pas
         // si le payload est mauvais ou si la clé du propriétaire est à sec.
         // On journalise donc la CATÉGORIE (jamais le message upstream, qui
         // peut refléter une portion du payload utilisateur) et on la renvoie
         // au client — même leçon que BUG 64, appliquée un provider plus loin.
-        const billing = classifyUpstreamBilling(errorText)
         console.error(
           '[openai] upstream error',
           response.status,

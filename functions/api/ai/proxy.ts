@@ -1,7 +1,7 @@
 import type { Env } from '../../env'
 import { isAdmissionUnavailable, admissionUnavailableResponse } from '../_lib/admission'
 import { readAnthropicRequestBody } from '../_lib/anthropicRequestBody'
-import { BILLING_LEAK_PATTERN as SHARED_BILLING_LEAK_PATTERN } from '../_lib/upstreamBilling'
+import { BILLING_LEAK_PATTERN as SHARED_BILLING_LEAK_PATTERN, classifyUpstreamBilling } from '../_lib/upstreamBilling'
 import {
   checkAllowedVerifiedUser,
   isModelAllowedInTrial,
@@ -28,8 +28,8 @@ import {
   enforceWalletOutputLimit,
   makeReservationHeartbeat,
   settleWalletBilling,
-  voidWalletBilling,
 } from '../_lib/walletBilling'
+import { createUnservedRefunds, isRefundableUpstreamFailure } from '../_lib/unservedRefunds'
 
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages'
 
@@ -179,6 +179,10 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
   )
   let parsedBody = bodyRead.body
 
+  // Issue #393 : tout ce qui est consommé avant le fetch upstream (essai,
+  // quota, cap, réserve wallet) est rendu si la réponse n'est pas servie.
+  const refunds = createUnservedRefunds(env, waitUntil, email, identity.email)
+
   // BYOK prioritaire — si le client envoie sa propre clé, on l'utilise
   // telle quelle (chaque user paie ses propres appels, donc pas de quota
   // ni de décrément de trial).
@@ -199,6 +203,9 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
         ? await consumeEmailTrialMessage(env, identity.email, waitUntil)
         : await checkAllowedVerifiedUser(identity.email, env, waitUntil)
     if (isAdmissionUnavailable(result)) return admissionUnavailableResponse()
+    if (result && !isTrialExpired(result) && result.planType === 'trial' && result.trialDebited === true) {
+      refunds.trackTrial(identity.kind)
+    }
     if (isTrialExpired(result)) {
       // Essai email épuisé : pas de wallet/crédits (espace de clés disjoint,
       // CRIT-1 — un jeton email-trial n'a jamais de solde) → 403 trial_expired direct.
@@ -229,6 +236,8 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
   }
 
   if (!apiKey) {
+    // Clé serveur absente alors qu'un essai a pu être débité : le rendre.
+    refunds.refundAll()
     // LOW (audit étape 13) — message d'erreur uniforme. Avant : on exposait
     // `email`, `isWhitelisted`, `hasServerKey` dans la réponse → oracle pour
     // énumérer la whitelist (test d'emails arbitraires → différence de body).
@@ -270,6 +279,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
     if (start.mode === 'refuse') return start.response
     if (start.mode === 'wallet') {
       walletResId = start.resId
+      refunds.trackWallet(walletResId)
       parsedBody = walletBody
     } else {
       // Pas de crédits. Essai ÉPUISÉ → 403 trial_expired : le tier Haiku gratuit
@@ -298,7 +308,11 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
     !isByok && !walletResId && (userPlan === 'subscription' || userPlan === 'free')
   if (enforceDailyQuota) {
     const quota = await consumeDailyQuota(env, email, modelName)
+    refunds.trackDailyQuota(modelName, quota.debited)
     if (!quota.allowed) {
+      // Le refus incrémente aussi le compteur : le rendre (même règle que
+      // openai/gemini), le message ne partira pas.
+      refunds.refundAll()
       return Response.json(
         {
           error: `Quota journalier atteint (${quota.count}/${quota.limit} appels aujourd'hui). Réessayez demain ou configurez votre propre clé API dans les paramètres.`,
@@ -314,7 +328,13 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
   // hors champ — Pro/VIP illimités, trial cappé par compteur dédié).
   if (!isByok && userPlan === 'subscription') {
     const cap = await checkPremiumCap(email, modelName, env)
-    if (!cap.allowed) return premiumCapReachedResponse(cap)
+    if (!cap.allowed) {
+      // Le quota journalier vient d'être consommé pour un message qui ne
+      // partira pas.
+      refunds.refundAll()
+      return premiumCapReachedResponse(cap)
+    }
+    refunds.trackPremiumCap(cap)
   }
 
   // Filet FINAL : le modèle réellement servi peut différer de celui demandé
@@ -357,6 +377,10 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
 
     // Ne track que les appels server-key réussis (BYOK = user paie lui-même).
     if (!isByok && response.ok && response.body) {
+      // Réponse servie : plus aucun remboursement à partir d'ici, même si le
+      // tee ou la construction de la Response levait (le catch ne doit jamais
+      // annuler une réserve dont le settle est déjà planifié).
+      refunds.markServed()
       const parser = createAnthropicParser(responseUsageFormat(response.headers.get('content-type')))
       const { clientBody, parsedUsage } = teeForParsing(
         response.body,
@@ -382,15 +406,26 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
       })
     }
 
-    // Upstream KO (ou pas de body streamable) : rendre la réserve éventuelle.
-    if (walletResId) waitUntil(voidWalletBilling(env, walletResId, email))
+    // Upstream KO : rendre essai, quota, cap et réserve wallet (issue #393).
+    // Le cas BYOK n'a rien consommé (aucun débit suivi) → no-op. Si l'unité
+    // d'essai est rendue, le header doit refléter le compteur après
+    // remboursement, pas après débit.
+    // Le body d'erreur n'est lu que sur la clé serveur : en BYOK il est
+    // forwardé brut plus bas (et rien n'a été consommé).
+    const detail = !isByok && !response.ok ? await response.text().catch(() => '') : ''
+    if (!response.ok || !response.body) {
+      const counters = response.ok
+        || isRefundableUpstreamFailure(response.status, classifyUpstreamBilling(detail) !== null)
+      if (refunds.refundUnserved({ counters }) && trialRemaining !== undefined) trialRemaining += 1
+    } else {
+      refunds.markServed()
+    }
     // Audit F-6 (3 juil. 2026) — chemin clé serveur : ne PAS forwarder le body
     // d'erreur Anthropic brut (état de la clé owner : rate-limit, crédits,
     // validité) à l'appelant. Détail loggé serveur uniquement (baseline N-2,
     // aligné sur les proxys openai/gemini/mistral/tts). Le user BYOK, lui,
     // reçoit l'erreur brute d'Anthropic : c'est SA clé.
     if (!isByok && !response.ok) {
-      const detail = await response.text().catch(() => '')
       console.error('[proxy] upstream error', response.status, detail.slice(0, 500))
       // Terrain 9 août : un 400 opaque a coûté plusieurs allers-retours de
       // diagnostic. Un 400 `invalid_request_error` décrit NOTRE payload (un
@@ -417,7 +452,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
   } catch (err) {
     // Échec réseau/exception après réserve → rendre la réserve. Message
     // générique : err.message peut révéler des détails d'infra (F-6).
-    if (walletResId) waitUntil(voidWalletBilling(env, walletResId, email))
+    refunds.refundAll()
     console.error('[proxy] exception', err)
     return Response.json({ error: 'Proxy error' }, { status: 502 })
   }

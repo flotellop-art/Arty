@@ -283,7 +283,14 @@ describe('Gemini proxy — fallback 3.6 compté une seule fois', () => {
     }
   })
 
-  it.each([400, 401, 403, 429])('ne fallback jamais sur HTTP %s et rembourse le trial', async (status) => {
+  // Issue #393 (décision du 27 nov. 2026) : panne, 429 et clé owner rendent
+  // l'unité ; un refus de CONTENU (400 hors facturation) la garde.
+  it.each([
+    [400, 1],
+    [401, 0],
+    [403, 0],
+    [429, 0],
+  ])('ne fallback jamais sur HTTP %s (essai utilisé ensuite : %s)', async (status, expectedUsed) => {
     await grantTrial()
     const upstream: string[] = []
     global.fetch = vi.fn(async (input: RequestInfo | URL) => {
@@ -306,7 +313,7 @@ describe('Gemini proxy — fallback 3.6 compté une seule fois', () => {
     expect(upstream[0]).toContain('/gemini-3.6-flash:')
     const trial = await h.db.prepare('SELECT used FROM trial_usage WHERE email = ?1')
       .bind(EMAIL).first<{ used: number }>()
-    expect(trial?.used ?? 0).toBe(0)
+    expect(trial?.used ?? 0).toBe(expectedUsed)
   })
 
   it.each([404, 503])('fallback une fois sur HTTP %s et ne consomme qu’une unité trial', async (status) => {
