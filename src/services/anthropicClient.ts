@@ -316,6 +316,24 @@ function mapErrorStatus(status: number): string {
 
 // ── HTTP fetch with exponential-backoff retry ─────────────────────────────────
 
+/**
+ * 429 émis par le proxy lui-même et DÉFINITIF : cap premium du mois
+ * (`premium_cap_reached`) ou quota journalier (`{ error, count, limit }`,
+ * même détection que mistralClient). Le retenter ne sert à rien et repasse
+ * par l'admission (issue #393). Un body non-JSON = rate limit upstream.
+ * Exporté pour les tests.
+ */
+export function isDefinitiveProxy429(body: string): boolean {
+  try {
+    const parsed = JSON.parse(body) as { error?: unknown; count?: unknown; limit?: unknown } | null
+    if (!parsed || typeof parsed !== 'object') return false
+    if (parsed.error === 'premium_cap_reached') return true
+    return typeof parsed.count === 'number' && typeof parsed.limit === 'number'
+  } catch {
+    return false
+  }
+}
+
 async function fetchWithRetry(
   requestBody: string,
   apiKey: string | null,
@@ -366,9 +384,7 @@ async function fetchWithRetry(
     // l'UI. On le distingue du 429 rate-limit transient en lisant le body.
     if (response.status === 429) {
       const peek = await response.clone().text().catch(() => '')
-      try {
-        if ((JSON.parse(peek) as { error?: string })?.error === 'premium_cap_reached') break
-      } catch { /* body non-JSON → rate limit upstream, retry normal */ }
+      if (isDefinitiveProxy429(peek)) break
     }
 
     // Exponential backoff: 2s, 4s, 8s

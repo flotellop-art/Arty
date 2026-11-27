@@ -1,4 +1,5 @@
 import type { Env } from '../../env'
+import { isRefundableUpstreamFailure } from '../_lib/unservedRefunds'
 import { createStreamBudget } from '../_lib/streamBudget'
 import { isAdmissionUnavailable, admissionUnavailableResponse } from '../_lib/admission'
 import { normalizeTikTokUrl, TIKTOK_ANALYSIS_MODEL, TIKTOK_SERVER_TIMEOUT_MS, TIKTOK_PREPARATION_TIMEOUT_MS, TIKTOK_GENERATION_TIMEOUT_MS } from '../../../src/services/tiktokVideoTypes'
@@ -101,6 +102,17 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
       dailyConsumed = undefined
     }
     scheduleTrialRefund()
+  }
+  // Refus upstream du CONTENU (400 non-facturation…) : la réserve wallet est
+  // rendue, essai/quota/cap restent débités (`isRefundableUpstreamFailure`).
+  const scheduleWalletOnlyRefund = () => {
+    if (walletResId) {
+      waitUntil(voidWalletBilling(env, walletResId, email))
+      walletResId = undefined
+    }
+    capConsumed = undefined
+    dailyConsumed = undefined
+    trialConsumedBy = undefined
   }
 
   // BYOK prioritaire
@@ -333,8 +345,15 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
 
     if (!response.ok) {
       const errorText = await response.text().catch(() => 'Unknown Gemini error')
-      // Rien n'a été servi : rendre wallet, quota, cap et unité d'essai.
-      scheduleUnservedRefunds()
+      const billing = classifyUpstreamBilling(errorText)
+      // Rien n'a été servi : rendre la réserve wallet, et pour une panne,
+      // une surcharge, un 429 ou une clé à sec, quota, cap et essai (#393).
+      // Un refus de contenu (400, 404 après fallback…) garde son unité.
+      if (isRefundableUpstreamFailure(response.status, billing !== null)) {
+        scheduleUnservedRefunds()
+      } else {
+        scheduleWalletOnlyRefund()
+      }
       if (tikTokMode) return Response.json({ error: 'tiktok_analysis_unavailable' }, { status: response.status, headers: responseHeaders() })
       // Leak d'info (N-2) : sur la clé serveur, ne JAMAIS renvoyer l'erreur
       // Gemini brute (elle révèle l'état de la clé owner : quota, projet,
@@ -346,7 +365,6 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
       if (usingServerKey) {
         // Le body peut refléter du contenu utilisateur : ne journaliser que le
         // status et la CATÉGORIE (BUG 64), jamais le message upstream.
-        const billing = classifyUpstreamBilling(errorText)
         console.error('[gemini] upstream error', response.status, billing ?? 'unclassified')
         return Response.json(
           { error: billing ?? 'AI service error' },

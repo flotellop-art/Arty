@@ -6,7 +6,6 @@ import {
   isTrialExpired,
   proKeyRequiredResponse,
   trialExpiredResponse,
-  trialModelRestrictedResponse,
 } from '../_lib/checkAllowedUser'
 import {
   consumeEmailTrialMessage,
@@ -29,8 +28,8 @@ import {
   enforceWalletOutputLimit,
   makeReservationHeartbeat,
   settleWalletBilling,
-  voidWalletBilling,
 } from '../_lib/walletBilling'
+import { createUnservedRefunds, isRefundableUpstreamFailure } from '../_lib/unservedRefunds'
 
 const MISTRAL_API_URL = 'https://api.mistral.ai/v1/chat/completions'
 
@@ -43,6 +42,24 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
   }
   const identity = identityResolution.identity
   const email = identity.kind === 'email-trial' ? emailTrialKey(identity.email) : identity.email
+  // Issue #393 : tout ce qui est consommé avant le fetch upstream (essai,
+  // quota, cap, réserve wallet) est rendu si la réponse n'est pas servie.
+  const refunds = createUnservedRefunds(env, waitUntil, email, identity.email)
+
+  // Lecture et validation syntaxique AVANT toute admission (même règle que
+  // proxy.ts) : un body illisible ou un client qui abandonne ne doit jamais
+  // coûter une unité d'essai. Un JSON invalide aurait de toute façon été
+  // refusé par Mistral en 400.
+  let body: string
+  let bodyObj: Record<string, unknown>
+  try {
+    body = await request.text()
+    const parsed = JSON.parse(body) as unknown
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('not_an_object')
+    bodyObj = parsed as Record<string, unknown>
+  } catch {
+    return Response.json({ error: 'invalid_request_body' }, { status: 400 })
+  }
 
   // BYOK prioritaire
   let apiKey = request.headers.get('authorization')?.replace('Bearer ', '') || ''
@@ -62,6 +79,9 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
         ? await consumeEmailTrialMessage(env, identity.email, waitUntil)
         : await checkAllowedVerifiedUser(identity.email, env, waitUntil)
     if (isAdmissionUnavailable(result)) return admissionUnavailableResponse()
+    if (result && !isTrialExpired(result) && result.planType === 'trial' && result.trialDebited === true) {
+      refunds.trackTrial(identity.kind)
+    }
     if (isTrialExpired(result)) {
       // Essai email épuisé : pas de wallet (espace de clés disjoint, CRIT-1) → 403 direct.
       if (identity.kind === 'email-trial') return trialExpiredResponse()
@@ -91,17 +111,10 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
     )
   }
 
-  let body = await request.text()
-
   // Extract le nom du modèle pour le quota + le tracking coût.
   let modelName = 'mistral'
-  try {
-    const parsed = JSON.parse(body) as { model?: unknown }
-    if (typeof parsed.model === 'string' && parsed.model.length > 0) {
-      modelName = parsed.model
-    }
-  } catch {
-    // leave fallback
+  if (typeof bodyObj.model === 'string' && bodyObj.model.length > 0) {
+    modelName = bodyObj.model
   }
 
   // Mistral's OpenAI-compatible stream only guarantees its final usage object
@@ -112,14 +125,12 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
   // demandé n'est pas autorisé en trial. Même logique que proxy.ts
   // (Anthropic). Plus de Mistral Small (déprécié mai 2026).
   if (usingServerKey && userPlan === 'trial' && !isModelAllowedInTrial(modelName)) {
-    try {
-      const bodyObj = JSON.parse(body) as Record<string, unknown>
-      bodyObj.model = 'mistral-medium-latest'
-      body = JSON.stringify(bodyObj)
-      modelName = 'mistral-medium-latest'
-    } catch {
-      return trialModelRestrictedResponse()
-    }
+    // Le body est déjà validé comme objet JSON avant l'admission : plus de
+    // chemin d'échec après le débit d'essai.
+    const trialBody = JSON.parse(body) as Record<string, unknown>
+    trialBody.model = 'mistral-medium-latest'
+    body = JSON.stringify(trialBody)
+    modelName = 'mistral-medium-latest'
   }
 
   // Sans abo : si l'utilisateur a des crédits → wallet (n'importe quel modèle,
@@ -142,6 +153,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
     if (start.mode === 'refuse') return start.response
     if (start.mode === 'wallet') {
       walletResId = start.resId
+      refunds.trackWallet(walletResId)
       body = JSON.stringify(parsedBody)
     } else {
       // Essai épuisé sans crédits → 403 trial_expired ; sinon Mistral verrouillé.
@@ -154,7 +166,9 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
   // (Pro/VIP illimités, trial cappé par compteur dédié).
   if (usingServerKey && userPlan === 'subscription') {
     const quota = await consumeDailyQuota(env, email, modelName)
+    refunds.trackDailyQuota(modelName, quota.debited)
     if (!quota.allowed) {
+      refunds.refundAll()
       return Response.json(
         {
           error: `Quota journalier atteint (${quota.count}/${quota.limit} appels aujourd'hui pour ${modelName}). Réessayez demain ou configurez votre propre clé.`,
@@ -171,7 +185,11 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
   // architecturale ; il retourne 'standard_model' immédiatement.
   if (usingServerKey && userPlan === 'subscription') {
     const cap = await checkPremiumCap(email, modelName, env)
-    if (!cap.allowed) return premiumCapReachedResponse(cap)
+    if (!cap.allowed) {
+      refunds.refundAll()
+      return premiumCapReachedResponse(cap)
+    }
+    refunds.trackPremiumCap(cap)
   }
 
   try {
@@ -197,8 +215,12 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
 
     if (!response.ok) {
       const errorText = await response.text().catch(() => 'Unknown Mistral error')
-      // Le fetch upstream a échoué → libère la réserve wallet en vol (PR #281).
-      if (walletResId) waitUntil(voidWalletBilling(env, walletResId, email))
+      // Le fetch upstream a échoué → rend la réserve wallet (PR #281) et,
+      // pour une panne/surcharge/facturation, essai, quota et cap (#393).
+      // Le header d'erreur ne porte pas x-trial-remaining : rien à corriger.
+      refunds.refundUnserved({
+        counters: isRefundableUpstreamFailure(response.status, classifyUpstreamBilling(errorText) !== null),
+      })
       // Fix 429 (11 juin 2026) — forwarder Retry-After d'upstream pour que
       // le backoff client attende le bon délai au lieu d'un délai aveugle.
       // Header de réponse recopié tel quel : aucune surface d'auth modifiée.
@@ -228,6 +250,8 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
     // Tracking tokens réels côté serveur — un seul tee, deux consommateurs
     // (analytics + débit wallet sur le chemin wallet).
     if (usingServerKey && response.body) {
+      // Servie : le catch ne doit plus rien rendre, même si le tee levait.
+      refunds.markServed()
       const parser = createMistralParser(responseUsageFormat(response.headers.get('content-type')))
       const { clientBody, parsedUsage } = teeForParsing(
         response.body,
@@ -250,16 +274,20 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
       })
     }
 
-    if (walletResId) waitUntil(voidWalletBilling(env, walletResId, email))
+    // Réponse OK sans body streamable (ou BYOK, qui n'a rien consommé).
+    if (!response.body) {
+      if (refunds.refundAll() && trialRemaining !== undefined) trialRemaining += 1
+    } else {
+      refunds.markServed()
+    }
     return new Response(response.body, {
       status: response.status,
       headers: responseHeaders(),
     })
   } catch (err) {
-    if (walletResId) waitUntil(voidWalletBilling(env, walletResId, email))
-    return Response.json(
-      { error: err instanceof Error ? err.message : 'Mistral proxy error' },
-      { status: 502 }
-    )
+    refunds.refundAll()
+    // Message générique : err.message peut révéler des détails d'infra (F-6).
+    console.error('[mistral] exception', err)
+    return Response.json({ error: 'Mistral proxy error' }, { status: 502 })
   }
 }
